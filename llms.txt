@@ -14,7 +14,7 @@ CARE is not a summary system, a final authority, or a replacement for scholarshi
 - Current public version: v0.1.0-alpha
 - Current release type: documentation and reference architecture
 - Canonical website: https://carelibrary.org/
-- Public repository: https://github.com/williamproudler/care-library
+- Public repository: https://github.com/willproudler/care-library
 - Status: active development
 - Orientation: open-source scholarly infrastructure and computational hermeneutics
 - Trademark status: UK application pending
@@ -60,11 +60,11 @@ Additional lateral operations include:
 
 ## Primary public documents
 
-- [Repository](https://github.com/williamproudler/care-library): public documentation and version history
-- [Working paper](https://github.com/williamproudler/care-library/blob/main/paper/CARE_MACHINE_PAPER_v0.1.1.md): theoretical and technical account
-- [Architecture specification](https://github.com/williamproudler/care-library/blob/main/docs/CARE_ARCHITECTURE_SPEC_v0.1.md): layers, units and provenance model
-- [CARE Commons Charter](https://github.com/williamproudler/care-library/blob/main/docs/CARE_COMMONS_CHARTER_v0.1.md): open and anti-enclosure commitments
-- [Flagship example](https://github.com/williamproudler/care-library/blob/main/examples/CARE_FLAGSHIP_EXAMPLE_v0.1.md): developing public demonstration
+- [Repository](https://github.com/willproudler/care-library): public documentation and version history
+- [Working paper](https://github.com/willproudler/care-library/blob/main/paper/CARE_MACHINE_PAPER_v0.1.1.md): theoretical and technical account
+- [Architecture specification](https://github.com/willproudler/care-library/blob/main/docs/CARE_ARCHITECTURE_SPEC_v0.1.md): layers, units and provenance model
+- [CARE Commons Charter](https://github.com/willproudler/care-library/blob/main/docs/CARE_COMMONS_CHARTER_v0.1.md): open and anti-enclosure commitments
+- [Flagship example](https://github.com/willproudler/care-library/blob/main/examples/CARE_FLAGSHIP_EXAMPLE_v0.1.md): developing public demonstration
 
 ## Current limitations
 
