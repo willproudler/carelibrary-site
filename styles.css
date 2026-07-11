@@ -12,8 +12,8 @@ a{color:inherit;text-underline-offset:.2em}a:hover{text-decoration-thickness:2px
 .wordmark{font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:.02em;text-decoration:none}
 nav{display:flex;gap:1.25rem;font-family:Arial,Helvetica,sans-serif;font-size:.83rem}
 nav a{text-decoration:none}nav a:hover{text-decoration:underline}
-.hero{padding-block:clamp(5rem,12vw,10rem);border-bottom:1px solid var(--line)}
-.eyebrow{margin:0 0 1.4rem;font-family:Arial,Helvetica,sans-serif;font-size:.75rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.hero{padding-block:clamp(3.5rem, 7vw, 5.5rem);border-bottom:1px solid var(--line)}
+.eyebrow{margin:0 0 .9rem;font-family:Arial,Helvetica,sans-serif;font-size:.75rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 h1,h2{margin-top:0;line-height:1.05;font-weight:500;text-wrap:balance}
 h1{max-width:13ch;margin-bottom:2rem;font-size:clamp(3.4rem,9vw,7.8rem);letter-spacing:-.055em}
 h2{font-size:clamp(2rem,5vw,4rem);letter-spacing:-.035em}
@@ -22,9 +22,14 @@ h2{font-size:clamp(2rem,5vw,4rem);letter-spacing:-.035em}
 .button{display:inline-block;padding:.7rem 1rem;border:1px solid var(--ink);font-family:Arial,Helvetica,sans-serif;font-size:.88rem;text-decoration:none}
 .button:hover{background:var(--soft)}.button.primary{background:var(--ink);color:var(--paper)}.button.primary:hover{opacity:.88}
 .release-note{margin:0;font-family:Arial,Helvetica,sans-serif;font-size:.8rem;color:var(--muted)}
-.section{display:grid;grid-template-columns:5rem minmax(0,1fr);gap:2rem;padding-block:clamp(4rem,9vw,7rem);border-bottom:1px solid var(--line)}
+.section{display:grid;grid-template-columns:5rem minmax(0,1fr);gap:1.25rem;padding-block:clamp(3rem, 6vw, 4.75rem));border-bottom:1px solid var(--line)}
 .section-number{padding-top:.7rem;font-family:Arial,Helvetica,sans-serif;font-size:.75rem;color:var(--muted)}
 .section-body{max-width:49rem}.section-body>p:first-of-type{font-size:1.2rem}
+.section-body h2{
+
+  margin-bottom:1.4rem;
+
+}
 .principle{margin-block:2.5rem 0;padding:1.2rem 0 1.2rem 1.2rem;border-left:3px solid var(--ink);font-size:1.3rem;font-style:italic}
 .pipeline{margin:3rem 0;padding:0;list-style:none;border-top:1px solid var(--ink)}
 .pipeline li{display:grid;grid-template-columns:5rem 1fr;gap:1.5rem;padding:.9rem 0;border-bottom:1px solid var(--line)}
