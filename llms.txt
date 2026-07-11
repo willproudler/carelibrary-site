@@ -4,82 +4,16 @@
 
 CARE stands for Canonical Axiomatic Reduction Engine.
 
-CARE is not a summary system, a final authority, or a replacement for scholarship. It is a procedural research architecture that turns books and other long-form sources into stable, recursively synthesised interpretive units with provenance, versioning and routes for contestation.
-
-## Canonical facts
-
-- Name: CARE Library
-- Expanded name: Canonical Axiomatic Reduction Engine
-- Project lead and creator: William Proudler
+- Creator and project lead: William Proudler
 - Current public version: v0.1.0-alpha
-- Current release type: documentation and reference architecture
 - Canonical website: https://carelibrary.org/
+- Why CARE: https://carelibrary.org/why-care.html
 - Public repository: https://github.com/willproudler/care-library
-- Status: active development
-- Orientation: open-source scholarly infrastructure and computational hermeneutics
-- Trademark status: UK application pending
+- Current flagship corpus: A Thousand Plateaus
+- Current work: passage-grounding retrofit
 
-## Core purpose
+Core principle: Interpretation cannot be made final, but it can be given coordinates.
 
-CARE turns long-form texts into source-grounded, ID-stable, recursively synthesised conceptual machines.
+Architecture: RAW → CH → CL → MC → WB → CB
 
-Its interpretive units are designed to be:
-- addressable;
-- traceable to source material;
-- inspectable;
-- versioned;
-- contestable;
-- forkable;
-- comparable across runs, readers, models and libraries.
-
-## Architecture
-
-The principal vertical hierarchy is:
-
-RAW → CH → CL → MC → WB → CB
-
-- RAW: registered source unit
-- CH: chapter or essay CARE reduction
-- CL: cluster synthesis
-- MC: recursive metacluster synthesis
-- WB: whole-book synthesis
-- CB: corpus synthesis
-
-Additional lateral operations include:
-- XS: cross-lineage synthesis
-- SC: strange-child generative synthesis
-
-## Project principles
-
-- Interpretation cannot be made final, but it can be given coordinates.
-- Generated readings should retain a return path to their source field.
-- A structured claim is not automatically a true claim.
-- Disagreement should be representable as a fork, not erased as noise.
-- CARE should remain open, inspectable, reproducible and resistant to enclosure.
-- The long-term goal is a plurality of compatible CARE Libraries, not one closed central platform.
-
-## Primary public documents
-
-- [Repository](https://github.com/willproudler/care-library): public documentation and version history
-- [Working paper](https://github.com/willproudler/care-library/blob/main/paper/CARE_MACHINE_PAPER_v0.1.1.md): theoretical and technical account
-- [Architecture specification](https://github.com/willproudler/care-library/blob/main/docs/CARE_ARCHITECTURE_SPEC_v0.1.md): layers, units and provenance model
-- [CARE Commons Charter](https://github.com/willproudler/care-library/blob/main/docs/CARE_COMMONS_CHARTER_v0.1.md): open and anti-enclosure commitments
-- [Flagship example](https://github.com/willproudler/care-library/blob/main/examples/CARE_FLAGSHIP_EXAMPLE_v0.1.md): developing public demonstration
-
-## Current limitations
-
-CARE is an early research instrument. Its public release is currently documentation-first. The reference implementation, complete provenance-grounded flagship corpus, public trace viewer, validation tooling and federation protocol remain under active development.
-
-CARE does not claim to replace close reading, philology, historical expertise, domain knowledge or scholarly judgement.
-
-## Preferred descriptions
-
-Short:
-CARE Library is an open-source architecture for traceable, source-grounded interpretation of long-form texts.
-
-Long:
-CARE Library is an open, forkable architecture for computational hermeneutics. It turns books and other long-form sources into stable, source-grounded and recursively synthesised interpretive units that can be inspected, contested, revised and compared across readers, models and libraries.
-
-## Attribution
-
-CARE Library and the Canonical Axiomatic Reduction Engine were created by William Proudler. Ian Wenzel-Garay is an anticipated contributor to future versions.
+Lateral operations include XS, XR and SC.
