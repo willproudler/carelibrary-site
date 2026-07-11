@@ -4,27 +4,68 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CARE Library — Traceable, Source-Grounded Interpretation</title>
-<meta name="description" content="CARE Library is an open-source architecture for traceable, source-grounded, forkable and comparable interpretation of long-form texts.">
+<meta name="description" content="CARE Library is an open-source architecture for turning long-form texts into traceable, source-grounded, forkable and comparable interpretive structures.">
 <meta name="author" content="William Proudler">
-<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <link rel="canonical" href="https://carelibrary.org/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="CARE Library">
 <meta property="og:title" content="CARE Library">
-<meta property="og:description" content="Interpretation with a return path.">
+<meta property="og:description" content="An open-source architecture for traceable, source-grounded interpretation of long-form texts.">
 <meta property="og:url" content="https://carelibrary.org/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CARE Library">
+<meta name="twitter:description" content="An open-source architecture for traceable, source-grounded interpretation of long-form texts.">
+<meta name="theme-color" content="#f2f0e9">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="alternate" type="text/markdown" href="/llms.txt">
-<link rel="stylesheet" href="/styles.css?v=6">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/markdown" href="/llms.txt" title="CARE Library machine-readable overview">
+<link rel="stylesheet" href="/styles.css">
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@graph":[
+    {
+      "@type":"WebSite",
+      "@id":"https://carelibrary.org/#website",
+      "url":"https://carelibrary.org/",
+      "name":"CARE Library",
+      "description":"An open-source architecture for traceable, source-grounded interpretation of long-form texts.",
+      "inLanguage":"en-GB",
+      "publisher":{"@id":"https://carelibrary.org/#project"}
+    },
+    {
+      "@type":"Project",
+      "@id":"https://carelibrary.org/#project",
+      "name":"CARE Library",
+      "alternateName":["CARE Machine","Canonical Axiomatic Reduction Engine"],
+      "url":"https://carelibrary.org/",
+      "description":"CARE Library is an open, source-grounded and forkable architecture for computational hermeneutics. It turns long-form texts into stable, traceable and recursively synthesised interpretive units that can be inspected, contested, revised and compared.",
+      "founder":{"@type":"Person","name":"William Proudler"},
+      "sameAs":["https://github.com/willproudler/care-library"],
+      "keywords":["computational hermeneutics","digital humanities","source-grounded interpretation","open-source research infrastructure","provenance","AI-assisted interpretation","forkable scholarship"]
+    },
+    {
+      "@type":"SoftwareSourceCode",
+      "@id":"https://carelibrary.org/#repository",
+      "name":"CARE Library documentation and reference architecture",
+      "description":"The public documentation-first alpha release of CARE Library.",
+      "codeRepository":"https://github.com/willproudler/care-library",
+      "license":["https://creativecommons.org/licenses/by-sa/4.0/","https://www.gnu.org/licenses/agpl-3.0.html","https://opendatacommons.org/licenses/odbl/1-0/"],
+      "version":"0.1.0-alpha",
+      "programmingLanguage":"Markdown"
+    }
+  ]
+}
+</script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to main content</a>
-
 <header class="site-header">
-  <div class="shell header-inner">
-    <a class="wordmark" href="/">CARE Library</a>
+  <div class="wrap header-inner">
+    <a class="wordmark" href="/" aria-label="CARE Library home">CARE Library</a>
     <nav aria-label="Primary navigation">
-      <a href="/why-care.html">Why CARE?</a>
+      <a href="#what-it-is">About</a>
       <a href="#architecture">Architecture</a>
       <a href="#status">Status</a>
       <a href="#resources">Resources</a>
@@ -33,162 +74,98 @@
 </header>
 
 <main id="main">
-  <section class="hero shell">
-    <div class="hero-copy">
-      <p class="eyebrow">Canonical Axiomatic Reduction Engine</p>
-      <h1>Interpretation<br>with a return path.</h1>
-
-      <p class="lede">
-        CARE Library is an open-source architecture for turning long-form texts
-        into traceable, source-grounded, forkable and comparable interpretive structures.
-      </p>
-
-      <div class="actions">
-        <a class="button" href="https://github.com/willproudler/care-library">View the public repository</a>
-        <a class="button" href="https://github.com/willproudler/care-library/blob/main/paper/CARE_MACHINE_PAPER_v0.1.1.md">Read the working paper</a>
-      </div>
-
-      <p class="release-note">
-        Current release: <strong>v0.1.0-alpha</strong> — documentation and reference architecture.
-      </p>
+  <section class="hero wrap" aria-labelledby="hero-title">
+    <p class="eyebrow">Canonical Axiomatic Reduction Engine</p>
+    <h1 id="hero-title">Interpretation with a return path.</h1>
+    <p class="lede">CARE Library is an open-source architecture for turning long-form texts into traceable, source-grounded, forkable and comparable interpretive structures.</p>
+    <div class="actions">
+      <a class="button primary" href="https://github.com/willproudler/care-library">View the public repository</a>
+      <a class="button" href="https://github.com/willproudler/care-library/blob/main/paper/CARE_MACHINE_PAPER_v0.1.1.md">Read the working paper</a>
     </div>
-
-    <figure class="technical-tree" aria-labelledby="tree-caption">
-      <svg viewBox="0 0 520 620" role="img" aria-label="CARE synthesis architecture">
-        <g class="tree-lines">
-          <path d="M260 560V500"/>
-          <path d="M260 500V440"/>
-          <path d="M260 440V380"/>
-          <path d="M260 380V320"/>
-          <path d="M260 320V260"/>
-          <path d="M260 260L140 160"/>
-          <path d="M260 260V160"/>
-          <path d="M260 260L380 160"/>
-        </g>
-
-        <g class="tree-id">
-          <text x="98" y="144">L–001</text>
-          <text x="218" y="144">L–002</text>
-          <text x="338" y="144">L–003</text>
-          <text x="168" y="266">L–004</text>
-          <text x="168" y="326">L–005</text>
-          <text x="168" y="386">L–006</text>
-          <text x="168" y="446">L–007</text>
-          <text x="168" y="506">L–008</text>
-          <text x="168" y="566">L–009</text>
-        </g>
-
-        <g class="tree-nodes">
-          <g transform="translate(140 160)"><circle r="28"/><text y="5">XS</text></g>
-          <g transform="translate(260 160)"><circle r="28"/><text y="5">SC</text></g>
-          <g transform="translate(380 160)"><circle r="28"/><text y="5">XR</text></g>
-          <g transform="translate(260 260)"><circle r="28"/><text y="5">CB</text></g>
-          <g transform="translate(260 320)"><circle r="28"/><text y="5">WB</text></g>
-          <g transform="translate(260 380)"><circle r="28"/><text y="5">MC</text></g>
-          <g transform="translate(260 440)"><circle r="28"/><text y="5">CL</text></g>
-          <g transform="translate(260 500)"><circle r="28"/><text y="5">CH</text></g>
-          <g transform="translate(260 560)"><circle r="28"/><text y="5">RAW</text></g>
-        </g>
-
-        <g class="tree-labels">
-          <text x="345" y="256">Corpus Bibliography</text>
-          <text x="345" y="272">(cross-corpus layer)</text>
-
-          <text x="345" y="316">WholeBook Synthesis</text>
-          <text x="345" y="332">(book-scale layer)</text>
-
-          <text x="345" y="376">MetaCluster Synthesis</text>
-          <text x="345" y="392">(multi-cluster layer)</text>
-
-          <text x="345" y="436">Cluster Synthesis</text>
-          <text x="345" y="452">(chapter-group layer)</text>
-
-          <text x="345" y="496">Chapter Axiomatization</text>
-          <text x="345" y="512">(chapter layer)</text>
-
-          <text x="345" y="556">Raw Source Ingestion</text>
-          <text x="345" y="572">(source layer)</text>
-        </g>
-      </svg>
-      <figcaption id="tree-caption">
-        Vertical synthesis. Lateral comparison. Open lineage.
-      </figcaption>
-    </figure>
+    <p class="release-note">Current release: <strong>v0.1.0-alpha</strong> — documentation and reference architecture.</p>
   </section>
 
-  <section class="latest shell" aria-labelledby="latest-title">
-    <div class="latest-index">01</div>
-
-    <div class="latest-title">
-      <h2 id="latest-title">Latest public corpus</h2>
-    </div>
-
-    <div class="latest-work">
-      <h3><em>A Thousand Plateaus</em></h3>
-      <p>Gilles Deleuze &amp; Félix Guattari</p>
-    </div>
-
-    <div class="latest-status">
-      <p>Chapter layer active</p>
-      <p>Cluster synthesis active</p>
-      <p>MetaCluster synthesis active</p>
-      <p>WholeBook synthesis active</p>
-    </div>
-
-    <div class="latest-link">
-      <a href="https://github.com/willproudler/care-library/blob/main/docs/CARE_CORPUS_STATUS_v0.1.md">View corpus status →</a>
+  <section id="what-it-is" class="section wrap">
+    <div class="section-number" aria-hidden="true">01</div>
+    <div class="section-body">
+      <h2>What CARE is</h2>
+      <p>CARE begins from a simple problem: AI can produce readings faster than those readings can be trusted, inspected or inherited.</p>
+      <p>It does not treat a generated interpretation as a final answer. It treats it as a structured object: named, versioned, connected to its sources, open to dispute, and capable of being forked.</p>
+      <p class="principle">CARE is not a summary system. It is a compiler for conceptual machines.</p>
     </div>
   </section>
 
-  <section id="architecture" class="content-section shell">
-    <div class="section-index">02</div>
-    <div>
+  <section id="architecture" class="section wrap">
+    <div class="section-number" aria-hidden="true">02</div>
+    <div class="section-body">
       <h2>Architecture</h2>
-      <p>
-        CARE passes from registered source material to progressively larger interpretive units
-        while retaining lineage back towards the text.
-      </p>
-      <div class="unit-grid">
-        <div><strong>RAW</strong><span>registered source units</span></div>
-        <div><strong>CH</strong><span>chapter or essay reductions</span></div>
-        <div><strong>CL</strong><span>cluster synthesis</span></div>
-        <div><strong>MC</strong><span>recursive metacluster synthesis</span></div>
-        <div><strong>WB</strong><span>whole-book synthesis</span></div>
-        <div><strong>CB / XS</strong><span>corpus and cross-lineage synthesis</span></div>
-      </div>
+      <p>CARE passes from registered source material to progressively larger interpretive units while retaining lineage back towards the text.</p>
+      <ol class="pipeline" aria-label="CARE processing hierarchy">
+        <li><strong>RAW</strong><span>registered source units</span></li>
+        <li><strong>CH</strong><span>chapter or essay reductions</span></li>
+        <li><strong>CL</strong><span>cluster synthesis</span></li>
+        <li><strong>MC</strong><span>recursive metacluster synthesis</span></li>
+        <li><strong>WB</strong><span>whole-book synthesis</span></li>
+        <li><strong>CB</strong><span>corpus synthesis</span></li>
+        <li><strong>XS</strong><span>cross-lineage comparison</span></li>
+      </ol>
+      <p>A CARE item can be named, traced, contested, revised and forked. The aim is not final meaning, but meaning with coordinates.</p>
     </div>
   </section>
 
-  <section id="status" class="content-section shell">
-    <div class="section-index">03</div>
-    <div>
+  <section class="section wrap">
+    <div class="section-number" aria-hidden="true">03</div>
+    <div class="section-body">
+      <h2>An open interpretive commons</h2>
+      <p>CARE is designed as open scholarly infrastructure. Its claims only become serious when other readers can inspect the method, return to sources, dispute individual items, reproduce runs and construct rival libraries.</p>
+      <p>The long-term aim is not one central interpretive platform, but many compatible CARE Libraries able to preserve and compare their disagreements.</p>
+      <blockquote><p>Not automated authority, but disputable structure.</p></blockquote>
+    </div>
+  </section>
+
+  <section id="status" class="section wrap">
+    <div class="section-number" aria-hidden="true">04</div>
+    <div class="section-body">
       <h2>Current status</h2>
-      <p>
-        CARE is under active development as a local, file-first research instrument.
-        The public release currently establishes the architecture, governance direction,
-        schema, defensive publication, corpus status and working paper.
-      </p>
+      <p>CARE is under active development as a local, file-first research instrument. The initial public repository establishes its architecture, governance direction, schema, defensive publication, corpus status and working paper.</p>
+      <dl class="status-grid">
+        <div><dt>Public phase</dt><dd>Documentation-first alpha</dd></div>
+        <div><dt>Current work</dt><dd>Passage provenance and flagship corpus</dd></div>
+        <div><dt>Formats</dt><dd>Markdown, JSON and SQLite</dd></div>
+        <div><dt>Release principle</dt><dd>Open, source-grounded and forkable</dd></div>
+      </dl>
     </div>
   </section>
 
-  <section id="resources" class="content-section shell">
-    <div class="section-index">04</div>
-    <div>
+  <section id="resources" class="section wrap">
+    <div class="section-number" aria-hidden="true">05</div>
+    <div class="section-body">
       <h2>Public resources</h2>
       <ul class="resource-list">
-        <li><a href="https://github.com/willproudler/care-library"><span>GitHub repository</span><small>Documentation and version history</small></a></li>
-        <li><a href="https://github.com/willproudler/care-library/blob/main/paper/CARE_MACHINE_PAPER_v0.1.1.md"><span>Working paper</span><small>The theoretical and technical account</small></a></li>
-        <li><a href="https://github.com/willproudler/care-library/blob/main/docs/CARE_ARCHITECTURE_SPEC_v0.1.md"><span>Architecture specification</span><small>Layers, units and provenance model</small></a></li>
-        <li><a href="https://github.com/willproudler/care-library/blob/main/docs/CARE_COMMONS_CHARTER_v0.1.md"><span>CARE Commons Charter</span><small>Open and anti-enclosure commitments</small></a></li>
+        <li><a href="https://github.com/willproudler/care-library"><span>GitHub repository</span><small>Public documentation and version history</small></a></li>
+        <li><a href="https://github.com/willproudler/care-library/blob/main/paper/CARE_MACHINE_PAPER_v0.1.1.md"><span>Working paper</span><small>The theoretical and technical account of CARE</small></a></li>
+        <li><a href="https://github.com/willproudler/care-library/blob/main/docs/CARE_ARCHITECTURE_SPEC_v0.1.md"><span>Architecture specification</span><small>The system, layers, units and provenance model</small></a></li>
+        <li><a href="https://github.com/willproudler/care-library/blob/main/docs/CARE_COMMONS_CHARTER_v0.1.md"><span>CARE Commons Charter</span><small>The project’s open and anti-enclosure commitments</small></a></li>
+        <li><a href="https://github.com/willproudler/care-library/blob/main/examples/CARE_FLAGSHIP_EXAMPLE_v0.1.md"><span>Flagship example</span><small>The developing public demonstration corpus</small></a></li>
       </ul>
+    </div>
+  </section>
+
+  <section class="section wrap release">
+    <div class="section-number" aria-hidden="true">06</div>
+    <div class="section-body">
+      <h2>Release record</h2>
+      <p><time datetime="2026-07-11">11 July 2026</time></p>
+      <p>Initial public repository released: CARE Library v0.1 documentation and reference architecture.</p>
     </div>
   </section>
 </main>
 
 <footer class="site-footer">
-  <div class="shell">
-    <p><strong>CARE is building an open interpretive commons.</strong></p>
-    <p>Version 0.1.0-alpha</p>
+  <div class="wrap">
+    <p><strong>CARE Library</strong> — Canonical Axiomatic Reduction Engine.</p>
+    <p>Created by William Proudler. Ian Wenzel-Garay is an anticipated contributor to future versions.</p>
+    <p class="small">CARE Library is a developing open-source research project. The trademark application is pending. Third-party source works remain the property of their respective rights holders.</p>
   </div>
 </footer>
 </body>
