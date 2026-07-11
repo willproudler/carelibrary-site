@@ -1,0 +1,17 @@
+{
+  "name": "CARE Library",
+  "short_name": "CARE",
+  "description": "An open-source architecture for traceable, source-grounded interpretation of long-form texts.",
+  "start_url": "/",
+  "display": "minimal-ui",
+  "background_color": "#f2f0e9",
+  "theme_color": "#f2f0e9",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
