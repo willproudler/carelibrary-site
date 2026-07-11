@@ -12,14 +12,20 @@ a{color:inherit;text-underline-offset:.2em}a:hover{text-decoration-thickness:2px
 .wordmark{font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:.02em;text-decoration:none}
 nav{display:flex;gap:1.25rem;font-family:Arial,Helvetica,sans-serif;font-size:.83rem}
 nav a{text-decoration:none}nav a:hover{text-decoration:underline}
-.hero{padding-block:clamp(3.5rem, 7vw, 5.5rem);border-bottom:1px solid var(--line)}
+.hero{
+
+  padding-block:3.5rem 4.5rem;
+
+  border-bottom:1px solid var(--line)
+
+}
 .eyebrow{margin:0 0 .9rem;font-family:Arial,Helvetica,sans-serif;font-size:.75rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 h1,h2{margin-top:0;line-height:1.05;font-weight:500;text-wrap:balance}
 h1{
   max-width:13ch;
-  margin-bottom:1.5rem;
-  font-size:clamp(3.2rem,7vw,6.4rem);
-  letter-spacing:-.05em
+  margin-bottom:1.25rem;
+  font-size:clamp(3rem,5.5vw,5.3rem);
+  letter-spacing:-.045em
 }
 h2{font-size:clamp(2rem,5vw,4rem);letter-spacing:-.035em}
 .lede{max-width:42rem;margin:0 0 2rem;font-size:clamp(1.25rem,2.8vw,1.8rem)}
@@ -27,7 +33,13 @@ h2{font-size:clamp(2rem,5vw,4rem);letter-spacing:-.035em}
 .button{display:inline-block;padding:.7rem 1rem;border:1px solid var(--ink);font-family:Arial,Helvetica,sans-serif;font-size:.88rem;text-decoration:none}
 .button:hover{background:var(--soft)}.button.primary{background:var(--ink);color:var(--paper)}.button.primary:hover{opacity:.88}
 .release-note{margin:0;font-family:Arial,Helvetica,sans-serif;font-size:.8rem;color:var(--muted)}
-.section{display:grid;grid-template-columns:5rem minmax(0,1fr);gap:1.25rem;padding-block:clamp(3rem, 6vw, 4.75rem);border-bottom:1px solid var(--line)}
+.section{
+  display:grid;
+  grid-template-columns:5rem minmax(0,1fr);
+  gap:1.25rem;
+  padding-block:3.75rem;
+  border-bottom:1px solid var(--line)
+}
 .section-number{padding-top:.7rem;font-family:Arial,Helvetica,sans-serif;font-size:.75rem;color:var(--muted)}
 .section-body{max-width:49rem}.section-body>p:first-of-type{font-size:1.2rem}
 .section-body h2{
