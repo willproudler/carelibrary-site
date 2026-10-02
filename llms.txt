@@ -1,19 +1,18 @@
 # CARE Library
 
-> CARE Library is an open-source architecture for traceable, source-grounded, forkable and comparable interpretation of long-form texts.
+> A reading environment for exploring texts, arguments and connections with recorded routes back to sources.
 
-CARE stands for Canonical Axiomatic Reduction Engine.
+CARE stands for Canonical Axiomatic Reduction Engine. Created by William Proudler.
+The current application includes source and interpretation panes, chapter/cluster/metacluster/whole-book readings, recorded routes, outline view, laterals, dialogues and corpuses. Availability of layers and source traces varies by work.
+The homepage contains original illustrative text and illustrative interpretations, not a live catalogue or a real analysis run.
+The public-domain collection is in preparation and is intended to be open to everyone without an account. No public works are released through this website yet. A separate beta entrance is unconnected and accepts no credentials.
 
-- Creator and project lead: William Proudler
-- Current public version: v0.1.0-alpha
-- Canonical website: https://carelibrary.org/
-- Why CARE: https://carelibrary.org/why-care.html
-- Public repository: https://github.com/willproudler/care-library
-- Current flagship corpus: A Thousand Plateaus
-- Current work: passage-grounding retrofit
+- [Experience](https://carelibrary.org/#experience)
+- [Public library](https://carelibrary.org/library.html)
+- [Why CARE](https://carelibrary.org/why-care.html)
+- [Sources and rights](https://carelibrary.org/rights.html)
+- [Project repository](https://github.com/willproudler/care-library)
+- [Architecture](https://github.com/willproudler/care-library/blob/main/docs/CARE_ARCHITECTURE_SPEC_v0.1.md)
+- [Licences](https://github.com/willproudler/care-library/blob/main/LICENSES.md)
 
-Core principle: Interpretation cannot be made final, but it can be given coordinates.
-
-Architecture: RAW → CH → CL → MC → WB → CB
-
-Lateral operations include XS, XR and SC.
+Source text, translations, editions, artwork, analysis, software and branding have distinct rights. Recorded provenance does not prove an interpretation correct or grant permission to publish a source.
