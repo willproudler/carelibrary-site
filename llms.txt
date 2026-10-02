@@ -1,19 +1,17 @@
 # CARE Library
 
-> CARE Library is an open-source architecture for traceable, source-grounded, forkable and comparable interpretation of long-form texts.
+> An open reading room for Kant and Hume, with original source texts, saved CARE interpretations and recorded connections.
 
-CARE stands for Canonical Axiomatic Reduction Engine.
+CARE means Canonical Axiomatic Reduction Engine, created by William Proudler.
+The homepage offers two fixed public readings: Kant’s Critique of Pure Reason (Meiklejohn translation, Gutenberg eText 4280) and Hume’s Treatise of Human Nature (Gutenberg eText 4705, retained 2012 transcription).
+The source texts are assessed as public domain in the UK and labelled public domain in the USA by Gutenberg; no worldwide claim is made. CARE’s saved AI-assisted interpretations are distinct from the original texts and their copyright status.
+The public reader includes Source, CH, CL, MC, WB, outline, search, comparison and a saved diagnostic lateral XR_KPR_THN R01. It starts no AI runs and accepts no uploaded books. No account is needed. The separate beta login remains unconnected.
 
-- Creator and project lead: William Proudler
-- Current public version: v0.1.0-alpha
-- Canonical website: https://carelibrary.org/
-- Why CARE: https://carelibrary.org/why-care.html
-- Public repository: https://github.com/willproudler/care-library
-- Current flagship corpus: A Thousand Plateaus
-- Current work: passage-grounding retrofit
+- [Open library](https://carelibrary.org/)
+- [Discover CARE with actual examples](https://carelibrary.org/about.html)
+- [Why CARE](https://carelibrary.org/why-care.html)
+- [Sources and rights](https://carelibrary.org/rights.html)
+- [Public export audit](https://carelibrary.org/data/export-audit.json)
+- [Project documentation](https://github.com/willproudler/care-library)
 
-Core principle: Interpretation cannot be made final, but it can be given coordinates.
-
-Architecture: RAW → CH → CL → MC → WB → CB
-
-Lateral operations include XS, XR and SC.
+Recorded references describe provenance, not proof of correctness. Missing passage links must not be invented.

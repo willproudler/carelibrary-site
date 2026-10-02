@@ -1,0 +1,36 @@
+{
+  "works": [
+    {
+      "slug": "kant",
+      "seal": "SEAL_KPR_B9D86551EDC807AAA095",
+      "sections": 20,
+      "units": 30,
+      "items": 4188
+    },
+    {
+      "slug": "hume",
+      "seal": "SEAL_THN_B3917927880001FF07EB",
+      "sections": 27,
+      "units": 40,
+      "items": 4197
+    }
+  ],
+  "lateral_items": 53,
+  "unresolved_references": [],
+  "bytes": 9055718,
+  "sha256": "8ba9a930ec6abcfc38de226bc5e2524efb3b44efe86e8acf7a08053f481ea260",
+  "kant_grounding": {
+    "method": "supplemental-passage-alignment",
+    "revision": "R001",
+    "expected_chapters": 20,
+    "completed_chapters": 20,
+    "claims": 2692,
+    "aligned_claims": 2669,
+    "unresolved_claims": 23,
+    "passage_edges": 4107,
+    "review": "unreviewed",
+    "prose_preserved": true,
+    "pending_chapters": [],
+    "complete": true
+  }
+}

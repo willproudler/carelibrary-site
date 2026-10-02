@@ -1,0 +1,129 @@
+
+<div class="care-reference-component" data-care-reference-viewer-root>
+  <button class="crv-launcher" type="button" aria-label="Open Axiom viewer" aria-expanded="false" aria-controls="care-reference-panel">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a2 2 0 0 1 2 2v14.5a2.7 2.7 0 0 0-2-1H6.5A2.5 2.5 0 0 1 4 16V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H15a2 2 0 0 0-2 2v14.5a2.7 2.7 0 0 1 2-1h2.5A2.5 2.5 0 0 0 20 16V5.5Z"/></svg>
+    <span class="crv-launcher-label">Axiom viewer</span>
+  </button>
+  <aside class="crv-panel" id="care-reference-panel" hidden>
+    <header class="crv-header">
+      <div class="crv-reference-heading">
+      <div class="crv-eyebrow">CARE REFERENCE VIEWER</div>
+        <div class="crv-reference-row">
+          <div class="crv-reference-id">Select an axiom or passage</div>
+          <button class="crv-copy-id" type="button" aria-label="Copy reference ID" hidden>Copy ID</button>
+        </div>
+      </div>
+      <div class="crv-header-actions">
+        <div class="crv-text-size" role="group" aria-label="Viewer text size">
+          <button class="crv-text-smaller" type="button" aria-label="Make viewer text smaller" title="Smaller viewer text">A−</button>
+          <button class="crv-text-larger" type="button" aria-label="Make viewer text larger" title="Larger viewer text">A+</button>
+        </div>
+        <button class="crv-previous" type="button" aria-label="Previous axiom" title="Previous · ↑ or K">←</button>
+        <button class="crv-next" type="button" aria-label="Next axiom" title="Next · ↓ or J">→</button>
+        <button class="crv-close" type="button" aria-label="Close reference viewer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 7 17 17M17 7 7 17" /></svg>
+        </button>
+      </div>
+    </header>
+    <div class="crv-empty">
+      <h3>Axiom viewer</h3>
+      <p>Click an axiom or exact source passage to read it here. Click the same card again to open its full page.</p>
+      <button class="crv-empty-edition" type="button" hidden>Open the complete edition</button>
+    </div>
+    <div class="crv-content" hidden>
+      <div class="crv-tabs" role="tablist" aria-label="Axiom viewer sections">
+        <button class="crv-read-tab active" type="button" role="tab" aria-selected="true">Read</button>
+        <button class="crv-tools-tab" type="button" role="tab" aria-selected="false">Tools</button>
+        <button class="crv-edition-tab" type="button" role="tab" aria-selected="false" hidden>Edition</button>
+      </div>
+      <div class="crv-read-surface">
+        <h3 class="crv-title"></h3>
+        <div class="crv-meta"></div>
+        <div class="crv-copy-heading"><span>Exact wording</span><button class="crv-copy-text" type="button">Copy text</button></div>
+        <div class="crv-text" tabindex="0"></div>
+        <div class="crv-copy-heading crv-citation-heading">
+          <span>Copy-ready reference</span>
+          <div class="crv-copy-actions" role="group" aria-label="Copy citation form">
+            <button class="crv-copy-citation" type="button" title="Use for the first citation">Full reference</button>
+            <button class="crv-copy-short-citation" type="button" title="Use for a later, non-consecutive citation">Short note</button>
+            <button class="crv-copy-ibid-citation" type="button" title="Use when the immediately preceding note cites the same work">Ibid. + CARE ID</button>
+          </div>
+        </div>
+        <div class="crv-citation" tabindex="0"></div>
+        <div class="crv-actions">
+          <a class="crv-open" href="/">Open full axiom</a>
+          <a class="crv-open-sheet" href="/">Open CARE sheet</a>
+          <button class="crv-clear" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="crv-tools-surface" hidden>
+        <div class="crv-tool-home">
+          <h3>What would you like to do?</h3>
+          <div class="crv-tool-grid">
+            <button class="crv-tool-rate" type="button"><span class="crv-tool-icon">★</span><span>Rate</span><small class="crv-rating-summary">Not rated</small></button>
+            <button class="crv-tool-favourite" type="button"><span class="crv-tool-icon">◆</span><span>Favourite</span><small class="crv-favourite-summary">Save</small></button>
+            <button class="crv-tool-quality" type="button"><span class="crv-tool-icon">✦</span><span>Quality</span><small class="crv-quality-summary">Unmarked</small></button>
+            <button class="crv-tool-collect" type="button"><span class="crv-tool-icon">＋</span><span>Collect</span><small>Add to export</small></button>
+            <button class="crv-tool-family" type="button"><span class="crv-tool-icon">⌁</span><span>Family</span><small>Open lineage</small></button>
+            <a class="crv-tool-download-sheet" href="/" download hidden><span class="crv-tool-icon">↓</span><span>Download CARE sheet</span><small>Current language and version</small></a>
+            <a class="crv-tool-download-route" href="/" download hidden><span class="crv-tool-icon">↓</span><span>Download route</span><small>Axioms, passages and source connections</small></a>
+            <button class="crv-tool-reveal-sheet" type="button" hidden><span class="crv-tool-icon">⌕</span><span>Show in Finder</span><small>Reveal the current file</small></button>
+            <button class="crv-tool-sheet" type="button" hidden><span class="crv-tool-icon">▤</span><span>CARE sheet</span><small>Reading and sheet actions</small></button>
+            <button class="crv-tool-history" type="button"><span class="crv-tool-icon">↶</span><span>Recent</span><small>Last places</small></button>
+          </div>
+        </div>
+        <div class="crv-tool-screen crv-rate-screen" hidden>
+          <button class="crv-tool-back" type="button">← All tools</button>
+          <h3>Rate this axiom</h3><p>One tap. No form.</p>
+          <div class="crv-stars" role="group" aria-label="Star rating"></div>
+        </div>
+        <div class="crv-tool-screen crv-quality-screen" hidden>
+          <button class="crv-tool-back" type="button">← All tools</button>
+          <h3>Quality mark</h3><p>Choose the clearest fit.</p>
+          <div class="crv-quality-grid">
+            <button type="button" data-rank="gold"><span>✦</span>Gold</button>
+            <button type="button" data-rank="silver"><span>◈</span>Silver</button>
+            <button type="button" data-rank="bronze"><span>◇</span>Bronze</button>
+            <button type="button" data-rank="bad"><span>×</span>Needs work</button>
+          </div>
+        </div>
+        <div class="crv-tool-screen crv-history-screen" hidden>
+          <button class="crv-tool-back" type="button">← All tools</button>
+          <div class="crv-history-heading"><h3>Recent</h3><button class="crv-history-clear" type="button">Clear</button></div>
+          <div class="crv-history-list"></div>
+        </div>
+        <div class="crv-tool-screen crv-sheet-screen" hidden>
+          <button class="crv-tool-back" type="button">← All tools</button>
+          <h3 class="crv-sheet-title">CARE sheet</h3>
+          <p class="crv-sheet-meta"></p>
+          <div class="crv-sheet-group">
+            <div class="crv-sheet-label">Reading</div>
+            <div class="crv-sheet-modes" role="group" aria-label="CARE sheet reading mode">
+              <button type="button" data-sheet-mode="Complete CARE">Complete CARE</button>
+              <button type="button" data-sheet-mode="Guided reading">Guided reading</button>
+            </div>
+            <button class="crv-sheet-traces" type="button" aria-pressed="false"><span>Source traces</span><small>Reveal exact recorded traces</small></button>
+          </div>
+          <div class="crv-sheet-actions">
+            <button class="crv-sheet-collect" type="button"><span>＋</span>Add full sheet + passages</button>
+            <button class="crv-sheet-export" type="button"><span>↓</span>Export full CARE sheet</button>
+          </div>
+        </div>
+      </div>
+      <div class="crv-edition-surface" hidden>
+        <div class="crv-edition-kicker">COMPLETE FINDINGS EDITION</div>
+        <h3 class="crv-edition-title">Take the preserved reading with you.</h3>
+        <p class="crv-edition-description"></p>
+        <div class="crv-edition-statistics"></div>
+        <button class="crv-edition-prepare" type="button">Prepare the complete edition</button>
+        <div class="crv-edition-downloads" hidden>
+          <a class="crv-edition-markdown" href="/" download><span>↓</span><span>Bare-bones Markdown</span><small>Everything, plain and portable</small></a>
+          <a class="crv-edition-pdf" href="/" download><span>↓</span><span>Beautiful PDF edition</span><small>Typeset, indexed, and complete</small></a>
+        </div>
+        <div class="crv-edition-status" role="status"></div>
+      </div>
+      <div class="crv-shortcuts">Arrow keys move spatially in lineage · J/K move in order · Enter preview/open · T tools · Esc back/close</div>
+      <div class="crv-status" role="status"></div>
+    </div>
+  </aside>
+</div>
