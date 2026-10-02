@@ -1,6 +1,8 @@
-# CARE Library Public
+# CARE Library Beta
 
-The public edition of CARE Library at https://carelibrary.org. It uses the original app’s shelf and study-desk renderer against a fixed export of two books. GitHub Pages serves it without a private application server, API key, account, or build step.
+CARE Library Beta at https://carelibrary.org. It uses the original app’s shelf and study-desk renderer against a fixed export of two books. GitHub Pages serves it without a private application server, API key, account, or build step.
+
+Chapter and sheet titles open searchable jump menus. Dragging a chapter rail previews its heading before loading the reading on release. The workspace keeps every visible reading in a closeable tab; comparison menus can close the lateral or choose which book to keep. The wordmark and joined-box logo match the Mac loading screen, and browser icons use the Mac app artwork.
 
 - `index.html`: native library shelf and reading workspace. Kant, Hume, saved lateral, source/CH/CL/MC/WB panes, chapter rails, outline strips, routes, reading skins, local search and bookmarks.
 - `welcome.html`: preserved designed two-book entrance.
@@ -20,7 +22,7 @@ To refresh from the private CARE workspace, run these with its Python environmen
 python tools/export_public_library.py /path/to/care-workspace --require-kant-grounding
 python tools/export_native_reader.py /path/to/care-workspace
 node tools/export_showcase.mjs
-node --test tests/public-library.test.mjs
+node --test tests/*.test.mjs
 ```
 
 The export tools are preparation utilities, never part of a visitor’s interaction. Do not publish the private workspace, credentials, source EPUB containers, unrelated works or commercial cover images. Future source editions need their own provenance and rights review. See `PUBLICATION_NOTES.md` and `data/export-audit.json`.

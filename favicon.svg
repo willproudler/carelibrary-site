@@ -1,5 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<rect width="64" height="64" fill="#f2f0e9"/>
-<rect x="7" y="7" width="50" height="50" fill="none" stroke="#171715" stroke-width="3"/>
-<path d="M42 20c-3-3-7-5-12-5-9 0-16 7-16 17s7 17 16 17c5 0 9-2 12-5" fill="none" stroke="#171715" stroke-width="4"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="studio-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#171b19"/>
+      <stop offset="1" stop-color="#28352e"/>
+    </linearGradient>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="214" fill="url(#studio-bg)"/>
+  <rect x="82" y="82" width="860" height="860" rx="182" fill="none" stroke="#98d8ae" stroke-width="10" opacity=".7"/>
+  <path d="M287 333c54-82 132-123 234-123 78 0 145 24 202 73l-69 91c-39-31-82-47-129-47-61 0-109 22-143 65-32 40-48 88-48 145 0 61 17 110 52 149 35 38 81 57 138 57 54 0 102-17 144-51l64 90c-60 52-131 78-214 78-100 0-180-30-241-91-61-60-91-137-91-230 0-78 24-147 71-206z" fill="#f2eee3"/>
+  <circle cx="733" cy="279" r="53" fill="#ef6a39"/>
 </svg>

@@ -1,7 +1,8 @@
-import mountReader from './native/study-desk.mjs';
+import mountReader from './native/study-desk.mjs?v=1.68';
 import mountViewer from './native/reference-viewer.mjs';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs';
 import {searchLibrary} from './library-core.mjs';
+import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -11,9 +12,9 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const response=await fetch('./data/library.json');if(!response.ok)throw Error('The public library could not load. Please refresh to try again.');
+ const response=await fetch('./data/library.json');if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
  const data=await response.json(),adapter=createPublicReaderAdapter(data),{index}=adapter;
- const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css','./native/public-scope.css','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
+ const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css?v=1.68','./native/public-scope.css','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
  shadow.innerHTML=`<style>${css}\n${scope}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div>`;
  // CARE's viewer deliberately uses the document surface (isolate_styles=False).
@@ -24,6 +25,7 @@ async function start(){
  let saved=readLocal('care-public-saved-v1',{bookmarks:[],favourites:[]});
  saved.bookmarks=(saved.bookmarks||[]).filter(row=>index.units.has(row.care_unit_id));saved.favourites=(saved.favourites||[]).filter(id=>index.nodes.has(id));
  const bookStates=new Map();
+ let readingMenu=null;
  const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,publication_year:Number.parseInt(work.year),content_kind:'book',has_source:true,has_care:true,layers:['WB','MC','CL','CH'],cloth:work.slug==='kant'?'#303b4c':'#3b4531',foil:'#cf9b61',language_code:'en',language_name:'English'}));
  const fields=[adapter.savedConnection];
  function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return '#'+p;}
@@ -36,11 +38,49 @@ async function start(){
  const references=baseReferences.flatMap(row=>[row,{...row,scope:`public:${row.unit_id}`},...(row.work_id?[{...row,scope:`work:${row.work_id}`}]:[])]);
  function currentKey(){return state.connectionId||state.workId;}
  function tabs(){
+  opened=reconcileReadings(opened,currentKey(),view==='workspace');
   const el=$('#open-books');el.hidden=!opened.length;
-  el.innerHTML='<span class="open-label">OPEN BOOKS</span>'+opened.map(key=>{const w=adapter.workFor(key),title=w?.title||data.lateral.title,href=w?'#book='+w.slug:'#lateral='+data.lateral.id;return `<span class="open-tab ${view==='workspace'&&currentKey()===key?'active':''}"><a href="${href}">${esc(title)}</a><button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;}).join('');
+  el.innerHTML=`<span class="open-label">${opened.includes(data.lateral.id)?'OPEN READINGS':'OPEN BOOKS'}</span>`+opened.map(key=>{
+   const w=adapter.workFor(key),kind=w?(w.content_kind||'work'):'lateral',style=READING_STYLES[kind]||READING_STYLES.work,title=w?.title||data.lateral.title,href=w?'#book='+w.slug:'#lateral='+data.lateral.id,active=view==='workspace'&&currentKey()===key;
+   return `<span class="open-tab ${active?'active':''}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${href}"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span></a><button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button><button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
+  }).join('');
   document.querySelectorAll('.app-header [data-page]').forEach(el=>el.classList.toggle('active',(view==='library'&&el.dataset.page==='library')||(view==='laterals'&&el.dataset.page==='laterals')));
  }
  function saveState(){if(view==='workspace')bookStates.set(currentKey(),{...state});}
+ function closeReadingMenu(restore=false){if(!readingMenu)return;const {anchor,element}=readingMenu;readingMenu=null;anchor.setAttribute('aria-expanded','false');element.remove();if(restore&&anchor.isConnected)anchor.focus({preventScroll:true});}
+ function showReading(key){
+  if(!key){view='library';window.history.replaceState(null,'',location.pathname);paint();return;}
+  const work=adapter.workFor(key);
+  if(work)state=standaloneBookState(work.id,bookStates.get(work.id));
+  else state={workId:data.works[0].id,...bookStates.get(data.lateral.id),connectionId:data.lateral.id};
+  view='workspace';syncURL();paint();
+ }
+ function closeTab(key){
+  closeReadingMenu();saveState();
+  const active=view==='workspace'?currentKey():'',fallback=key===data.lateral.id?state.workId:'';
+  if(fallback&&!bookStates.has(fallback))bookStates.set(fallback,standaloneBookState(fallback,state));
+  const next=closeReading(opened,key,active,fallback);opened=next.opened;
+  if(key===active)showReading(next.destination);else tabs();
+ }
+ function keepBook(workId){
+  closeReadingMenu();saveState();
+  const comparison=state.connectionId?state:bookStates.get(data.lateral.id)||{};
+  const reading=bookStates.get(workId)||(workId===comparison.workId?comparison:comparison.connectionBooks?.[workId])||{};
+  bookStates.set(workId,standaloneBookState(workId,reading));
+  opened=reconcileReadings(opened.filter(key=>key!==data.lateral.id&&!data.works.some(work=>work.id===key&&key!==workId)),workId);
+  showReading(workId);
+ }
+ function openReadingMenu(key,anchor){
+  const same=readingMenu?.anchor===anchor;closeReadingMenu();if(same)return;
+  const work=adapter.workFor(key),element=document.createElement('div');element.className='reading-menu';element.setAttribute('role','menu');element.setAttribute('aria-label',work?'Book options':'Close comparison');
+  element.innerHTML=`<button role="menuitem" data-close-book="${esc(key)}">Close ${work?'this book':'lateral'}</button>`;
+  if(!work)element.innerHTML+=data.works.map(keep=>{const close=data.works.find(other=>other.id!==keep.id);return `<button role="menuitem" data-keep-book="${esc(keep.id)}"><strong>Close ${esc(close.title)}</strong><small>Keep ${esc(keep.title)} open</small></button>`;}).join('');
+  document.body.append(element);readingMenu={anchor,element};anchor.setAttribute('aria-expanded','true');
+  const rect=anchor.getBoundingClientRect(),width=Math.min(330,innerWidth-16);Object.assign(element.style,{width:width+'px',left:Math.max(8,Math.min(innerWidth-width-8,rect.left))+'px',top:Math.min(rect.bottom+6,innerHeight-element.offsetHeight-8)+'px'});
+  element.onclick=event=>{const keep=event.target.closest('[data-keep-book]'),close=event.target.closest('[data-close-book]');if(keep)keepBook(keep.dataset.keepBook);else if(close)closeTab(close.dataset.closeBook);};
+  element.onkeydown=event=>{const choices=[...element.querySelectorAll('button')],at=choices.indexOf(document.activeElement);if(event.key==='Escape'){event.preventDefault();closeReadingMenu(true);}else if(event.key==='Tab')closeReadingMenu(true);else if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();choices[event.key==='Home'?0:event.key==='End'?choices.length-1:(at+(event.key==='ArrowDown'?1:-1)+choices.length)%choices.length].focus();}};
+  element.querySelector('button').focus();
+ }
  function remember(){const id=state.connectionReferenceId||state.referenceId;if(!id)return;const entry={...state,outlineUnits:[]};const last=history[historyIndex];if(last?.referenceId===entry.referenceId&&last?.connectionReferenceId===entry.connectionReferenceId&&last?.routeMode===entry.routeMode)return;history=history.slice(0,historyIndex+1);history.push(entry);historyIndex=history.length-1;}
  function syncURL(){const w=adapter.workFor(state.workId);const p=new URLSearchParams();if(state.connectionId)p.set('lateral',state.connectionId);else p.set('book',w.slug);if(state.connectionReferenceId||state.referenceId)p.set('ref',state.connectionReferenceId||state.referenceId);else if(state.unitId)p.set('unit',state.unitId);else if(state.rawUnitId)p.set('source',state.rawUnitId);window.history.replaceState(null,'','#'+p);}
  function paintViewer(){
@@ -55,15 +95,19 @@ async function start(){
   }});
  }
  function paint(){
+  closeReadingMenu();
   tabs();state.bookmarks=saved.bookmarks;state.favouriteAxiomIds=saved.favourites;
   state.routeHistory={can_back:historyIndex>0,can_forward:historyIndex<history.length-1};
   const payload=view==='workspace'?adapter.workspace(state):{mode:'library',books,fields,library_scope:view==='laterals'?'lateral':'',shelf_request:view,workspace_managed:true};
   cleanup?.();cleanup=mountReader({parentElement:shadow,data:payload,setStateValue:(kind,value)=>{state=adapter.reduce(state,kind,value);},setTriggerValue:dispatch});
+  const closeComparison=shadow.querySelector('[data-connection-close]');
+  if(closeComparison){closeComparison.textContent='Close comparison ⌄';closeComparison.setAttribute('aria-label','Close comparison options');closeComparison.setAttribute('aria-haspopup','menu');closeComparison.setAttribute('aria-expanded','false');}
   paintViewer();saveState();
  }
  function toggleFavourite(id,active){if(!index.nodes.has(id))return;saved.favourites=saved.favourites.filter(v=>v!==id);if(active)saved.favourites.push(id);saveLocal('care-public-saved-v1',saved);paint();notice(active?'Saved on this device.':'Removed from your saved readings.');}
  function dispatch(kind,value){
   try{
+   if(kind==='connection_action'&&value.action==='close'){openReadingMenu(data.lateral.id,shadow.querySelector('[data-connection-close]'));return;}
    if(kind==='open_work'){const w=adapter.workFor(value);if(w)location.hash='book='+w.slug;return;}
    if(kind==='open_field'){if(value===data.lateral.id)location.hash='lateral='+value;return;}
    if(kind==='book_action'){const w=adapter.workFor(value.work_id);if(value.action==='book_info'&&w)notice(`${w.author} · ${w.edition} · ${w.sources.length} reading sections`);return;}
@@ -88,7 +132,7 @@ async function start(){
  function routeFromURL(){
   try{saveState();const p=new URLSearchParams(location.hash.slice(1));const lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
    if(lateral===data.lateral.id||p.has('compare')){state={workId:data.works[0].id,...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';}
-   else if(work){state={workId:work.id,...bookStates.get(work.id),connectionId:''};view='workspace';}
+   else if(work){state=standaloneBookState(work.id,bookStates.get(work.id));view='workspace';}
    else{view=p.get('view')==='laterals'?'laterals':'library';paint();return;}
    if(p.has('unit')&&p.get('unit')!==data.lateral.id){state.unitId=p.get('unit');state.rawUnitId='';state.referenceId='';}
    if(p.has('source')){state.rawUnitId=p.get('source');state.unitId='';state.referenceId='';}
@@ -96,7 +140,9 @@ async function start(){
    if(!opened.includes(currentKey()))opened.push(currentKey());paint();
   }catch(error){notice(error.message);view='library';paint();}
  }
- $('#open-books').addEventListener('click',event=>{const button=event.target.closest('[data-close-book]');if(!button)return;const key=button.dataset.closeBook;opened=opened.filter(k=>k!==key);if(key===currentKey()){saveState();location.hash='';}tabs();});
+ $('#open-books').addEventListener('click',event=>{const menu=event.target.closest('[data-reading-menu]'),close=event.target.closest('[data-close-book]');if(menu)openReadingMenu(menu.dataset.readingMenu,menu);else if(close)closeTab(close.dataset.closeBook);});
+ document.addEventListener('pointerdown',event=>{if(readingMenu&&!event.composedPath().includes(readingMenu.element)&&!event.composedPath().includes(readingMenu.anchor))closeReadingMenu();},true);
+ addEventListener('resize',()=>closeReadingMenu());
  document.querySelector('[data-page=library]').addEventListener('click',event=>{event.preventDefault();if(location.hash)location.hash='';else{view='library';paint();}});
  document.querySelector('[data-page=search]').onclick=()=>{$('#search-dialog').showModal();$('#search-query').focus();};
  document.querySelector('[data-page=saved]').onclick=()=>{const nodes=[...saved.bookmarks.map(row=>index.nodes.get(row.care_unit_id)),...saved.favourites.map(id=>index.nodes.get(id))].filter(Boolean);$('#saved-results').innerHTML=nodes.length?nodes.map(n=>resultLink(n)).join(''):'<p>No saved readings yet. Use the bookmark controls while reading.</p>';$('#saved-dialog').showModal();};

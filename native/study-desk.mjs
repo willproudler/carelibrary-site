@@ -438,6 +438,28 @@ const sliderMagneticPosition=(value,length)=>sliderIndex(value,length)
 const sliderMemoryKey=input=>{const workId=input?.closest?.("[data-connection-book]")?.dataset?.connectionBook;return `${workId?`${workId}|`:""}${input.dataset.sheetSlider}`}
 const sliderTitle=option=>option.identity?.title||option.title||option.label||option.id
 const sliderStopLabel=(option,layer,index)=>layer==="WB"?"WB":`${layer==="SOURCE"?"CH":readerLayerLabel(layer,option)} ${String(option.chapter_number||option.sequence_number||index+1).padStart(2,"0")}`
+const sliderHeadingOriginals=new WeakMap()
+function paintSliderHeading(input,option,index){
+  const pane=input.closest?.("[data-pane]")
+  if(!pane?.querySelector)return
+  let original=sliderHeadingOriginals.get(pane)
+  if(!original){
+    const fields={}
+    for(const name of ["title","kicker","context"]){const node=pane.querySelector(`[data-slider-preview-${name}]`);if(node)fields[name]={node,text:node.textContent}}
+    if(!Object.keys(fields).length)return
+    original={id:String(pane.querySelector("[data-reading-id]")?.dataset?.readingId||""),fields}
+    sliderHeadingOriginals.set(pane,original)
+  }
+  const layer=String(input.dataset.sheetSlider).split(":")[0],identity=option.identity||{},source=layer==="SOURCE"
+  const preview={title:source?(option.heading_title||option.title||sliderTitle(option)):sliderTitle(option),
+    kicker:source?`CHAPTER ${option.chapter_number||index+1} · EXACT SOURCE`:(identity.kicker||sliderStopLabel(option,layer,index)),
+    context:identity.context||option.id}
+  const restoring=String(option.id)===original.id
+  for(const [name,{node,text}] of Object.entries(original.fields)){
+    const next=String((restoring?text:preview[name])??"")
+    if(node.textContent!==next)node.textContent=next
+  }
+}
 function keepSliderVisible(input,behavior="auto"){
   const track=input.closest?.("[data-slider-track]")
   if(!track||track.scrollWidth<=track.clientWidth+2)return
@@ -456,7 +478,121 @@ function paneSlider(stack,layer,activeId){
   if(!active)return ""
   const title=sliderTitle(active),label=layer==="SOURCE"?"Source chapter":`${readerLayerLabel(layer,active)} sheet`,denominator=Math.max(1,options.length-1)
   const stops=options.map((option,position)=>`<button type="button" class="slider-stop${position===index?" active":""}" data-slider-stop="${position}" data-slider-layer="${esc(key)}" style="--stop-x:${position/denominator*100}%" title="${esc(sliderTitle(option))}" aria-label="Choose ${esc(sliderTitle(option))}" aria-pressed="${position===index}" tabindex="${position===index?0:-1}"><span class="slider-dot" aria-hidden="true"></span><span class="slider-stop-label">${esc(sliderStopLabel(option,layer,position))}</span></button>`).join("")
-  return `<div class="pane-slider" data-slider-control><div class="slider-heading"><span>${esc(label)}</span><strong data-slider-title title="${esc(title)}">${esc(title)}</strong><output data-slider-count>${index+1} / ${options.length}</output></div><div class="slider-track" data-slider-track><div class="slider-rail" style="--slider-count:${options.length}"><input type="range" class="sheet-slider" data-sheet-slider="${esc(key)}" min="0" max="${Math.max(0,options.length-1)}" step="1" value="${index}" aria-label="${esc(label)}" aria-valuetext="${esc(title)}" ${options.length<2?"disabled":""} /><div class="slider-stops" role="group" aria-label="${esc(label)} stops">${stops}</div></div></div></div>`
+  return `<div class="pane-slider" data-slider-control><div class="slider-heading"><span>${esc(label)}</span><button type="button" class="slider-jump-trigger" data-slider-jump aria-label="Choose ${esc(label.toLowerCase())}" aria-haspopup="dialog" aria-expanded="false"><strong data-slider-title title="${esc(title)}">${esc(title)}</strong><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button><output data-slider-count>${index+1} / ${options.length}</output></div><div class="slider-track" data-slider-track><div class="slider-rail" style="--slider-count:${options.length}"><input type="range" class="sheet-slider" data-sheet-slider="${esc(key)}" min="0" max="${Math.max(0,options.length-1)}" step="1" value="${index}" aria-label="${esc(label)}" aria-valuetext="${esc(title)}" ${options.length<2?"disabled":""} /><div class="slider-stops" role="group" aria-label="${esc(label)} stops">${stops}</div></div></div></div>`
+}
+const sliderJumpText=value=>String(value??"").normalize("NFD").replace(/\p{M}/gu,"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").replace(/\b0+(\d+)/g,"$1").trim()
+function sliderJumpMatches(options,layer,query=""){
+  const terms=sliderJumpText(query).split(/\s+/).filter(Boolean),base=String(layer).split(":")[0]
+  return options.map((option,index)=>({option,index,label:sliderStopLabel(option,base,index),title:sliderTitle(option)})).filter(row=>{
+    const number=row.option.chapter_number||row.option.sequence_number||row.index+1
+    const text=sliderJumpText([row.title,row.label,row.option.label,row.option.id,base==="SOURCE"?`source chapter ${number}`:`${base} sheet ${number}`].join(" "))
+    return terms.every(term=>text.includes(term))
+  })
+}
+let sliderJumpSequence=0
+function setupSliderJumpMenu(runtime){
+  const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
+  runtime.closeSliderJumpMenu=({restoreFocus=false}={})=>{
+    const popup=runtime.sliderJumpMenu;if(!popup)return
+    runtime.sliderJumpMenu=null;popup.anchor.setAttribute("aria-expanded","false");popup.anchor.removeAttribute("aria-controls");popup.element.remove()
+    if(restoreFocus&&popup.anchor.isConnected!==false)popup.anchor.focus({preventScroll:true})
+  }
+  runtime.positionSliderJumpMenu=()=>{
+    const popup=runtime.sliderJumpMenu;if(!popup)return
+    if(popup.anchor.isConnected===false){runtime.closeSliderJumpMenu();return}
+    const bounds=root.getBoundingClientRect(),anchor=popup.anchor.getBoundingClientRect(),scale=readerLayoutScale(root,bounds)
+    const width=Math.min(380,(bounds.width/scale)-16),height=Math.min(bounds.height,(view?.innerHeight||bounds.bottom)-bounds.top)/scale
+    const left=Math.max(8,Math.min(bounds.width/scale-width-8,(anchor.left-bounds.left)/scale)),below=(anchor.bottom-bounds.top)/scale+6
+    const above=height-below<150&&(anchor.top-bounds.top)/scale>height-below,top=above?Math.max(8,(anchor.top-bounds.top)/scale-366):below
+    Object.assign(popup.element.style,{width:Math.max(0,width)+"px",left:left+"px",top:top+"px",maxHeight:Math.max(0,Math.min(360,above?(anchor.top-bounds.top)/scale-top-6:height-top-8))+"px"})
+  }
+  runtime.highlightSliderJump=position=>{
+    const popup=runtime.sliderJumpMenu;if(!popup)return
+    popup.highlight=Math.max(0,Math.min(popup.matches.length-1,position))
+    const choices=[...popup.list.querySelectorAll("[data-slider-jump-choice]")]
+    choices.forEach((choice,index)=>choice.toggleAttribute("data-highlighted",index===popup.highlight))
+    const active=choices[popup.highlight]
+    if(!active){popup.search.removeAttribute("aria-activedescendant");return}
+    popup.search.setAttribute("aria-activedescendant",active.id)
+    const bounds=popup.list.getBoundingClientRect(),item=active.getBoundingClientRect(),scale=readerLayoutScale(root)
+    if(item.top<bounds.top)popup.list.scrollTop+=(item.top-bounds.top)/scale
+    else if(item.bottom>bounds.bottom)popup.list.scrollTop+=(item.bottom-bounds.bottom)/scale
+  }
+  runtime.filterSliderJump=()=>{
+    const popup=runtime.sliderJumpMenu;if(!popup)return
+    popup.matches=sliderJumpMatches(popup.options,popup.input.dataset.sheetSlider,popup.search.value)
+    popup.list.innerHTML=popup.matches.map(row=>`<button type="button" role="option" tabindex="-1" class="slider-jump-option" id="${popup.id}-option-${row.index}" data-slider-jump-choice="${row.index}" aria-selected="${row.index===popup.selected}"><small>${esc(row.label)}</small><strong>${esc(row.title)}</strong><span class="slider-jump-check" aria-hidden="true">${row.index===popup.selected?"✓":""}</span></button>`).join("")
+    popup.status.textContent=popup.matches.length?`${popup.matches.length} ${popup.input.dataset.sheetSlider==="SOURCE"?"chapter":"sheet"}${popup.matches.length===1?"":"s"}`:"No matches. Try another title or number."
+    popup.list.scrollTop=0
+    runtime.highlightSliderJump(popup.search.value?0:Math.max(0,popup.matches.findIndex(row=>row.index===popup.selected)))
+  }
+  runtime.openSliderJumpMenu=anchor=>{
+    const same=runtime.sliderJumpMenu?.anchor===anchor
+    runtime.closeSliderJumpMenu();if(same)return
+    const input=anchor.closest("[data-slider-control]")?.querySelector("[data-sheet-slider]")
+    if(!input)return
+    const stack=runtime.connectionStack?.(input)||runtime.data?.stack,options=sliderOptions(stack,input.dataset.sheetSlider)
+    if(!options.length)return
+    runtime.closeBookMenu?.();runtime.closeBuildVersionMenu?.();runtime.closeSheetVersionMenu?.();runtime.closeBookmarkMenu?.();runtime.closeConnectionDiscovery?.()
+    const element=doc.createElement("section"),id=`slider-jump-${++sliderJumpSequence}`,label=input.getAttribute("aria-label")||"Chapter or sheet"
+    element.id=id;element.className="slider-jump-menu";element.setAttribute("role","dialog");element.setAttribute("aria-label",`Choose ${label.toLowerCase()}`)
+    element.style.setProperty("--pane-accent",view?.getComputedStyle?.(anchor).getPropertyValue("--pane-accent")||"#8ca9bd")
+    element.innerHTML=`<div class="slider-jump-search-row"><label for="${id}-search">Choose ${esc(label.toLowerCase())}</label><input id="${id}-search" data-slider-jump-search type="search" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="${id}-list" autocomplete="off" spellcheck="false" placeholder="Search by title or number…"></div><div class="slider-jump-options" id="${id}-list" role="listbox" aria-label="${esc(label)}"></div><p class="slider-jump-status" role="status" aria-live="polite"></p>`
+    root.append(element)
+    const popup={anchor,input,options,element,id,selected:sliderIndex(input.value,options.length),search:element.querySelector("[data-slider-jump-search]"),list:element.querySelector(".slider-jump-options"),status:element.querySelector(".slider-jump-status"),matches:[],highlight:0}
+    runtime.sliderJumpMenu=popup;anchor.setAttribute("aria-expanded","true");anchor.setAttribute("aria-controls",id)
+    popup.search.oninput=runtime.filterSliderJump
+    runtime.positionSliderJumpMenu();runtime.filterSliderJump();popup.search.focus({preventScroll:true})
+  }
+  const choose=index=>{
+    const popup=runtime.sliderJumpMenu;if(!popup||!popup.matches.some(row=>row.index===index))return
+    if(index!==popup.selected)runtime.sliderJumpFocus={layer:popup.input.dataset.sheetSlider,book:popup.input.closest("[data-connection-book]")?.dataset.connectionBook||"",work:String(runtime.data?.stack?.work?.id||""),connection:String(runtime.data?.connection?.id||"")}
+    runtime.closeSliderJumpMenu({restoreFocus:true});runtime.chooseSlider(popup.input,index)
+  }
+  const click=runtime.onClick
+  runtime.onClick=event=>{
+    const anchor=event.target?.closest?.("[data-slider-jump]")
+    if(anchor){event.preventDefault();runtime.openSliderJumpMenu(anchor);return}
+    const choice=event.target?.closest?.("[data-slider-jump-choice]")
+    if(choice&&runtime.sliderJumpMenu?.element.contains(choice)){event.preventDefault();choose(Number(choice.dataset.sliderJumpChoice));return}
+    return click(event)
+  }
+  const key=runtime.onKey
+  runtime.onKey=event=>{
+    const popup=runtime.sliderJumpMenu,anchor=event.target?.closest?.("[data-slider-jump]")
+    if(!popup&&anchor&&["ArrowDown","ArrowUp"].includes(event.key)){event.preventDefault();runtime.openSliderJumpMenu(anchor);return}
+    if(!popup)return key(event)
+    if(event.key==="Escape"){event.preventDefault();event.stopPropagation?.();runtime.closeSliderJumpMenu({restoreFocus:true});return}
+    if(event.key==="Tab"){runtime.closeSliderJumpMenu({restoreFocus:true});return}
+    if(!popup.element.contains(event.target))return key(event)
+    event.stopPropagation?.()
+    if(event.isComposing||event.metaKey||event.ctrlKey||event.altKey)return
+    if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();runtime.highlightSliderJump(popup.highlight+(event.key==="ArrowDown"?1:-1));return}
+    if(event.key==="Enter"){event.preventDefault();const row=popup.matches[popup.highlight];if(row)choose(row.index)}
+  }
+  const wheel=runtime.onWheel
+  runtime.onWheel=event=>{if(event.target?.closest?.(".slider-jump-menu"))return;return wheel(event)}
+  const outside=event=>{const popup=runtime.sliderJumpMenu,path=event.composedPath?.()||[];if(popup&&!path.includes(popup.element)&&!path.includes(popup.anchor)&&!popup.element.contains(event.target)&&!popup.anchor.contains(event.target))runtime.closeSliderJumpMenu()}
+  const blur=event=>{const popup=runtime.sliderJumpMenu;if(popup&&!popup.element.contains(event.target)&&!popup.anchor.contains(event.target))runtime.closeSliderJumpMenu()}
+  runtime.attachSliderJumpMenu=()=>{doc.addEventListener("pointerdown",outside,true);root.addEventListener("focusin",blur);root.addEventListener("scroll",runtime.positionSliderJumpMenu,true);view?.addEventListener("resize",runtime.positionSliderJumpMenu)}
+  runtime.restoreSliderJumpMenu=reuseReading=>{
+    const saved=runtime.savedSliderJumpMenu,focus=runtime.sliderJumpFocus
+    runtime.savedSliderJumpMenu=null;runtime.sliderJumpFocus=null
+    if(saved&&reuseReading&&saved.signature===runtime.renderSignature&&saved.anchor.isConnected!==false){
+      runtime.openSliderJumpMenu(saved.anchor)
+      const popup=runtime.sliderJumpMenu
+      if(popup){popup.search.value=saved.query;runtime.filterSliderJump();runtime.highlightSliderJump(saved.highlight)}
+    }
+    if(focus&&focus.work===String(runtime.data?.stack?.work?.id||"")&&focus.connection===String(runtime.data?.connection?.id||"")){
+      const input=[...root.querySelectorAll(`[data-sheet-slider="${CSS.escape(focus.layer)}"]`)].find(input=>(input.closest("[data-connection-book]")?.dataset.connectionBook||"")===focus.book)
+      input?.closest("[data-slider-control]")?.querySelector("[data-slider-jump]")?.focus({preventScroll:true})
+    }
+  }
+  runtime.cleanupSliderJumpMenu=()=>{
+    const popup=runtime.sliderJumpMenu
+    runtime.savedSliderJumpMenu=popup?{anchor:popup.anchor,signature:runtime.renderSignature,query:popup.search.value,highlight:popup.highlight}:null
+    runtime.closeSliderJumpMenu();doc.removeEventListener("pointerdown",outside,true);root.removeEventListener("focusin",blur);root.removeEventListener("scroll",runtime.positionSliderJumpMenu,true);view?.removeEventListener("resize",runtime.positionSliderJumpMenu)
+  }
 }
 const layerRank=layer=>({SOURCE:0,PASSAGE:0,CH:1,CL:2,MC:3,WB:4})[String(layer||"").toUpperCase()] ?? 9
 const ROUTE_MODES=["outgoing","both","incoming"]
@@ -527,7 +663,7 @@ function sourcePane(data,selectedId,reference){
   const passages=arr(chapter.passages).map(passage=>{
     return `<div class="passage-row"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text">${passage.reading_block_html || esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button></div>`
   }).join("")
-  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE / ${esc(chapter.label||chapter.title)}</strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy"><header class="source-head"><span class="pane-kicker">CHAPTER ${esc(chapter.chapter_number||"")} · EXACT SOURCE</span><h2>${esc(chapter.title)}</h2><p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
+  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE / ${esc(chapter.label||chapter.title)}</strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · EXACT SOURCE</span><h2 data-slider-preview-title>${esc(chapter.title)}</h2><p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
 }
 function traceLabel(item,layer){
   if(String(layer).toUpperCase()==="SOURCE")return "Saved source passage"
@@ -570,7 +706,7 @@ function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),s
   const sheetItems=new Set(arr(unit.sections).flatMap(section=>arr(section.items)).map(item=>String(item.id))),levelPeers=isRoute&&mcPartition&&isFocus?routedItems.filter(item=>!sheetItems.has(String(item.id))&&String(item.id)!==selectedId):[],levelPeerMarkup=levelPeers.length?`<div class="mc-level-peers">${routeGroups(levelPeers,selectedId)}</div>`:""
   const selectedNote=isRoute&&String(unit.type).toUpperCase()===focusLayer&&(!mcPartition||isFocus)?`<div class="route-recipient"><span>${routeMode(reference)==="incoming"?"Receiving at":routeMode(reference)==="both"?"Flowing through":"Flowing from"} <b>${esc(identity.title||unit.title||unit.id)}</b></span><button type="button" class="route-close route-pane-close" data-clear-reference aria-label="Close route focus" title="Close route"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div>`:""
   const sectionActions=!isRoute&&arr(unit.sections).length?`<div class="sheet-actions" role="group" aria-label="${esc(identity.title||unit.title||unit.id)} sections"><button type="button" data-sheet-sections="collapse" aria-label="Collapse all sections" title="Collapse all sections"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 3 4 4 4-4M4 10h12m-10 7 4-4 4 4"/></svg></button><button type="button" data-sheet-sections="expand" aria-label="Expand all sections" title="Expand all sections"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 4-4 4 4M4 10h12m-10 4 4 4 4-4"/></svg></button></div>`:""
-  return `<section class="desk-window care-pane" data-pane="${esc(unit.id)}" data-layer="${esc(unit.type)}"${levelAttribute}${isRoute?"":" data-reading-sheet"} style="--pane-accent:${color}"><div class="window-titlebar"><strong>${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}</strong><span>${unit.item_count??arr(unit.items).length} AXIOMS</span>${showVersions&&!isRoute?paneBookmarkButton(unit,bookmarks):""}</div>${isRoute?"":paneSlider(stack,unit.type,unit.id)}<div class="window-body" data-reading-id="${esc(unit.id)}"><header class="care-head"><span class="pane-kicker">${esc(identity.kicker||unit.type||"CARE SHEET")}</span><div class="care-heading"><h2>${esc(identity.title||unit.title||unit.label)}</h2>${sectionActions}</div><p>${esc(identity.context||unit.id)}</p></header>${selectedNote}${levelPeerMarkup}<div class="care-sections">${sections||'<p class="trace-empty">No readable axioms in this sheet.</p>'}</div></div></section>`
+  return `<section class="desk-window care-pane" data-pane="${esc(unit.id)}" data-layer="${esc(unit.type)}"${levelAttribute}${isRoute?"":" data-reading-sheet"} style="--pane-accent:${color}"><div class="window-titlebar"><strong>${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}</strong><span>${unit.item_count??arr(unit.items).length} AXIOMS</span>${showVersions&&!isRoute?paneBookmarkButton(unit,bookmarks):""}</div>${isRoute?"":paneSlider(stack,unit.type,unit.id)}<div class="window-body" data-reading-id="${esc(unit.id)}"><header class="care-head"><span class="pane-kicker"${isRoute?"":" data-slider-preview-kicker"}>${esc(identity.kicker||unit.type||"CARE SHEET")}</span><div class="care-heading"><h2${isRoute?"":" data-slider-preview-title"}>${esc(identity.title||unit.title||unit.label)}</h2>${sectionActions}</div><p${isRoute?"":" data-slider-preview-context"}>${esc(identity.context||unit.id)}</p></header>${selectedNote}${levelPeerMarkup}<div class="care-sections">${sections||'<p class="trace-empty">No readable axioms in this sheet.</p>'}</div></div></section>`
 }
 function traceGroup(title,items,empty){
   const rows=arr(items).map(item=>`<button type="button" class="trace-card" data-ref-id="${esc(item.id)}" ${item.kind==="unresolved"?"disabled":""}><strong>${esc(item.layer||item.kind)} · ${esc(item.id)}</strong><span>${esc(textClip(item.text||item.title,220))}</span></button>`).join("")
@@ -1318,6 +1454,7 @@ function setup(root){
         if(next){next.classList.toggle("active",true);next.setAttribute("aria-pressed","true");next.tabIndex=0}
       }
     }
+    paintSliderHeading(input,option,index)
     keepSliderVisible(input)
   }
   runtime.chooseSlider=(input,position)=>{
@@ -1442,6 +1579,7 @@ function setup(root){
   setupTrackZoom(runtime)
   setupOutlineView(runtime)
   setupDialoguePlayer(runtime)
+  setupSliderJumpMenu(runtime)
   return runtime
 }
 
@@ -2266,6 +2404,7 @@ export default function(component){
     runtime.attachBuildVersionMenu?.()
     runtime.attachSheetVersionMenu?.()
     runtime.attachPaneBookmarks?.()
+    runtime.attachSliderJumpMenu?.()
     const bookmarkMenuWork=runtime.bookmarkMenu?.workId||runtime.bookmarkMenuRestore
     runtime.bookmarkMenuRestore=null
     const stopWorkspaceFit=workspaceFitReader(runtime)
@@ -2307,7 +2446,7 @@ export default function(component){
     // Routes always follows its original render/restore/centring path below.
     const renderSignature=JSON.stringify({...data,selected_axiom:null,connection:data.connection?{...data.connection,selection:null}:null}),reuseReading=mode==="workspace"&&runtime.renderSignature===renderSignature
     const reuseShelf=mode==="library"&&runtime.renderSignature===renderSignature
-    if(!reuseReading&&!reuseShelf){runtime.closeBookMenu();runtime.closeConnectionDiscovery?.();runtime.closeBuildVersionMenu?.();runtime.closeSheetVersionMenu?.();runtime.closeConnectionResolution?.();runtime.closeBookmarkMenu?.();replaceStudyDeskMarkup(runtime,mode==="library"?library(data,runtime.shelf):workspace(data))}
+    if(!reuseReading&&!reuseShelf){runtime.closeSliderJumpMenu?.();runtime.closeBookMenu();runtime.closeConnectionDiscovery?.();runtime.closeBuildVersionMenu?.();runtime.closeSheetVersionMenu?.();runtime.closeConnectionResolution?.();runtime.closeBookmarkMenu?.();replaceStudyDeskMarkup(runtime,mode==="library"?library(data,runtime.shelf):workspace(data))}
     runtime.renderSignature=renderSignature
     if(mode==="library")root.querySelector(".library-window").scrollTop=shelfReset?0:previousShelfTop
     root.removeAttribute("aria-busy")
@@ -2353,6 +2492,7 @@ export default function(component){
     runtime.syncConnectionShelf?.()
     installPaneControls(root,runtime.paneControlState||(runtime.paneControlState={}),()=>{runtime.queueTrackZoom();runtime.queueThreads();runtime.positionDialoguePlayer?.()},String(data?.stack?.work?.id||""))
     runtime.mountDialoguePlayer()
+    runtime.restoreSliderJumpMenu(reuseReading)
     if(bookmarkMenuWork===String(data?.stack?.work?.id||""))runtime.openBookmarkMenu(root.querySelector("[data-bookmark-menu]"),{restore:true})
     runtime.pendingLayer=null
     const view=root.ownerDocument.defaultView
@@ -2370,7 +2510,7 @@ export default function(component){
     // The reader data and DOM are ready; do not add a timed input-blocking delay.
     loader?.remove()
     runtime.applyOutline?.()
-    return()=>{view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)}
+    return()=>{view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)}
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`

@@ -1,0 +1,16 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" class="care-loading__mark" viewBox="25 12 290 172" aria-hidden="true" focusable="false">
+<style>svg{fill:none;stroke-linecap:round;stroke-linejoin:round}.care-loading__scaffold{stroke:#56716f;stroke-width:1;opacity:.3}.care-loading__edge{stroke:#99b7b4;stroke-width:1.4}.care-loading__edge--second{opacity:.8}.care-loading__edge--third{opacity:.58}.care-loading__light{stroke:#d6f6ec;stroke-width:1.5;stroke-dasharray:3 97;stroke-dashoffset:-28}@media(max-width:100px){.care-loading__scaffold{stroke-width:2}.care-loading__edge{stroke:#b7d2cd;stroke-width:4}.care-loading__light{stroke-width:3}}</style><g class="care-loading__scaffold">
+        <path d="M40 84 92 54 144 84 144 144 92 174 40 144Z M40 84 92 114 144 84 M92 114V174"/>
+        <path d="M92 54 144 24 196 54 196 114 144 144 M144 24V60 M144 84 196 54"/>
+        <path d="M196 54 248 24 280 43 M300 56 300 116 248 146 196 116 M196 54 248 84 300 54 M248 84V146"/>
+      </g>
+      <path class="care-loading__edge" pathLength="100"
+            d="M40 126V84L92 54 144 84V144L92 174 40 144 M40 84 92 114 144 84 M92 114V174"/>
+      <path class="care-loading__edge care-loading__edge--second" pathLength="100"
+            d="M92 54 144 24 196 54V114L144 144 M144 84 196 54 M144 24V64"/>
+      <path class="care-loading__edge care-loading__edge--third" pathLength="100"
+            d="M196 54 248 24 282 44 M300 72V116L248 146 196 116 M196 54 248 84 300 54 M248 84V146"/>
+      <path class="care-loading__light" pathLength="100"
+            d="M40 144V84L92 54 144 24 196 54 248 84V146L300 116V54L248 24 196 54V114L144 144 92 174V114L40 84"/>
+    </svg>
