@@ -1,0 +1,131 @@
+{
+  "work": "A Treatise of Human Nature",
+  "chain": [
+    {
+      "id": "RAW_THN_INTR:P0001",
+      "layer": "SOURCE",
+      "title": "Introduction",
+      "text": "Nothing is more usual and more natural for those, who pretend to discover anything new to the world in philosophy and the sciences, than to insinuate the praises of their own systems, by decrying all those, which have been advanced before them. And indeed were they content with lamenting that ignorance, which we still lie under in the most important questions, that can come before the tribunal of human reason, there are few, who have an acquaintance with the sciences, that would not readily agree with them. It is easy for one of judgment and learning, to perceive the weak foundation even of those systems, which have obtained the greatest credit, and have carried their pretensions highest to accurate and profound reasoning. Principles taken upon trust, consequences lamely deduced from them, want of coherence in the parts, and of evidence in the whole, these are every where to be met with in the systems of the most eminent philosophers, and seem to have drawn disgrace upon philosophy itself."
+    },
+    {
+      "id": "CH_THN_INTR:AS1",
+      "layer": "CH",
+      "title": "Introduction",
+      "text": "The governing problem is the absence of evidentially secure and internally coherent foundations across the sciences."
+    },
+    {
+      "id": "CL_THN_01:BAS-01",
+      "layer": "CL",
+      "title": "Cluster 1",
+      "text": "Scientific insecurity is traced beneath disciplinary disputes to inadequate knowledge of the human faculties through which all sciences are constituted and judged."
+    },
+    {
+      "id": "MC_THN_L1_01:BAS-01",
+      "layer": "MC",
+      "title": "Metacluster 1",
+      "text": "The governing problem is how a science confined to perceptual materials can explain mental productivity, ordered experience, factual assent, and practical reality without appealing to inaccessible essence or independently given forms."
+    },
+    {
+      "id": "WB_THN:BAS-01",
+      "layer": "WB",
+      "title": "A Treatise of Human Nature",
+      "text": "The governing problem is how perception-bound human nature can generate knowledge, factual reality, selfhood, affective order, property, morality, and political authority without access to substance, intrinsic power, natural right, or an external tribunal."
+    }
+  ],
+  "chains": {
+    "kant": [
+      {
+        "id": "RAW_KPR_INTRODUCTION:P0001",
+        "layer": "SOURCE",
+        "title": "Introduction",
+        "text": "## Introduction\n\n### I. Of the difference between Pure and Empirical Knowledge\n\nThat all our knowledge begins with experience there can be no doubt. For how is it possible that the faculty of cognition should be awakened into exercise otherwise than by means of objects which affect our senses, and partly of themselves produce representations, partly rouse our powers of understanding into activity, to compare to connect, or to separate these, and so to convert the raw material of our sensuous impressions into a knowledge of objects, which is called experience? In respect of time, therefore, no knowledge of ours is antecedent to experience, but begins with it.\n\nBut, though all our knowledge begins with experience, it by no means follows that all arises out of experience. For, on the contrary, it is quite possible that our empirical knowledge is a compound of that which we receive through impressions, and that which the faculty of cognition supplies from itself (sensuous impressions giving merely the occasion), an addition which we cannot distinguish from the original element given by sense, till long practice has made us attentive to, and skilful in separating it. It is, therefore, a question which requires close investigation, and not to be answered at first sight, whether there exists a knowledge altogether independent of experience, and even of all sensuous impressions? Knowledge of this kind is called à priori, in contradistinction to empirical knowledge, which has its sources à posteriori, that is, in experience."
+      },
+      {
+        "id": "CH_KPR_INTRODUCTION:AS1",
+        "layer": "CH",
+        "title": "Introduction",
+        "text": "Problem: determine how cognition can contain necessity and strict universality if cognition begins temporally with experience."
+      },
+      {
+        "id": "CL_KPR_01:AS-B01",
+        "layer": "CL",
+        "title": "Cluster 1",
+        "text": "The cluster solves the problem of how cognition can possess necessity, strict universality, and objective validity when human cognition begins through sensuous affection."
+      },
+      {
+        "id": "MC_KPR_L1_01:AS-B01",
+        "layer": "MC",
+        "title": "Metacluster 1",
+        "text": "The meta-cluster solves the problem of how finite cognition can possess necessary objective validity without becoming cognition of things in themselves."
+      },
+      {
+        "id": "WB_KPR:AS-B01",
+        "layer": "WB",
+        "title": "The Critique of Pure Reason",
+        "text": "The whole-book system solves the problem of how finite reason can possess necessary objective cognition while being structurally driven toward objects it cannot know."
+      }
+    ],
+    "hume": [
+      {
+        "id": "RAW_THN_INTR:P0001",
+        "layer": "SOURCE",
+        "title": "Introduction",
+        "text": "Nothing is more usual and more natural for those, who pretend to discover anything new to the world in philosophy and the sciences, than to insinuate the praises of their own systems, by decrying all those, which have been advanced before them. And indeed were they content with lamenting that ignorance, which we still lie under in the most important questions, that can come before the tribunal of human reason, there are few, who have an acquaintance with the sciences, that would not readily agree with them. It is easy for one of judgment and learning, to perceive the weak foundation even of those systems, which have obtained the greatest credit, and have carried their pretensions highest to accurate and profound reasoning. Principles taken upon trust, consequences lamely deduced from them, want of coherence in the parts, and of evidence in the whole, these are every where to be met with in the systems of the most eminent philosophers, and seem to have drawn disgrace upon philosophy itself."
+      },
+      {
+        "id": "CH_THN_INTR:AS1",
+        "layer": "CH",
+        "title": "Introduction",
+        "text": "The governing problem is the absence of evidentially secure and internally coherent foundations across the sciences."
+      },
+      {
+        "id": "CL_THN_01:BAS-01",
+        "layer": "CL",
+        "title": "Cluster 1",
+        "text": "Scientific insecurity is traced beneath disciplinary disputes to inadequate knowledge of the human faculties through which all sciences are constituted and judged."
+      },
+      {
+        "id": "MC_THN_L1_01:BAS-01",
+        "layer": "MC",
+        "title": "Metacluster 1",
+        "text": "The governing problem is how a science confined to perceptual materials can explain mental productivity, ordered experience, factual assent, and practical reality without appealing to inaccessible essence or independently given forms."
+      },
+      {
+        "id": "WB_THN:BAS-01",
+        "layer": "WB",
+        "title": "A Treatise of Human Nature",
+        "text": "The governing problem is how perception-bound human nature can generate knowledge, factual reality, selfhood, affective order, property, morality, and political authority without access to substance, intrinsic power, natural right, or an external tribunal."
+      }
+    ]
+  },
+  "books": [
+    {
+      "slug": "kant",
+      "title": "The Critique of Pure Reason",
+      "author": "Immanuel Kant",
+      "edition": "J. M. D. Meiklejohn translation · Gutenberg eText #4280",
+      "description": "What can we know—and what gives a claim the right to call itself knowledge?"
+    },
+    {
+      "slug": "hume",
+      "title": "A Treatise of Human Nature",
+      "author": "David Hume",
+      "edition": "Original English · Gutenberg eText #4705 · retained 2012 transcription",
+      "description": "How do perceptions become beliefs, a self, and a world held in common?"
+    }
+  ],
+  "lateral": {
+    "id": "XR_KPR_THN:RSN-01",
+    "text": "The relation is strong, mixed, and high-pressure: both units reconstruct valid finite cognition without unmediated metaphysical possession, but WB_THN explains objecthood through empirical-relational production while WB_KPR validates it through a priori conditions of possible experience.\nRelation Type — Mixed",
+    "refs": [
+      "WB_THN:BAS-01",
+      "WB_THN:GA-02",
+      "WB_KPR:AS-B01",
+      "WB_KPR:GA-02",
+      "WB_KPR:GA-05"
+    ],
+    "deep_refs": [],
+    "trace_type": "Composite",
+    "passages": []
+  }
+}

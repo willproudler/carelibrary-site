@@ -1,0 +1,11 @@
+{
+  "source": "care_platform/reference_viewer.py",
+  "compatibility_changes": [
+    "Resolve the keyboard event origin across the standalone desk ShadowRoot"
+  ],
+  "assets": {
+    "reference-viewer.html": "e94ef274473b0c7860e48085a8b3d4c8263565d9733209e8d5dee10b814a3845",
+    "reference-viewer.css": "d9c7852523972b5e267110de7f70e63860d43045234701890a8296c7ff63e31f",
+    "reference-viewer.mjs": "c93ed08434914e79d0823da634c20337d6749b88e8570cd3b8e09f77a09429cf"
+  }
+}

@@ -1,0 +1,8 @@
+/* Public edition restrictions. Shelf, panes and reading styles come unchanged
+   from CARE's native desktop reader. No authoring API is mounted. */
+.library-archive,[data-shelf-kind="lecture"],[data-shelf-kind="corpus"],
+[data-book-menu-action="archive_book"],[data-book-menu-action="restore_book"],
+[data-discovery-menu="corpus"],[data-discovery-compare],
+[data-sheet-version-menu],.desk-sheet-version-slot,.rating-box{display:none!important}
+option[value="unprocessed"]{display:none}
+:host{--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,SFMono-Regular,Menlo,monospace}

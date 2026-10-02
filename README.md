@@ -1,22 +1,28 @@
-# CARE Library website
+# CARE Library Public
 
-The dependency-free public showcase at https://carelibrary.org, hosted through the existing GitHub Pages setup. The private CARE application and its database are not part of this repository.
+The public edition of CARE Library at https://carelibrary.org. It uses the original app’s shelf and study-desk renderer against a fixed export of two books. GitHub Pages serves it without a private application server, API key, account, or build step.
 
-## Pages
+- `index.html`: native library shelf and reading workspace. Kant, Hume, saved lateral, source/CH/CL/MC/WB panes, chapter rails, outline strips, routes, reading skins, local search and bookmarks.
+- `welcome.html`: preserved designed two-book entrance.
+- `about.html`: preserved literary showcase using actual saved CARE examples.
+- `why-care.html`: philosophical statement.
+- `rights.html`: source editions, grounding limitations and publication boundaries.
+- `library.html`: compatibility redirect to the public library.
+- `beta.html`: separate inactive beta entrance, linked quietly from the footer. No credentials can be submitted.
 
-- `index.html`: reading-room introduction, interactive Source / CH / CL / MC / WB tour, library forms, source-to-reading journey and project resources.
-- `library.html`: the planned public-domain library, explicitly open without an account. No collection is released here yet.
-- `beta.html`: separate future beta entrance, discoverable through quiet footer links. All credential controls are disabled; there is no form, authentication, network request or storage.
-- `why-care.html`: the project’s original philosophical statement, with updated navigation.
-- `rights.html`: source and edition rights, publication boundaries and official guidance.
-- `PUBLICATION_NOTES.md`: release and future-integration considerations.
+`native/study-desk.mjs` and its stylesheet are exact exports of the app’s `STUDY_DESK_JS` and `STUDY_DESK_CSS`. `native/reference-viewer.*` comes from the app’s reference viewer, with one compatibility fix for keyboard event targets across the standalone desk’s ShadowRoot. Version manifests record the asset hashes. `native/public-scope.css` hides controls that do not apply to this fixed collection. `public-app.mjs` supplies public navigation and browser-local preferences; `public-reader-adapter.mjs` projects the published JSON into the original reader’s payload contract. It never queries the private catalogue or starts an AI run.
 
-`site.js` controls a small local demonstration only. Every route in its linear example retains intermediate layers; Read view scrolls across long routes, Outline shows all scales, and mobile stacks the panes. It does not call any API. Demo source text, interpretations and shelf titles were created for this tour, are labelled as illustrative, and are not a live public catalogue or a CARE analysis run. The cover designs are typographic elements, not third-party book artwork.
+The only public data are the sealed KPR and THN readings plus XR_KPR_THN R01. All 70 CARE sheets, 47 source sections and 53 saved lateral claims are retained. The exporter checks immutable artifact hashes, explicit fields and closed references. Kant’s supplemental grounding preserves the original wording and has 2,669 aligned claims and 23 unresolved claims. AI passage links remain unreviewed; a trace does not establish interpretive correctness.
 
-## Preview
+To refresh from the private CARE workspace, run these with its Python environment:
 
-Run `python3 -m http.server 4173 --bind 127.0.0.1` here, then visit http://127.0.0.1:4173. No install or build step is required. Keep the server restricted to this website directory.
+```sh
+python tools/export_public_library.py /path/to/care-workspace --require-kant-grounding
+python tools/export_native_reader.py /path/to/care-workspace
+node tools/export_showcase.mjs
+node --test tests/public-library.test.mjs
+```
 
-Check the five reading scales, route open/close, Outline/reopen, four shelf modes, links, mobile layout and disabled beta controls before publishing. Preserve `CNAME` and the GitHub Pages configuration. No account service or private library should be connected as part of a presentation-site update.
+The export tools are preparation utilities, never part of a visitor’s interaction. Do not publish the private workspace, credentials, source EPUB containers, unrelated works or commercial cover images. Future source editions need their own provenance and rights review. See `PUBLICATION_NOTES.md` and `data/export-audit.json`.
 
-Canonical domain: `carelibrary.org`; existing redirects and domain settings are preserved. `llms.txt` is an emerging convention, not a guarantee of indexing or citation.
+Preview with `python3 -m http.server 4173 --bind 127.0.0.1` in this website directory. Open http://127.0.0.1:4173. Serve this directory only. Before release, check native panes, source routes, outline expansion, saved lateral, reference viewer, bookmarks, search, keyboard controls and mobile layout. Preserve `CNAME` and existing Pages settings.
