@@ -68,3 +68,9 @@ Bergson: *Matière et mémoire*, original French, first published 1896; retained
 Pinned seal: SEAL_MEMA_71BE568F831CC37C00A0. Six RAW, six CH, two CL, no MC, WB_MEMA@R002; 897 CARE items. The exporter verifies the seal’s artifact hashes, reproduces the frozen CH from sealed Markdown, checks the saved source checksum and passage wording, and validates saved alignment identities. No model call or new grounding is run. All references resolve within the three-work export.
 
 The Discover language display comes from the application’s 189-language catalogue. It describes requestable machine translation languages, not equal translation quality, installed prompt localisations, or translation service availability on the static website. The multilingual source collection is English and French. History illustrations were removed at the user’s request. The corpus panel is explicitly a bibliographic selection sketch; it contains no private CARE readings.
+
+## 5 October covers and saved translations
+
+The user supplied three finished PNG covers and explicitly requested their use for the public books and lateral. The PNGs in `assets/covers/` are exact copies; the native lateral tile composes its two member covers. This replaces the original typographic cover treatment documented above.
+
+Five explicitly pinned saved English machine translations of Bergson CARE sheets are included: CH_MEMA_CIDL, CH_MEMA_CID2, CH_MEMA_CID3, CH_MEMA_CI_2 and WB_MEMA. These are translations of CARE analysis, not of the original source text. The exporter verifies canonical source and translation hashes and rejects changed identities, section structure or references. No source translations, other private translations or generation service are exported. Toolbar and pane controls select existing records only; original French remains visible where no translation exists.

@@ -24,8 +24,8 @@
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 10910551,
-  "sha256": "774f98783348ed291f6f36aefb366eade6851aadee587144644d86bb896ec621",
+  "bytes": 11314862,
+  "sha256": "b523e1616559914726e1cba29fde23ee201cbd9a84da0aec1d0cb475285fa7d8",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",
@@ -39,5 +39,47 @@
     "prose_preserved": true,
     "pending_chapters": [],
     "complete": true
-  }
+  },
+  "saved_translations": [
+    {
+      "work": "bergson",
+      "unit_id": "CH_MEMA_CIDL",
+      "language_code": "en",
+      "variant_id": "CAREVAR_20261004T173454594394Z_7dd621e3",
+      "source_sha256": "652bce029e4ee39acdcb1f9668df8f0a0661ac9cab46ab4ec59f2bfa46053abd",
+      "sha256": "4957804ac1bea6c8b08c34b6b1a78ebf738e50af00ee5053d74612eb13e3b16c"
+    },
+    {
+      "work": "bergson",
+      "unit_id": "CH_MEMA_CID2",
+      "language_code": "en",
+      "variant_id": "CAREVAR_20261004T165401046809Z_851d1d38",
+      "source_sha256": "e055658b39fa773a9411a9711d7f6e54bb391a4a1122a1f207913ba5ff52a4c6",
+      "sha256": "e681890a3b0fc19eed8e12e1e06b9949274fd2e56bbe207f91f6b61865579a76"
+    },
+    {
+      "work": "bergson",
+      "unit_id": "CH_MEMA_CID3",
+      "language_code": "en",
+      "variant_id": "CAREVAR_20261004T173429802879Z_7d41061d",
+      "source_sha256": "caffb9f71b69dc347ad38b334dbdff8cf50b3de8e8f376cbe2e8d6c49afa7919",
+      "sha256": "a43b17ce8c025d5a218375dea27189e3b527938d808b3b26c91630a28b111d78"
+    },
+    {
+      "work": "bergson",
+      "unit_id": "CH_MEMA_CI_2",
+      "language_code": "en",
+      "variant_id": "CAREVAR_20261004T173521898423Z_f7c64f8a",
+      "source_sha256": "dde34c01f6d1a82c3e845648da195e21c4d5c6bf8af473f88a7747e6dcc7eac5",
+      "sha256": "f0f3d54ab8f20c1fc72d184c5adc491c81db8c63eec84c36b8b236b74746d0a3"
+    },
+    {
+      "work": "bergson",
+      "unit_id": "WB_MEMA",
+      "language_code": "en",
+      "variant_id": "CAREVAR_20261004T173606737609Z_42a967fa",
+      "source_sha256": "fe8e8e473d065fac44aba1b25cd5192942f8dd066d63508b49affee17bc1ee36",
+      "sha256": "55253263337baa1c5f358942ba2aae02ceec3bf6c2ca26c9bc5bad7d61608b06"
+    }
+  ]
 }

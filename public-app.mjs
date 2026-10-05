@@ -1,6 +1,6 @@
 import mountReader from './native/study-desk.mjs?v=1.73';
 import mountViewer from './native/reference-viewer.mjs?v=20261005';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261005';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261005-covers2';
 import {searchLibrary} from './library-core.mjs';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
@@ -12,9 +12,9 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const response=await fetch('./data/library.json?v=20261005');if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
+ const response=await fetch('./data/library.json?v=20261005-covers2');if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
  const data=await response.json(),adapter=createPublicReaderAdapter(data),{index}=adapter;
- const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css?v=1.73','./native/public-scope.css','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
+ const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css?v=1.73','./native/public-scope.css?v=20261005-covers2','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
  shadow.innerHTML=`<style>${css}\n${scope}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div>`;
  // CARE's viewer deliberately uses the document surface (isolate_styles=False).
@@ -26,7 +26,7 @@ async function start(){
  saved.bookmarks=(saved.bookmarks||[]).filter(row=>index.units.has(row.care_unit_id));saved.favourites=(saved.favourites||[]).filter(id=>index.nodes.has(id));
  const bookStates=new Map();
  let readingMenu=null;
- const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,publication_year:Number.parseInt(work.year),content_kind:'book',has_source:true,has_care:true,layers:[...new Set(work.units.map(unit=>unit.layer))],cloth:work.slug==='kant'?'#303b4c':work.slug==='bergson'?'#50403c':'#3b4531',foil:'#cf9b61',language_code:work.language_code||'en',language_name:work.language_name||'English'}));
+ const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,cover_url:work.cover_url,publication_year:Number.parseInt(work.year),content_kind:'book',has_source:true,has_care:true,layers:[...new Set(work.units.map(unit=>unit.layer))],cloth:work.slug==='kant'?'#303b4c':work.slug==='bergson'?'#50403c':'#3b4531',foil:'#cf9b61',language_code:work.language_code||'en',language_name:work.language_name||'English'}));
  const fields=[adapter.savedConnection];
  const lateralBooks=data.works.filter(work=>adapter.savedConnection.members.some(member=>member.id===work.id));
  function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return '#'+p;}
@@ -86,9 +86,14 @@ async function start(){
  function syncURL(){const w=adapter.workFor(state.workId);const p=new URLSearchParams();if(state.connectionId)p.set('lateral',state.connectionId);else p.set('book',w.slug);if(state.connectionReferenceId||state.referenceId)p.set('ref',state.connectionReferenceId||state.referenceId);else if(state.unitId)p.set('unit',state.unitId);else if(state.rawUnitId)p.set('source',state.rawUnitId);window.history.replaceState(null,'','#'+p);}
  function paintViewer(){
   const id=state.selectedAxiom?.passage_id||state.selectedAxiom?.axiom_id||state.connectionSelection?.reference_id||state.referenceId||state.connectionReferenceId||'';
-  const node=index.nodes.get(id);for(const r of references)r.favourite=saved.favourites.includes(r.id);
+  const node=index.nodes.get(id),projected=new Map();
+  const readingReferences=references.map(row=>{
+   if(!projected.has(row.id))projected.set(row.id,adapter.card(row.id,{state}));
+   const reading=projected.get(row.id),languageNote=reading.is_translation?`${reading.reading_language_name} · saved machine translation`:'';
+   return {...row,...reading,metadata:[reading.author,reading.work_title,reading.chapter_title,...row.metadata.slice(3),languageNote].filter(Boolean),favourite:saved.favourites.includes(row.id)};
+  });
   viewerHost.hidden=view!=='workspace';
-  viewerCleanup=mountViewer({parentElement:viewerShadow,data:{studio_mode:true,references,default_id:id,default_kind:node?.kind==='passage'?'passage':'axiom',follow_default:true},setTriggerValue:(kind,value)=>{
+  viewerCleanup=mountViewer({parentElement:viewerShadow,data:{studio_mode:true,references:readingReferences,default_id:id,default_kind:node?.kind==='passage'?'passage':'axiom',follow_default:true},setTriggerValue:(kind,value)=>{
    if(kind!=='action')return;const n=index.nodes.get(value.id);if(!n)return;
    if(value.type==='studio_open_reference')openNode(n,true);
    else if(value.type==='studio_open_sheet')openNode(n,false);

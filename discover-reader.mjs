@@ -1,7 +1,7 @@
 /* The Discover page mounts CARE's shipped reader against the fixed public
  * collection. No authoring, generation, account or private-library API is used. */
 import mountReader from './native/study-desk.mjs?v=1.73';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261005';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261005-covers2';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
   hume:'CH_THN_INTR:AS1',
@@ -92,7 +92,7 @@ const embedCSS = `
 .study-desk{width:100%;height:100%;max-height:100%;min-height:0;box-sizing:border-box;border-radius:12px}
 .desk-title{min-width:0}.desk-toolbar{align-content:start}
 /* Saved items remain available in the full public reading room. */
-.desk-bookmark-control,.pane-bookmark,.reader-axiom-mark,.desk-skin,.desk-sheet-version-slot{display:none!important}
+.desk-bookmark-control,.pane-bookmark,.reader-axiom-mark,.desk-skin{display:none!important}
 .reader-has-mark{padding-right:0}
 `;
 
@@ -114,7 +114,7 @@ export async function mountDiscoverReader(host,options={}) {
   host.setAttribute('aria-busy','true');
   try{
     const fetcher=options.fetch||view.fetch.bind(view);
-    const urls=['./data/library.json?v=20261005','./native/study-desk.css?v=1.73','./native/public-scope.css'];
+    const urls=['./data/library.json?v=20261005-covers2','./native/study-desk.css?v=1.73','./native/public-scope.css?v=20261005-covers2'];
     const [data,css,scope]=await Promise.all(urls.map(async (url,index)=>{
       const response=await fetcher(new URL(url,import.meta.url));
       if(!response.ok)throw Error('The reading could not load. Please try again.');
