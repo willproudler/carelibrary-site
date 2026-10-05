@@ -2,9 +2,9 @@
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
 export const LATERAL_SAMPLES = Object.freeze([
-  {label:'Agreement', id:'XR_KPR_THN:DRT-01'},
-  {label:'Difference', id:'XR_KPR_THN:TLC-02'},
-  {label:'Strange-child potential', id:'XR_KPR_THN:SCF-02'},
+  {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},
+  {label:'Difference', id:'XR_KPR_THN:TLC-02', explanation:'Identify where their explanations differ. Hume explains how habit forms expectations; Kant asks what makes experience possible.'},
+  {label:'New work', id:'XR_KPR_THN:SCF-02', explanation:'A “strange child” is a new work developed from two books. This example proposes combining Hume’s account of how beliefs form with Kant’s tests of what makes them valid.'},
 ]);
 
 // These titles occur in CARE_LIBRARY_CATALOGUE.md. Ancient dates describe
@@ -70,31 +70,34 @@ export async function mountDiscoverExperiments(host,options={}){
   let selectedSample=0,selectedBook=0,samples=[];
   host.classList.add('discover-experiments');
   host.innerHTML=`<section class="de-card de-lateral" aria-labelledby="de-lateral-title">
-      <div class="de-heading"><p class="de-label">Saved diagnostic lateral</p><h2 id="de-lateral-title">Books in relation.</h2></div>
+      <div class="de-heading"><p class="de-label">Laterals</p><h2 id="de-lateral-title">Compare two books.</h2><p class="de-description">A lateral compares two books: where their arguments agree, where they differ, and what could be developed from both.</p></div>
       <div class="de-strands" aria-hidden="true"><span>Hume</span><span>Kant</span>
         <svg viewBox="0 0 560 74"><g class="de-rungs"><path d="M140 27L140 47M180 47L180 27M220 48L220 26M260 29L260 45M300 27L300 47M340 47L340 27M380 48L380 26M420 29L420 45"/></g><path class="de-strand-a" d="M22 37H72C112 37 116 12 146 17S177 65 212 55S249 11 284 20S319 64 354 54S390 13 425 21S452 37 490 37H538"/><path class="de-strand-b" d="M22 37H72C112 37 116 62 146 57S177 9 212 19S249 63 284 54S319 10 354 20S390 61 425 53S452 37 490 37H538"/><circle cx="22" cy="37" r="5"/><circle cx="538" cy="37" r="5"/></svg>
       </div>
       <div class="de-sample-tabs" role="group" aria-label="Explore the saved lateral">${LATERAL_SAMPLES.map((sample,i)=>`<button type="button" data-sample="${i}" aria-pressed="${i===0}" disabled>${sample.label}</button>`).join('')}</div>
-      <div class="de-claim" aria-live="polite" aria-atomic="true"><p class="de-claim-text">Loading the saved reading…</p><p class="de-claim-kind"></p></div>
-      <div class="de-card-foot"><button type="button" class="de-open" data-open-lateral disabled>Open this claim’s route <span aria-hidden="true">↗</span></button><span class="de-claim-ref"></span></div>
+      <div class="de-claim"><p class="de-explanation" aria-live="polite" aria-atomic="true">Loading the saved comparison…</p><details class="de-saved-claim"><summary>Read the saved analysis</summary><p class="de-claim-text"></p><p class="de-claim-kind"></p><span class="de-claim-ref"></span></details></div>
+      <div class="de-card-foot"><button type="button" class="de-show" data-show-lateral disabled>Show this lateral <span aria-hidden="true">↑</span></button><button type="button" class="de-open" data-open-lateral disabled>Read this claim <span aria-hidden="true">↗</span></button></div>
     </section>
     <section class="de-card de-corpus" aria-labelledby="de-corpus-title">
-      <div class="de-heading"><p class="de-label">Corpus sketch</p><h2 id="de-corpus-title">Across place and time.</h2></div>
+      <div class="de-heading"><p class="de-label">Corpuses</p><h2 id="de-corpus-title">Study a collection.</h2><p class="de-description">A corpus groups books by author, subject, place or time period. CARE analyses them together to find shared ideas, differences and changes across the collection.</p></div>
       <div class="de-map">${mapMarkup()}</div>
       <div class="de-timeline" role="group" aria-label="Choose a text on the timeline">${CORPUS_SKETCH.map((book,i)=>`<button type="button" data-book="${i}" aria-pressed="${i===0}" aria-label="${escapeHTML(book.title)}, ${escapeHTML(book.date)}"><span class="de-time-dot" aria-hidden="true"></span><span>${escapeHTML(book.date)}</span></button>`).join('')}</div>
       <div class="de-book" aria-live="polite" aria-atomic="true"><div><h3 class="de-book-title"></h3><p class="de-book-meta"></p></div><a class="de-book-source" target="_blank" rel="noopener noreferrer">About this text <span aria-hidden="true">↗</span></a></div>
-      <p class="de-sketch-note">A selection of texts, not a generated corpus. Early dates and places are approximate.</p>
+      <p class="de-sketch-note">Explore this example collection by date and place. It shows the selected texts; a combined CARE analysis has not been generated. Early dates and places are approximate.</p>
     </section>`;
   const $=selector=>host.querySelector(selector);
   function paintSample(){
     const sample=samples[selectedSample];
     if(!sample)return;
     const [prose,kind]=sample.text.split(/\nRelation Type\s*[—–-]\s*/);
+    $('.de-explanation').textContent=sample.explanation;
     $('.de-claim-text').textContent=prose;
-    $('.de-claim-kind').textContent=selectedSample===2?'A saved assessment of what a strange child could become.':kind||'';
+    $('.de-claim-kind').textContent=selectedSample===2?'A proposal from the saved comparison. No new work has been generated in this example.':kind||'';
+    $('.de-saved-claim').open=false;
     $('.de-claim-ref').textContent=sample.id;
     host.querySelectorAll('[data-sample]').forEach(button=>{button.disabled=false;button.setAttribute('aria-pressed',String(Number(button.dataset.sample)===selectedSample));});
     $('[data-open-lateral]').disabled=false;
+    $('[data-show-lateral]').disabled=false;
     $('.de-lateral').dataset.mode=String(selectedSample);
   }
   function paintBook(){
@@ -110,12 +113,12 @@ export async function mountDiscoverExperiments(host,options={}){
     if(!button||!host.contains(button)||button.disabled)return;
     if(button.hasAttribute('data-sample')){selectedSample=Number(button.dataset.sample);paintSample();}
     if(button.hasAttribute('data-book')){selectedBook=Number(button.dataset.book);paintBook();}
-    if(button.hasAttribute('data-open-lateral')){
+    if(button.hasAttribute('data-open-lateral')||button.hasAttribute('data-show-lateral')){
       const sample=samples[selectedSample];
       if(!sample)return;
-      view.dispatchEvent(new view.CustomEvent('care:discover-open',{detail:{book:'hume',unit:'XR_KPR_THN',ref:sample.id}}));
-      const reader=doc.querySelector('#discover-reader');
-      if(reader){reader.scrollIntoView({behavior:view.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});reader.focus({preventScroll:true});}
+      view.dispatchEvent(new view.CustomEvent('care:discover-open',{detail:{book:'lateral',unit:'XR_KPR_THN',ref:sample.id}}));
+      const destination=doc.querySelector(button.hasAttribute('data-show-lateral')?'#discover-atlas':'#discover-reader');
+      if(destination)queueMicrotask(()=>{destination.scrollIntoView({behavior:view.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});destination.focus({preventScroll:true});});
     }
   }
   host.addEventListener('click',onClick);paintBook();
@@ -123,7 +126,7 @@ export async function mountDiscoverExperiments(host,options={}){
     let data=options.data;
     if(!data){const response=await (options.fetch||view.fetch.bind(view))(new URL('./data/library.json?v=20261005',import.meta.url));if(!response.ok)throw Error('The saved lateral could not load.');data=await response.json();}
     samples=savedLateralSamples(data);paintSample();
-  }catch(error){$('.de-claim-text').textContent='The saved lateral is temporarily unavailable.';$('.de-claim-kind').textContent='Open the public reading room to try again.';}
+  }catch(error){$('.de-explanation').textContent='The saved comparison is temporarily unavailable. Open the public reading room to try again.';}
   return {destroy(){host.removeEventListener('click',onClick);}};
 }
 
