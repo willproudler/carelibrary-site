@@ -74,3 +74,8 @@ The Discover language display comes from the application’s 189-language catalo
 The user supplied three finished PNG covers and explicitly requested their use for the public books and lateral. The PNGs in `assets/covers/` are exact copies; the native lateral tile composes its two member covers. This replaces the original typographic cover treatment documented above.
 
 Five explicitly pinned saved English machine translations of Bergson CARE sheets are included: CH_MEMA_CIDL, CH_MEMA_CID2, CH_MEMA_CID3, CH_MEMA_CI_2 and WB_MEMA. These are translations of CARE analysis, not of the original source text. The exporter verifies canonical source and translation hashes and rejects changed identities, section structure or references. No source translations, other private translations or generation service are exported. Toolbar and pane controls select existing records only; original French remains visible where no translation exists.
+
+
+## Publication retry
+
+On 5 October 2026, the completed covers and saved-language release was resubmitted after GitHub’s Actions outage left its deployment retry stuck in the queue. This documentation update requests a fresh Pages build of the existing release.
