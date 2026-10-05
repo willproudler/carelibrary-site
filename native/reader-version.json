@@ -1,8 +1,8 @@
 {
-  "version": "care-study-desk/1.68",
+  "version": "care-study-desk/1.73",
   "source": "care_platform/study_desk_component.py",
   "assets": {
-    "study-desk.css": "1eaabe4b15029d10842ed67ded694060cc1b5bb5b9422e815cd50fa5f24550ea",
-    "study-desk.mjs": "51a37d9487f2cc15c6acc38d4c02457bc817f706cb7a6c9d0e59adfd1ee54c3c"
+    "study-desk.css": "fb32d4d8ec1e17d8d4add462c80fcc698d3c6a6e1e928f58c3f5c1941b2a1035",
+    "study-desk.mjs": "14f74fdb0d974f672fe05a101592587ba58f05f7961f9756ad3736a2053cf5e2"
   }
 }

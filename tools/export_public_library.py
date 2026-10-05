@@ -1,4 +1,4 @@
-"""Export two fixed, sealed CARE readings. Never export a live/global catalogue.
+"""Export the three explicitly allowed, sealed CARE readings, never a catalogue.
 
 Run with the private CARE project's Python environment, passing its root as argv[1].
 The website itself needs neither Python nor access to the private application.
@@ -18,10 +18,12 @@ DEST = Path(__file__).resolve().parents[1] / "data"
 sys.path.insert(0, str(ROOT))
 from care_platform.lateral import load_lateral_care_record
 from scripts.align_ch_to_passages import validate_alignment
+from scripts.parse_frozen_ch import parse_ch
 from scripts.split_passages_v2 import create_passage_set, normalize_text, source_body
 
 KANT = ROOT / "care_library/historical_adoptions/HISTORICAL_08CA0D44DA3910D06024"
 HUME = ROOT / "care_library/projects/A_TREATISE_OF_HUMAN_NATURE_DAVID_HUME"
+BERGSON = ROOT / "care_library/projects/MATIERE_ET_MEMOIRE_HENRI_BERGSON"
 SPECS = [
     dict(slug="kant", title="The Critique of Pure Reason", author="Immanuel Kant",
          edition="J. M. D. Meiklejohn translation · Gutenberg eText #4280",
@@ -34,6 +36,13 @@ SPECS = [
          source_url="https://www.gutenberg.org/ebooks/4705", project="A_TREATISE_OF_HUMAN_NATURE_DAVID_HUME",
          root=HUME, lock=HUME / "care.lock.json", seal="SEAL_THN_B3917927880001FF07EB",
          year="1739–1740", description="How do perceptions become beliefs, a self, and a world held in common?"),
+    dict(slug="bergson", title="Matière et mémoire", author="Henri Bergson",
+         edition="Original French · retained transcription of the 1939 text",
+         source_url="https://classiques.uqam.ca/classiques/bergson_henri/matiere_et_memoire/matiere_et_memoire.html",
+         project="MATIERE_ET_MEMOIRE_HENRI_BERGSON", root=BERGSON,
+         lock=BERGSON / "care.lock.json", seal="SEAL_MEMA_71BE568F831CC37C00A0",
+         year="1896", language_code="fr", language_name="Français",
+         description="Comment la mémoire éclaire-t-elle la relation du corps à l’esprit ?"),
 ]
 
 def read(path):
@@ -168,10 +177,49 @@ def sections(record, traces=None, grounding=None):
         group["items"].append(item)
     return list(grouped.values())
 
+def sealed_grounding(spec, source_info, artifacts):
+    """Export saved passage alignments only when they match the sealed source/CH."""
+    packets, alignments = {}, {}
+    for raw_id, source in source_info.items():
+        uid = source["ch_unit_id"]
+        artifact = artifacts[uid]
+        folder = spec["root"] / "grounding_revisions" / uid / artifact["revision_id"]
+        packet_path = folder / f"{raw_id}_v1.json"
+        if not packet_path.exists():
+            continue
+        packet = read(packet_path)
+        frozen = read(folder / f"{uid}_FROZEN_ITEMS.json")
+        aligned = read(folder / f"{uid}_PASSAGE_TRACES_v1.json")
+        source_path = spec["root"] / artifacts[raw_id]["markdown_path"]
+        chapter_path = spec["root"] / artifact["json_path"]
+        require(sha(source_path) == artifacts[raw_id]["markdown_sha256"], f"{raw_id}: source differs from seal")
+        require(sha(chapter_path) == artifact["json_sha256"], f"{uid}: chapter differs from seal")
+        normalized = normalize_text(source_body(source_path.read_text(encoding="utf-8")))
+        require(hashlib.sha256(normalized.encode()).hexdigest() == packet["passage_set"]["source_checksum"],
+                f"{raw_id}: grounding uses a different source")
+        words = lambda value: re.sub(r"\s+", " ", value).strip()
+        require(words("\n\n".join(p["text"] for p in packet["passages"])) == words(normalized),
+                f"{raw_id}: passage wording changed")
+        chapter_markdown = spec["root"] / artifact["markdown_path"]
+        require(sha(chapter_markdown) == artifact["markdown_sha256"], f"{uid}: chapter Markdown differs from seal")
+        require(frozen == parse_ch(chapter_markdown.read_text(encoding="utf-8")), f"{uid}: frozen reading differs from sealed Markdown")
+        require(not validate_alignment(frozen, packet, aligned), f"{uid}: invalid saved passage alignment")
+        metadata = aligned["alignment_metadata"]
+        require(metadata["ch_content_hash"] == artifact["markdown_sha256"] and
+                metadata["passage_set_checksum"] == packet["passage_set"]["passage_set_checksum"] and
+                metadata["passage_set_id"] == packet["passage_set"]["passage_set_id"], f"{uid}: alignment identity mismatch")
+        packets[raw_id] = packet
+        for row in aligned["alignments"]:
+            alignments[row["care_item_id"]] = dict(type=row["trace_type"], confidence=row["confidence"],
+                note=row.get("alignment_note") or "", review="unreviewed", method="saved-passage-alignment",
+                revision=artifact["revision_id"], passage_ids=row["passage_ids"])
+    require(len(packets) == len(source_info), "Bergson grounding is incomplete")
+    return packets, alignments
+
 def export(require_kant_grounding=False):
     con = sqlite3.connect(f"file:{ROOT / 'care_library/care.db'}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
-    result = dict(format="care-public-library/1", exported="2026-10-02", works=[])
+    result = dict(format="care-public-library/1", exported="2026-10-05", works=[])
     files = []
     for spec in SPECS:
         lock = read(spec["lock"])
@@ -182,7 +230,13 @@ def export(require_kant_grounding=False):
             (spec["project"], spec["seal"]))]
         assert len(records) == len(graph), (spec["slug"],len(records),len(graph))
         by_id = {r["unit_id"]:r for r in records}
+        seal = read(spec["root"] / "seals" / f"{spec['seal']}.json")
+        pins = {row["unit_id"]:row for row in seal["units"]}
+        for uid, artifact in by_id.items():
+            require(uid in pins and all(artifact[key] == pins[uid][key] for key in ("json_sha256", "markdown_sha256")),
+                    f"{uid}: published record differs from pinned seal")
         work = {k:spec[k] for k in ("slug","title","author","edition","source_url","year","description")}
+        work.update(language_code=spec.get("language_code", "en"), language_name=spec.get("language_name", "English"))
         work.update(id=lock["work_id"], seal=spec["seal"], units=[], sources=[])
         packets, grounding, grounding_units = {}, {}, {}
         if spec["slug"] == "kant":
@@ -190,6 +244,8 @@ def export(require_kant_grounding=False):
             require(not require_kant_grounding or summary["complete"],
                     f"Kant grounding incomplete: {summary['completed_chapters']}/{summary['expected_chapters']}")
             work["grounding"] = summary
+        elif spec["slug"] == "bergson":
+            packets, grounding = sealed_grounding(spec, source_info, by_id)
         trace_map = {}
         if spec["slug"] == "hume":
             for r in con.execute("SELECT care_item_id, passage_id, trace_type, review_status FROM passage_traces WHERE care_item_id LIKE 'CH_THN_%'"):

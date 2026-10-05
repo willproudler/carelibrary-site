@@ -1,6 +1,6 @@
-import mountReader from './native/study-desk.mjs?v=1.68';
-import mountViewer from './native/reference-viewer.mjs';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs';
+import mountReader from './native/study-desk.mjs?v=1.73';
+import mountViewer from './native/reference-viewer.mjs?v=20261005';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261005';
 import {searchLibrary} from './library-core.mjs';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
@@ -12,9 +12,9 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const response=await fetch('./data/library.json');if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
+ const response=await fetch('./data/library.json?v=20261005');if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
  const data=await response.json(),adapter=createPublicReaderAdapter(data),{index}=adapter;
- const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css?v=1.68','./native/public-scope.css','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
+ const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css?v=1.73','./native/public-scope.css','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
  shadow.innerHTML=`<style>${css}\n${scope}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div>`;
  // CARE's viewer deliberately uses the document surface (isolate_styles=False).
@@ -26,8 +26,9 @@ async function start(){
  saved.bookmarks=(saved.bookmarks||[]).filter(row=>index.units.has(row.care_unit_id));saved.favourites=(saved.favourites||[]).filter(id=>index.nodes.has(id));
  const bookStates=new Map();
  let readingMenu=null;
- const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,publication_year:Number.parseInt(work.year),content_kind:'book',has_source:true,has_care:true,layers:['WB','MC','CL','CH'],cloth:work.slug==='kant'?'#303b4c':'#3b4531',foil:'#cf9b61',language_code:'en',language_name:'English'}));
+ const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,publication_year:Number.parseInt(work.year),content_kind:'book',has_source:true,has_care:true,layers:[...new Set(work.units.map(unit=>unit.layer))],cloth:work.slug==='kant'?'#303b4c':work.slug==='bergson'?'#50403c':'#3b4531',foil:'#cf9b61',language_code:work.language_code||'en',language_name:work.language_name||'English'}));
  const fields=[adapter.savedConnection];
+ const lateralBooks=data.works.filter(work=>adapter.savedConnection.members.some(member=>member.id===work.id));
  function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return '#'+p;}
  const baseReferences=[...index.nodes.values()].filter(n=>['claim','passage'].includes(n.kind)).map(node=>{
   const row=adapter.card(node.id),citation=[node.work?.author,node.work?.title||data.lateral.title,node.id].filter(Boolean).join(', ')+'.';
@@ -42,7 +43,7 @@ async function start(){
   const el=$('#open-books');el.hidden=!opened.length;
   el.innerHTML=`<span class="open-label">${opened.includes(data.lateral.id)?'OPEN READINGS':'OPEN BOOKS'}</span>`+opened.map(key=>{
    const w=adapter.workFor(key),kind=w?(w.content_kind||'work'):'lateral',style=READING_STYLES[kind]||READING_STYLES.work,title=w?.title||data.lateral.title,href=w?'#book='+w.slug:'#lateral='+data.lateral.id,active=view==='workspace'&&currentKey()===key;
-   return `<span class="open-tab ${active?'active':''}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${href}"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span></a><button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button><button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
+   return `<span class="open-tab ${active?'active':''}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${href}"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span></a>${!w?`<button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button>`:''}<button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
   }).join('');
   document.querySelectorAll('.app-header [data-page]').forEach(el=>el.classList.toggle('active',(view==='library'&&el.dataset.page==='library')||(view==='laterals'&&el.dataset.page==='laterals')));
  }
@@ -74,7 +75,7 @@ async function start(){
   const same=readingMenu?.anchor===anchor;closeReadingMenu();if(same)return;
   const work=adapter.workFor(key),element=document.createElement('div');element.className='reading-menu';element.setAttribute('role','menu');element.setAttribute('aria-label',work?'Book options':'Close comparison');
   element.innerHTML=`<button role="menuitem" data-close-book="${esc(key)}">Close ${work?'this book':'lateral'}</button>`;
-  if(!work)element.innerHTML+=data.works.map(keep=>{const close=data.works.find(other=>other.id!==keep.id);return `<button role="menuitem" data-keep-book="${esc(keep.id)}"><strong>Close ${esc(close.title)}</strong><small>Keep ${esc(keep.title)} open</small></button>`;}).join('');
+  if(!work)element.innerHTML+=lateralBooks.map(keep=>{const close=lateralBooks.find(other=>other.id!==keep.id);return `<button role="menuitem" data-keep-book="${esc(keep.id)}"><strong>Close ${esc(close.title)}</strong><small>Keep ${esc(keep.title)} open</small></button>`;}).join('');
   document.body.append(element);readingMenu={anchor,element};anchor.setAttribute('aria-expanded','true');
   const rect=anchor.getBoundingClientRect(),width=Math.min(330,innerWidth-16);Object.assign(element.style,{width:width+'px',left:Math.max(8,Math.min(innerWidth-width-8,rect.left))+'px',top:Math.min(rect.bottom+6,innerHeight-element.offsetHeight-8)+'px'});
   element.onclick=event=>{const keep=event.target.closest('[data-keep-book]'),close=event.target.closest('[data-close-book]');if(keep)keepBook(keep.dataset.keepBook);else if(close)closeTab(close.dataset.closeBook);};
@@ -147,7 +148,7 @@ async function start(){
  document.querySelector('[data-page=search]').onclick=()=>{$('#search-dialog').showModal();$('#search-query').focus();};
  document.querySelector('[data-page=saved]').onclick=()=>{const nodes=[...saved.bookmarks.map(row=>index.nodes.get(row.care_unit_id)),...saved.favourites.map(id=>index.nodes.get(id))].filter(Boolean);$('#saved-results').innerHTML=nodes.length?nodes.map(n=>resultLink(n)).join(''):'<p>No saved readings yet. Use the bookmark controls while reading.</p>';$('#saved-dialog').showModal();};
  function resultLink(n){return `<a class="result" href="${urlFor(n,{route:n.kind==='claim'||n.kind==='passage'})}"><small>${esc(n.work?.title||data.lateral.title)} · ${esc(n.unit.layer)} · ${esc(n.id)}</small><strong>${esc(n.section||n.title||n.unit.title)}</strong>${n.text?`<p>${esc(n.text.slice(0,250))}${n.text.length>250?'…':''}</p>`:''}</a>`;}
- $('#search-query').oninput=()=>{const q=$('#search-query').value.trim(),nodes=searchLibrary(index,q,60);$('#search-status').textContent=q?(nodes.length?`${nodes.length===60?'First ':''}${nodes.length} matching passages and claims`:'No matches. Try a shorter phrase.'):'Search both source texts and their saved readings.';$('#search-results').innerHTML=nodes.map(resultLink).join('');};
+ $('#search-query').oninput=()=>{const q=$('#search-query').value.trim(),nodes=searchLibrary(index,q,60);$('#search-status').textContent=q?(nodes.length?`${nodes.length===60?'First ':''}${nodes.length} matching passages and claims`:'No matches. Try a shorter phrase.'):'Search all three source texts and their saved readings.';$('#search-results').innerHTML=nodes.map(resultLink).join('');};
  document.querySelectorAll('[data-close-dialog]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
  document.querySelectorAll('dialog').forEach(dialog=>{dialog.addEventListener('click',e=>{if(e.target.closest('.result'))dialog.close();if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});});
  addEventListener('hashchange',routeFromURL);routeFromURL();

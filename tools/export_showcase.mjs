@@ -6,7 +6,7 @@ const data=JSON.parse(fs.readFileSync(location,'utf8')),index=indexLibrary(data)
 for(const work of data.works){
  let node=index.nodes.get(work.units.find(unit=>unit.layer==='WB').sections[0].items[0].id);
  const chain=[node];
- for(const layer of ['MC','CL','CH','SOURCE']){
+ for(const layer of ['MC','CL','CH','SOURCE'].filter(layer=>layer==='SOURCE'||work.units.some(unit=>unit.layer===layer))){
   node=incoming(node).map(link=>index.nodes.get(link.id)).find(row=>row.unit.layer===layer&&row.work.id===work.id);
   if(!node)throw Error(`No complete saved showcase branch for ${work.slug}`);
   chain.unshift(node);

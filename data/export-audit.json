@@ -13,12 +13,19 @@
       "sections": 27,
       "units": 40,
       "items": 4197
+    },
+    {
+      "slug": "bergson",
+      "seal": "SEAL_MEMA_71BE568F831CC37C00A0",
+      "sections": 6,
+      "units": 9,
+      "items": 897
     }
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 9055718,
-  "sha256": "8ba9a930ec6abcfc38de226bc5e2524efb3b44efe86e8acf7a08053f481ea260",
+  "bytes": 10910551,
+  "sha256": "774f98783348ed291f6f36aefb366eade6851aadee587144644d86bb896ec621",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",

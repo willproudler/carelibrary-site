@@ -103,7 +103,7 @@ function setup(parentElement, root, setTriggerValue) {
       if (ref.kind !== "axiom" && !runtime.sheetContext && !runtime.routeDownload?.url && runtime.surface === "tools") { runtime.surface="read";runtime.toolScreen="home" }
       runtime.title.textContent = ref.title || ref.id
       runtime.meta.textContent = Array.isArray(ref.metadata) ? ref.metadata.filter(Boolean).join(" · ") : ""
-      if(ref.reading_block_html)runtime.text.innerHTML = ref.reading_block_html
+      if(typeof ref.reading_block_html === "string")runtime.text.innerHTML = ref.reading_block_html
       else runtime.text.textContent = ref.text || "No exact wording is registered for this reference."
       runtime.citation.textContent = ref.citation || ""
       runtime.openLink.href = ref.destination || "/"
@@ -280,7 +280,7 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.onPrevious = () => runtime.move(-1)
   runtime.onNext = () => runtime.move(1)
   runtime.onHistoryClear = () => { try { window.sessionStorage.removeItem(runtime.historyKey || HISTORY_KEY) } catch (_) {};runtime.renderHistory() }
-  runtime.onCopyText = () => runtime.copy(runtime.selected?.text)
+  runtime.onCopyText = () => runtime.copy(runtime.selected?.reading_text ?? runtime.selected?.text)
   runtime.onCopyId = () => runtime.copy(runtime.selected?.id, "Copied CARE ID")
   runtime.onCopyCitation = () => runtime.copy(runtime.selected?.citation, "Copied full reference")
   runtime.onCopyShortCitation = () => runtime.copy(runtime.selected?.citation_short, "Copied short note")

@@ -33,6 +33,7 @@ export function createPublicReaderAdapter(data) {
   const index = indexLibrary(data);
   const worksById = new Map(data.works.map(work => [work.id, work]));
   const lateral = data.lateral;
+  const lateralWorks = data.works.filter(work => work.units.some(unit => lateral.parents.includes(unit.id)));
   const unitCache = new Map(), chapterCache = new Map();
   const workFor = value => worksById.get(value) || index.works.get(value);
   const requiredWork = value => {
@@ -78,7 +79,7 @@ export function createPublicReaderAdapter(data) {
         items:array(section.items).map((item, position) => nativeItem(item, section, position, original)),
       })),
       identity:{title:original.title, kicker:original.layer === 'CH' ? `CHAPTER ${original.order}` : ({CL:'CLUSTER',MC:'META-CLUSTER',WB:'WHOLE BOOK',XR:'LATERAL'}[original.layer] || original.layer),
-        context:original.work?.title || `${data.works.map(work => work.title).join(' × ')} · Saved diagnostic reading`},
+        context:original.work?.title || `${lateralWorks.map(work => work.title).join(' × ')} · Saved diagnostic reading`},
     };
     projected.item_count = projected.sections.reduce((sum, section) => sum + section.items.length, 0);
     unitCache.set(id, projected);
@@ -218,11 +219,11 @@ export function createPublicReaderAdapter(data) {
       version:original.revision || '', sections:reading.sections,
       items:reading.sections.flatMap(section => section.items),
       macro_level:mcLevel(original), provenance_verified:true,
-      source_work_titles:original.id === lateral.id ? data.works.map(work => work.title) : [],
+      source_work_titles:original.id === lateral.id ? lateralWorks.map(work => work.title) : [],
     };
   }
 
-  const members = data.works.map(work => ({id:work.id,work_id:work.id,title:work.title,author:work.author,
+  const members = lateralWorks.map(work => ({id:work.id,work_id:work.id,title:work.title,author:work.author,
     source_unit_ids:work.units.map(row => row.id),cloth:work.slug === 'kant' ? '#303b4c' : '#3b4531',foil:'#d6b177'}));
   const savedConnection = {id:lateral.id,field:'lateral',title:lateral.title,description:'Saved diagnostic reading with its recorded source routes.',
     layers:['XR'],members,member_count:members.length,member_titles:members.map(member => member.title),version:lateral.revision};
@@ -237,7 +238,7 @@ export function createPublicReaderAdapter(data) {
       ...savedConnection,origin_work_id:work.id,hide_xa:true,
       pane_id:ref?.source_pane || paneId(lateral),reference:ref,selection:state.connectionSelection || null,
       bundle:{id:lateral.id,field:'lateral',title:lateral.title,origin_work_id:work.id,members,panes,route_panes:routePanes},
-      other_stacks:data.works.filter(row => row.id !== work.id).map(row => {
+      other_stacks:lateralWorks.filter(row => row.id !== work.id).map(row => {
         const selected = state.connectionBooks?.[row.id] || {};
         return {...stack(row.id, selected),reference:selected.referenceId ? reference(selected.referenceId, selected.routeMode, {workId:row.id}) : null};
       }),
@@ -264,7 +265,7 @@ export function createPublicReaderAdapter(data) {
       outline_units:array(state.outlineUnits).filter(row => row.work_id === work.id),
       build_versions:[],selected_build_id:work.id,version_action_result:'',
       bookmarks:array(state.bookmarks),favourite_axiom_ids:array(state.favouriteAxiomIds),
-      connection_options:[{...savedConnection,origin_work_id:work.id}],
+      connection_options:lateralWorks.some(member=>member.id===work.id)?[{...savedConnection,origin_work_id:work.id}]:[],
       discovery_books:[],connection:connection(work,state),hide_xa:true,
       reviewer:'Reader',rating:0,workspace_managed:true,workspace_context:context,
     };

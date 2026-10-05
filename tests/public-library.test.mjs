@@ -5,12 +5,12 @@ import {indexLibrary,incoming,selectionFor,LAYERS,searchLibrary} from '../librar
 import {createPublicReaderAdapter} from '../public-reader-adapter.mjs';
 const raw=fs.readFileSync(new URL('../data/library.json',import.meta.url),'utf8');
 const data=JSON.parse(raw),index=indexLibrary(data);
-test('the release contains only the two authorised books and their saved lateral',()=>{
- assert.deepEqual(data.works.map(w=>w.slug),['kant','hume']);assert.equal(data.lateral.id,'XR_KPR_THN');
+test('the release contains only the three authorised books and their saved lateral',()=>{
+ assert.deepEqual(data.works.map(w=>w.slug),['kant','hume','bergson']);assert.equal(data.lateral.id,'XR_KPR_THN');
  assert.deepEqual(data.lateral.parents,['WB_THN','WB_KPR']);
- assert.equal(data.works.reduce((n,w)=>n+w.units.length,0),70);
+ assert.equal(data.works.reduce((n,w)=>n+w.units.length,0),79);
  assert.doesNotMatch(raw,/\/Users\/|api_key|apiKey|encrypted_api|access_token|Anna_s_Archive/);
- for(const n of index.nodes.values())assert.match(n.id,/^(?:(?:RAW|CH|CL|MC|WB)_(?:KPR|THN)(?:_|:|$)|XR_KPR_THN)/);
+ for(const n of index.nodes.values())assert.match(n.id,/^(?:(?:RAW|CH|CL|MC|WB)_(?:KPR|THN|MEMA)(?:_|:|$)|XR_KPR_THN)/);
 });
 test('all saved references and lateral parent pins resolve inside the public versions',()=>{
  for(const n of index.nodes.values())for(const link of incoming(n))assert.ok(index.nodes.has(link.id),`${n.id} -> ${link.id}`);
@@ -18,7 +18,7 @@ test('all saved references and lateral parent pins resolve inside the public ver
 });
 test('every retained section and sheet can be selected without losing any layer',()=>{
  for(const w of data.works)for(const u of [...w.sources,...w.units]){
-  const selected=selectionFor(w,u.id);for(const l of LAYERS)assert.ok(selected[l],u.id+' '+l);
+  const selected=selectionFor(w,u.id);for(const l of ['SOURCE',...new Set(w.units.map(row=>row.layer))])assert.ok(selected[l],u.id+' '+l);
   assert.equal(selected[u.layer||'SOURCE'].id,u.id);
   assert.equal(selected.SOURCE.chapter_id,selected.CH.id);
  }
@@ -51,7 +51,7 @@ test('native CARE projection retains all sheets and source paragraphs',()=>{
  const a=createPublicReaderAdapter(data);
  for(const w of data.works)for(const u of [...w.sources,...w.units]){
   const payload=a.workspace({workId:w.id,unitId:u.layer?u.id:'',rawUnitId:u.layer?'':u.id});
-  assert.equal(payload.stack.care_path.length,4);assert.equal(payload.stack.chapters.length,w.sources.length);
+  assert.equal(payload.stack.care_path.length,new Set(w.units.map(row=>row.layer)).size);assert.equal(payload.stack.chapters.length,w.sources.length);
   const expanded=a.outline(w.id,{id:u.id,layer:u.layer||'SOURCE',request_id:'check'});assert.ok(!expanded.error);
   if(u.layer)assert.deepEqual(expanded.unit.sections.flatMap(s=>s.items.map(i=>i.text)),u.sections.flatMap(s=>s.items.map(i=>i.text)));
   else assert.deepEqual(expanded.chapter.passages.map(p=>p.text),u.paragraphs.map(p=>p.text));
@@ -67,6 +67,20 @@ test('native routes use recorded edges, maintain book boundaries and expose both
  }
  const p=a.workspace({workId:'kant',connectionId:data.lateral.id,connectionReferenceId:data.lateral.sections[0].items[0].id});
  assert.equal(p.connection.members.length,2);assert.ok(p.connection.reference.route_edges.length);
- assert.deepEqual(new Set(Object.values(p.connection.reference.route_layers).flat().filter(n=>n.work_id).map(n=>n.work_id)),new Set(data.works.map(w=>w.id)));
+ assert.deepEqual(new Set(Object.values(p.connection.reference.route_layers).flat().filter(n=>n.work_id).map(n=>n.work_id)),new Set(data.works.filter(w=>w.units.some(u=>data.lateral.parents.includes(u.id))).map(w=>w.id)));
  for(const kind of ['upload','generate','archive_book','delete']){const s={workId:'kant'};assert.equal(a.reduce(s,kind,{}),s);}
+});
+
+test('Bergson preserves its French edition and three-level reading without joining the Kant–Hume lateral',()=>{
+ const b=data.works.find(work=>work.slug==='bergson'),a=createPublicReaderAdapter(data);
+ assert.equal(b.language_code,'fr');assert.equal(b.seal,'SEAL_MEMA_71BE568F831CC37C00A0');
+ assert.equal(b.sources.length,6);assert.equal(b.units.length,9);
+ assert.deepEqual(new Set(b.units.map(unit=>unit.layer)),new Set(['CH','CL','WB']));
+ assert.equal(a.workspace({workId:b.id}).connection_options.length,0);
+ assert.deepEqual(new Set(a.savedConnection.members.map(member=>member.id)),new Set(data.works.filter(work=>work.slug!=='bergson').map(work=>work.id)));
+ for(const u of b.units.filter(unit=>unit.layer==='CH'))for(const section of u.sections)for(const item of section.items){
+  assert.equal(item.grounding.review,'unreviewed');
+  for(const passage of item.passages)assert.equal(index.nodes.get(passage.id).work.id,b.id);
+ }
+ const route=a.reference('CH_MEMA_PHB0:AS1','both');assert.ok(route.route_layers.SOURCE.length);assert.equal(route.route_layers.MC.length,0);
 });

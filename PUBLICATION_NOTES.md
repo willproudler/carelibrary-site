@@ -57,3 +57,14 @@ Preserve the existing `CNAME` and Pages deployment. The release should go to `wi
 Eight automated checks pass for the allowlist, all exported references, all 47 source sections and 70 CARE units, immutable reading text, grounding completeness, real showcase chains, native projections, route closure and inert authoring events. Browser review covered the native shelf and panes, outline expansion, source routes, the two-book saved lateral, reference citations and review status, search, saved-reading persistence, and both real showcase examples. The outer page fits a 390px mobile viewport; the native reading track scrolls horizontally within it.
 
 GitHub connector read access worked, but repository writes returned `Resource not accessible by integration`. GitHub Desktop is installed and its Settings → Accounts screen confirmed `willproudler` is signed in. The correct local checkout is now added in GitHub Desktop on branch `website/reading-journey`; publishing and deployment are the remaining release steps. Do not create a new repository or change the domain.
+
+
+## 5 October 2026 addition
+
+The user explicitly requested publication of the redesigned Discover page, addition of Bergson and synchronisation with the actual shelf and reader. The release allowlist is now KPR, THN and MEMA; the sole saved lateral remains XR_KPR_THN.
+
+Bergson: *Matière et mémoire*, original French, first published 1896; retained transcription identifies the 1939 text described by Les Classiques des sciences sociales. Source: https://classiques.uqam.ca/classiques/bergson_henri/matiere_et_memoire/matiere_et_memoire.html . Bergson died 4 January 1941 (https://www.nobelprize.org/prizes/literature/1927/bergson/biographical/); the UK ordinary literary term is 70 years after death (https://www.gov.uk/copyright/how-long-copyright-lasts). The public export contains the six reviewed main-text sections, not the modern introductory material, EPUB container or its cover. Existing transcription artefacts are preserved as part of the saved reading, rather than silently rewriting its evidence.
+
+Pinned seal: SEAL_MEMA_71BE568F831CC37C00A0. Six RAW, six CH, two CL, no MC, WB_MEMA@R002; 897 CARE items. The exporter verifies the seal’s artifact hashes, reproduces the frozen CH from sealed Markdown, checks the saved source checksum and passage wording, and validates saved alignment identities. No model call or new grounding is run. All references resolve within the three-work export.
+
+The Discover language display comes from the application’s 189-language catalogue. It describes requestable machine translation languages, not equal translation quality, installed prompt localisations, or translation service availability on the static website. The multilingual source collection is English and French. History illustrations were removed at the user’s request. The corpus panel is explicitly a bibliographic selection sketch; it contains no private CARE readings.

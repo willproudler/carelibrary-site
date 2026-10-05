@@ -96,6 +96,32 @@
         "title": "A Treatise of Human Nature",
         "text": "The governing problem is how perception-bound human nature can generate knowledge, factual reality, selfhood, affective order, property, morality, and political authority without access to substance, intrinsic power, natural right, or an external tribunal."
       }
+    ],
+    "bergson": [
+      {
+        "id": "RAW_MEMA_PHB0:P0002",
+        "layer": "SOURCE",
+        "title": "Par Henri Bergson",
+        "text": "Ce livre affirme la réalité de l'esprit, la réalité de la matière, et essaie de déterminer le rapport de l'un à l'autre sur un exemple précis, celui de la mémoire. Il est donc nettement dualiste. Mais, d'autre part, il envisage corps et esprit de telle manière qu'il espère atténuer beaucoup, sinon supprimer, les difficultés théoriques que le dualisme a toujours soulevées et qui font que, suggéré par la conscience immédiate, adopté par le sens commun, il est fort peu en honneur parmi les philosophes."
+      },
+      {
+        "id": "CH_MEMA_PHB0:AS1",
+        "layer": "CH",
+        "title": "Par Henri Bergson",
+        "text": "Le texte cherche à déterminer le rapport esprit-corps sans abolir la réalité distincte de l’esprit et de la matière."
+      },
+      {
+        "id": "CL_MEMA_01:AS-01",
+        "layer": "CL",
+        "title": "Cluster 1",
+        "text": "Le problème du rapport esprit-corps est reconstruit à partir de la coexistence d’un univers acentrique d’images et d’une perception centrée sur un corps, sans réduction de l’un de ces ordres à l’autre."
+      },
+      {
+        "id": "WB_MEMA:AS-B01",
+        "layer": "WB",
+        "title": "Matière et mémoire",
+        "text": "L’union psychophysique est reconstruite à partir d’un champ impersonnel d’images et d’un corps qui y introduit sélection, retard et orientation, sans réduction de l’esprit à la matière ni du monde à la représentation."
+      }
     ]
   },
   "books": [
@@ -112,6 +138,13 @@
       "author": "David Hume",
       "edition": "Original English · Gutenberg eText #4705 · retained 2012 transcription",
       "description": "How do perceptions become beliefs, a self, and a world held in common?"
+    },
+    {
+      "slug": "bergson",
+      "title": "Matière et mémoire",
+      "author": "Henri Bergson",
+      "edition": "Original French · retained transcription of the 1939 text",
+      "description": "Comment la mémoire éclaire-t-elle la relation du corps à l’esprit ?"
     }
   ],
   "lateral": {

@@ -1,0 +1,60 @@
+.discover-atlas {
+  --atlas-ink: #eee8dc;
+  --atlas-muted: #9ca29f;
+  --atlas-line: #67756b;
+  position: relative;
+  color: var(--atlas-ink);
+  border: 1px solid #ddd9c41c;
+  border-radius: 5px;
+  background: #0e1213;
+  overflow: hidden;
+}
+.discover-atlas__scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: #647168 #131718;
+  scrollbar-width: thin;
+}
+.discover-atlas__scroll:focus-visible { outline: 2px solid #dca36a; outline-offset: -3px; }
+.discover-atlas__svg { display: block; width: 100%; height: auto; overflow: visible; }
+.discover-atlas--portrait .discover-atlas__svg { max-width: 440px; margin-inline: auto; }
+.discover-atlas--portrait .discover-atlas__book { font-size: 11px; }
+.discover-atlas--portrait .discover-atlas__level { font-size: 10px; letter-spacing: .1px; }
+.discover-atlas--portrait .discover-atlas__scroll { overflow-x: hidden; }
+.discover-atlas__author { fill: var(--atlas-ink); font-family: Georgia, 'Times New Roman', serif; font-size: 29px; letter-spacing: -.7px; }
+.discover-atlas__book { fill: var(--atlas-muted); font-family: inherit; font-size: 11px; }
+.discover-atlas__level { fill: #aab0aa; font-family: inherit; font-size: 10px; letter-spacing: .7px; }
+.discover-atlas__guide { stroke: #81938a0b; stroke-width: 1; }
+.discover-atlas__edge { fill: none; stroke: var(--atlas-line); stroke-width: .9; opacity: .26; transition: stroke .2s, opacity .2s, stroke-width .2s; }
+.discover-atlas__edge.is-route { stroke: #dab180; stroke-width: 1.65; opacity: .9; }
+.discover-atlas__node { cursor: pointer; outline: none; }
+.discover-atlas__hit { fill: transparent; stroke: none; }
+.discover-atlas__point { fill: var(--atlas-node); stroke: #0e1213; stroke-width: 1.6; opacity: .63; transition: fill .2s, opacity .2s, stroke .2s; }
+.discover-atlas__node--source .discover-atlas__point { fill: #111816; stroke: var(--atlas-node); stroke-width: 1.3; }
+.discover-atlas__node.is-route .discover-atlas__point { opacity: 1; stroke: #e9c598; stroke-width: 1.4; }
+.discover-atlas__node.is-selected .discover-atlas__point { fill: #f5d0a0; stroke: #f5d0a0; }
+.discover-atlas__node:hover .discover-atlas__point,
+.discover-atlas__node:focus-visible .discover-atlas__point { opacity: 1; stroke: #f7ead8; stroke-width: 2.4; }
+.discover-atlas__node:focus-visible .discover-atlas__hit { stroke: #f7ead8; stroke-width: 1; }
+.discover-atlas__node--xr .discover-atlas__point { fill: #181d1b; stroke: #a78a65; stroke-width: 1; opacity: 1; }
+.discover-atlas__lateral-mark { fill: none; stroke: #d4b083; stroke-width: 1.2; }
+.discover-atlas__lateral-label { fill: #bcaa91; font-family: inherit; font-size: 11px; letter-spacing: .4px; }
+.discover-atlas__footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 0 30px; padding: 21px 0; border-top: 1px solid #d6d5bf16; }
+.discover-atlas__selection { display: grid; gap: 5px; min-width: 0; }
+.discover-atlas__selection-label { color: #b3a18a; font-size: 10px; letter-spacing: 1.25px; text-transform: uppercase; }
+.discover-atlas__selection-title { color: var(--atlas-ink); font-family: Georgia, 'Times New Roman', serif; font-size: 19px; line-height: 1.35; }
+.discover-atlas__open { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 20px; padding: 9px 0; background: transparent; border: 0; border-bottom: 1px solid #bc976059; border-radius: 0; color: #e7ceb0; cursor: pointer; font: inherit; font-size: 13px; line-height: 1.4; }
+.discover-atlas__open:hover { color: #fff0d9; border-color: #bc9760; }
+.discover-atlas__open:focus-visible { outline: 2px solid #dca36a; outline-offset: 5px; }
+.discover-atlas__note { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; padding: 14px 30px; margin: 0; color: #969e97; background: #ffffff02; border-top: 1px solid #d6d5bf0e; font-size: 10px; line-height: 1.65; }
+.discover-atlas__error { padding: 30px; color: #c8c6bd; }
+.discover-atlas__error a { color: #e4bc8e; }
+@media (max-width: 700px) {
+  .discover-atlas__footer { margin: 0 18px; padding: 18px 0; }
+  .discover-atlas__selection-title { font-size: 17px; }
+  .discover-atlas__open { gap: 9px; font-size: 12px; }
+  .discover-atlas__note { padding: 12px 18px; font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .discover-atlas__edge, .discover-atlas__point { transition: none; }
+}

@@ -1,9 +1,9 @@
 # CARE Library
 
-> An open reading room for Kant and Hume, with original source texts, saved CARE interpretations and recorded connections.
+> An open reading room for Kant, Hume and Bergson, with original source texts, saved CARE interpretations and recorded connections.
 
 CARE means Canonical Axiomatic Reduction Engine, created by William Proudler.
-The homepage offers two fixed public readings: Kant’s Critique of Pure Reason (Meiklejohn translation, Gutenberg eText 4280) and Hume’s Treatise of Human Nature (Gutenberg eText 4705, retained 2012 transcription).
+The homepage offers three fixed public readings: Kant’s Critique of Pure Reason (Meiklejohn translation, Gutenberg eText 4280) and Hume’s Treatise of Human Nature (Gutenberg eText 4705, retained 2012 transcription), plus Bergson’s Matière et mémoire in original French.
 The source texts are assessed as public domain in the UK and labelled public domain in the USA by Gutenberg; no worldwide claim is made. CARE’s saved AI-assisted interpretations are distinct from the original texts and their copyright status.
 The public reader includes Source, CH, CL, MC, WB, outline, search, comparison and a saved diagnostic lateral XR_KPR_THN R01. It starts no AI runs and accepts no uploaded books. No account is needed. The separate beta login remains unconnected.
 
