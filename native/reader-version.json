@@ -3,6 +3,8 @@
   "source": "care_platform/study_desk_component.py",
   "assets": {
     "study-desk.css": "fb32d4d8ec1e17d8d4add462c80fcc698d3c6a6e1e928f58c3f5c1941b2a1035",
-    "study-desk.mjs": "14f74fdb0d974f672fe05a101592587ba58f05f7961f9756ad3736a2053cf5e2"
-  }
+    "study-desk.mjs": "14f74fdb0d974f672fe05a101592587ba58f05f7961f9756ad3736a2053cf5e2",
+    "reading-views.mjs": "7785b36c499bd79e6f3406e662aa8a1a66c5ff098868f0c2bd827545f44fb9bf"
+  },
+  "reading_presentation": "care-item-presentation/7"
 }

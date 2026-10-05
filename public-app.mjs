@@ -1,6 +1,6 @@
 import mountReader from './native/study-desk.mjs?v=1.73';
 import mountViewer from './native/reference-viewer.mjs?v=20261005';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261005-covers2';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261006';
 import {searchLibrary} from './library-core.mjs';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
@@ -152,7 +152,7 @@ async function start(){
  document.querySelector('[data-page=library]').addEventListener('click',event=>{event.preventDefault();if(location.hash)location.hash='';else{view='library';paint();}});
  document.querySelector('[data-page=search]').onclick=()=>{$('#search-dialog').showModal();$('#search-query').focus();};
  document.querySelector('[data-page=saved]').onclick=()=>{const nodes=[...saved.bookmarks.map(row=>index.nodes.get(row.care_unit_id)),...saved.favourites.map(id=>index.nodes.get(id))].filter(Boolean);$('#saved-results').innerHTML=nodes.length?nodes.map(n=>resultLink(n)).join(''):'<p>No saved readings yet. Use the bookmark controls while reading.</p>';$('#saved-dialog').showModal();};
- function resultLink(n){return `<a class="result" href="${urlFor(n,{route:n.kind==='claim'||n.kind==='passage'})}"><small>${esc(n.work?.title||data.lateral.title)} · ${esc(n.unit.layer)} · ${esc(n.id)}</small><strong>${esc(n.section||n.title||n.unit.title)}</strong>${n.text?`<p>${esc(n.text.slice(0,250))}${n.text.length>250?'…':''}</p>`:''}</a>`;}
+ function resultLink(n){const prose=n.kind==='claim'?adapter.card(n.id).reading_text:n.text;return `<a class="result" href="${urlFor(n,{route:n.kind==='claim'||n.kind==='passage'})}"><small>${esc(n.work?.title||data.lateral.title)} · ${esc(n.unit.layer)} · ${esc(n.id)}</small><strong>${esc(n.section||n.title||n.unit.title)}</strong>${prose?`<p>${esc(prose.slice(0,250))}${prose.length>250?'…':''}</p>`:''}</a>`;}
  $('#search-query').oninput=()=>{const q=$('#search-query').value.trim(),nodes=searchLibrary(index,q,60);$('#search-status').textContent=q?(nodes.length?`${nodes.length===60?'First ':''}${nodes.length} matching passages and claims`:'No matches. Try a shorter phrase.'):'Search all three source texts and their saved readings.';$('#search-results').innerHTML=nodes.map(resultLink).join('');};
  document.querySelectorAll('[data-close-dialog]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
  document.querySelectorAll('dialog').forEach(dialog=>{dialog.addEventListener('click',e=>{if(e.target.closest('.result'))dialog.close();if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});});

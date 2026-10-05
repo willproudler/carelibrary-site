@@ -1,6 +1,7 @@
 /* Small, read-only previews of the existing Lateral and Corpus environments.
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
+import {publicReadingText} from './native/reading-views.mjs?v=20261006';
 export const LATERAL_SAMPLES = Object.freeze([
   {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},
   {label:'Difference', id:'XR_KPR_THN:TLC-02', explanation:'Identify where their explanations differ. Hume explains how habit forms expectations; Kant asks what makes experience possible.'},
@@ -89,10 +90,10 @@ export async function mountDiscoverExperiments(host,options={}){
   function paintSample(){
     const sample=samples[selectedSample];
     if(!sample)return;
-    const [prose,kind]=sample.text.split(/\nRelation Type\s*[—–-]\s*/);
+    const prose=publicReadingText(sample);
     $('.de-explanation').textContent=sample.explanation;
     $('.de-claim-text').textContent=prose;
-    $('.de-claim-kind').textContent=selectedSample===2?'A proposal from the saved comparison. No new work has been generated in this example.':kind||'';
+    $('.de-claim-kind').textContent=selectedSample===2?'A proposal from the saved comparison. No new work has been generated in this example.':'';
     $('.de-saved-claim').open=false;
     $('.de-claim-ref').textContent=sample.id;
     host.querySelectorAll('[data-sample]').forEach(button=>{button.disabled=false;button.setAttribute('aria-pressed',String(Number(button.dataset.sample)===selectedSample));});

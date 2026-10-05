@@ -1,7 +1,7 @@
 /* The Discover page mounts CARE's shipped reader against the fixed public
  * collection. No authoring, generation, account or private-library API is used. */
 import mountReader from './native/study-desk.mjs?v=1.73';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261005-covers2';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261006';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
   hume:'CH_THN_INTR:AS1',

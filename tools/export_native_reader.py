@@ -21,6 +21,47 @@ for name, contents in assets.items():
 }, indent=2) + "\n")
 print(f"Exported {CARE_STUDY_DESK_VERSION}: original shelf and reading panes")
 
+# Project only the fixed public collection through the same reading boundary as
+# the desktop app. Exact input matching prevents an older view being reused for
+# revised text or a different translation. Canonical library.json is untouched.
+from care_platform.reading_payload import prepare_reading_payload
+from care_platform.item_presentation import ITEM_PRESENTATION_VERSION
+public_library = json.loads((destination.parent / "data" / "library.json").read_text())
+titles = {unit["id"]: unit.get("title") or work["title"]
+          for work in public_library["works"] for unit in work["units"]}
+titles[public_library["lateral"]["id"]] = public_library["lateral"]["title"]
+reading_views = {}
+def collect_reading_views(value):
+    if isinstance(value, dict):
+        if value.get("id") and isinstance(value.get("text"), str) and not value["id"].startswith("RAW_"):
+            display = prepare_reading_payload(value, _titles=titles)["reading_text"]
+            if display != value["text"]:
+                pair = [value["text"], display]
+                versions = reading_views.setdefault(value["id"], [])
+                if pair not in versions:
+                    versions.append(pair)
+        for child in value.values():
+            collect_reading_views(child)
+    elif isinstance(value, list):
+        for child in value:
+            collect_reading_views(child)
+collect_reading_views(public_library)
+reading_module = (
+    "// Generated public reading views; canonical text and route IDs stay intact.\n"
+    + "// " + ITEM_PRESENTATION_VERSION + "\n"
+    + "const views = " + json.dumps(reading_views, ensure_ascii=False, separators=(",", ":")) + ";\n"
+    + "export function publicReadingText(item) {\n"
+    + "  const source = String(item?.text ?? '');\n"
+    + "  return views[item?.id]?.find(([original]) => original === source)?.[1] ?? source;\n}\n"
+)
+(destination / "reading-views.mjs").write_text(reading_module)
+manifest_path = destination / "reader-version.json"
+reader_manifest = json.loads(manifest_path.read_text())
+reader_manifest["reading_presentation"] = ITEM_PRESENTATION_VERSION
+reader_manifest["assets"]["reading-views.mjs"] = hashlib.sha256(reading_module.encode()).hexdigest()
+manifest_path.write_text(json.dumps(reader_manifest, indent=2) + "\n")
+print(f"Exported reading views for {len(reading_views)} public claims; canonical records retained")
+
 # The floating reference viewer is registered on the document surface by CARE.
 # Read only its literal UI assets; do not load its private-library controllers.
 source = (root / "care_platform/reference_viewer.py").read_text()

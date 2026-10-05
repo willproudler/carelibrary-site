@@ -3,6 +3,7 @@
  * Source alignments and item references are the only edges in a route.
  */
 import {indexLibrary, incoming, selectionFor} from './library-core.mjs';
+import {publicReadingText} from './native/reading-views.mjs?v=20261006';
 import {ORIGINAL, selectedVariant, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=20261005-covers2';
 
 const array = value => Array.isArray(value) ? value : [];
@@ -53,9 +54,10 @@ export function createPublicReaderAdapter(data) {
   const usesFor = (id, work) => array(index.outgoing.get(id)).filter(link => inScope(index.nodes.get(link.id), work));
 
   function nativeItem(item, section, position, unit) {
+    const display = publicReadingText(item);
     return {
       id:item.id, local_id:item.id.split(':').slice(1).join(':'), text:item.text,
-      reading_html:inline(item.text), reading_block_html:block(item.text), reading_text:item.text,
+      reading_html:inline(display), reading_block_html:block(display), reading_text:display,
       section_number:text(section.number), section_name:section.name,
       address:`${unit.layer}.${section.number}.${String(position + 1).padStart(2,'0')}`,
       position:position + 1, layer:unit.layer,
@@ -139,11 +141,12 @@ export function createPublicReaderAdapter(data) {
     const node = nodeFor(id), isPassage = node.kind === 'passage';
     const isSheet = ['unit','source'].includes(node.kind);
     const native = !isPassage && !isSheet ? unit(node.unit.id,state).sections.flatMap(section => section.items).find(item => item.id === id) : null;
-    const display = native?.text ?? node.text ?? '', language = describePaneLanguages(index.units.get(node.unit.id),node.work,state);
+    const canonical = native?.text ?? node.text ?? '';
+    const display = native?.reading_text ?? canonical, language = describePaneLanguages(index.units.get(node.unit.id),node.work,state);
     const displayUnit = node.unit.layer === 'SOURCE' ? node.unit : unit(node.unit.id,state);
     return {
       ...(native || {}), id:node.id, kind:isPassage ? 'passage' : isSheet ? 'sheet' : 'axiom', resolved:true,
-      text:display, reading_text:display, reading_html:inline(display), reading_block_html:block(display),
+      text:canonical, reading_text:display, reading_html:inline(display), reading_block_html:block(display),
       reading_language_code:language.language_code,reading_language_name:language.language_name,is_translation:language.is_translation,translation_id:language.selected_id,
       title:isPassage ? node.unit.title : native?.section_name || node.section || node.title || node.id,
       layer:isPassage ? 'SOURCE' : node.unit.layer,
