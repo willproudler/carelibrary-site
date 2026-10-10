@@ -4,7 +4,7 @@ Prepared 2 October 2026 at the user's explicit request to publish two public-dom
 
 ## Export boundary
 
-The website is a static, anonymous reading room. Only two source works, their fixed saved CARE records and XR_KPR_THN R01 are included. No book uploads, generation, credentials, private API, account database, original EPUB containers or third-party cover art are shipped. A footer link leads to an inactive separate beta entrance.
+The website is a static, anonymous reading room. Only two source works, their fixed saved CARE records and XR_KPR_THN R01 are included. No book uploads, generation, credentials, private API, account database, original EPUB containers or third-party cover art are shipped. The inactive beta entrance and supplementary pages were retired on 10 October 2026 and archived outside the published website; only the Library and Discover CARE remain in site navigation.
 
 Kant: 20 retained reading sections, 20 CH, 7 CL, 2 MC and 1 WB; 4,188 CARE items. Exact preserved seal: `SEAL_KPR_B9D86551EDC807AAA095`, whole book `WB_KPR@R001`.
 

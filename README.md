@@ -7,10 +7,9 @@ Chapter and sheet titles open searchable jump menus. Dragging a chapter rail pre
 - `index.html`: native library shelf and reading workspace. Kant, Hume, Bergson, saved Kant–Hume lateral, source/CH/CL/MC/WB panes, chapter rails, outline strips, routes, reading skins, local search and bookmarks.
 - `welcome.html`: compatibility redirect to the same native library.
 - `about.html`: minimal Discover CARE page with the working native reader, a map of the current book that expands into a purple Kant–Hume lateral when selected, all 189 language choices, and plain explanations of laterals and corpuses.
-- `why-care.html`: philosophical statement.
-- `rights.html`: source editions, grounding limitations and publication boundaries.
 - `library.html`: compatibility redirect to the public library.
-- `beta.html`: separate inactive beta entrance, linked quietly from the footer. No credentials can be submitted.
+
+The public site has two pages: the Library and Discover CARE. Both run without a bottom banner or footer navigation. Retired statement, rights and inactive beta pages are preserved in Git history and in a local archive outside this published directory; they are no longer served or included in the sitemap.
 
 `native/study-desk.mjs` and its stylesheet are exact exports of the app’s `STUDY_DESK_JS` and `STUDY_DESK_CSS`. `native/reference-viewer.*` comes from the app’s reference viewer, with one compatibility fix for keyboard event targets across the standalone desk’s ShadowRoot. Version manifests record the asset hashes. `native/public-scope.css` hides controls that do not apply to this fixed collection. `public-app.mjs` supplies public navigation and browser-local preferences; `public-reader-adapter.mjs` projects the published JSON into the original reader’s payload contract. It never queries the private catalogue or starts an AI run.
 
