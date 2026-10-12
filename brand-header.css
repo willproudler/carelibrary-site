@@ -1,0 +1,111 @@
+/* The desktop's quiet cube imprint and flat pearl wordmark, shared by both web headers. */
+.app-header,
+.site-header {
+  background: #11141b;
+  border-bottom: 1px solid rgba(225, 229, 235, .1);
+}
+
+.app-header {
+  min-height: 56px;
+  gap: 16px;
+  padding: 0 12px 0 0;
+}
+
+.site-header .header-inner {
+  width: 100%;
+  max-width: none;
+  min-height: 56px;
+  gap: 16px;
+  padding: 0 12px 0 0;
+  flex-wrap: nowrap;
+}
+
+.app-header .brand,
+.site-header .wordmark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 56px;
+  gap: .6rem;
+  overflow: hidden;
+  white-space: nowrap;
+  font: 400 17px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  letter-spacing: .10em;
+}
+
+.app-header .brand:focus-visible,
+.site-header .wordmark:focus-visible {
+  outline-offset: -3px;
+}
+
+.app-header .brand .brand-name,
+.site-header .wordmark .brand-name {
+  font: inherit;
+  color: #c1c6c3;
+}
+
+.app-header .brand-name strong,
+.site-header .brand-name strong {
+  font-weight: 600;
+}
+
+.app-header .brand .brand-mark,
+.site-header .wordmark .brand-mark {
+  flex: none;
+  width: 112px;
+  height: 76px;
+  margin-left: -6px;
+  object-fit: contain;
+  opacity: .28;
+  filter: drop-shadow(0 -.8px 0 #000c) drop-shadow(0 .7px 0 #ffffff24);
+}
+
+.app-header .brand small,
+.site-header .wordmark small {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  margin-right: 3px;
+  padding: 3px 5px;
+  border: 1px solid #394444;
+  border-radius: 4px;
+  background: #ffffff03;
+  color: #a9b7b1;
+  font: 600 10px/1.2 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 700px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 3px;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .app-header .brand {
+    height: 50px;
+  }
+
+  .app-header nav {
+    width: 100%;
+    margin: 0;
+    padding: 0 8px 8px;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 580px) {
+  .site-header .header-inner {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 3px;
+    padding-bottom: 8px;
+  }
+
+  .site-header .wordmark {
+    flex-basis: 100%;
+    height: 50px;
+  }
+}
