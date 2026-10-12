@@ -1,0 +1,20 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" class="care-brand-mark" viewBox="25 12 290 172" aria-hidden="true" focusable="false">
+      <g class="care-brand-scaffold">
+        <path d="M40 84 92 54 144 84 144 144 92 174 40 144Z M40 84 92 114 144 84 M92 114V174"/>
+        <path d="M92 54 144 24 196 54 196 114 144 144 M144 24V60 M144 84 196 54"/>
+        <path d="M196 54 248 24 280 43 M300 56 300 116 248 146 196 116 M196 54 248 84 300 54 M248 84V146"/>
+      </g>
+      <path class="care-brand-edge" pathLength="100"
+            d="M40 126V84L92 54 144 84V144L92 174 40 144 M40 84 92 114 144 84 M92 114V174"/>
+      <path class="care-brand-edge care-brand-edge--second" pathLength="100"
+            d="M92 54 144 24 196 54V114L144 144 M144 84 196 54 M144 24V64"/>
+      <path class="care-brand-edge care-brand-edge--third" pathLength="100"
+            d="M196 54 248 24 282 44 M300 72V116L248 146 196 116 M196 54 248 84 300 54 M248 84V146"/>
+      <path class="care-brand-light" pathLength="100"
+            d="M40 144V84L92 54 144 24 196 54 248 84V146L300 116V54L248 24 196 54V114L144 144 92 174V114L40 84"/>
+    <style>svg{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.care-brand-scaffold{stroke:#667378;stroke-width:1.5;opacity:.22}
+.care-brand-edge{stroke:#929fa3;stroke-width:3.2}
+.care-brand-edge--second{opacity:.85}.care-brand-edge--third{opacity:.75}
+.care-brand-light{display:none}</style></svg>
