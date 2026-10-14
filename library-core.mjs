@@ -36,13 +36,13 @@ export function ancestors(work,id) {
 }
 export function selectionFor(work,id) {
   const source=work.sources.find(s=>s.id===id);
-  const target=source?source.chapter_id:id || work.units.find(u=>u.layer==='CH').id;
+  const target=source?source.chapter_id:id || work.units.find(u=>u.layer==='CH')?.id;
   const branch=ancestors(work,target),selection={};
   for(const layer of LAYERS.slice(1)) {
     const options=work.units.filter(u=>u.layer===layer);
     selection[layer]=options.find(u=>u.id===target) || options.find(u=>branch.has(u.id)) || options.find(u=>ancestors(work,u.id).has(target)) || options[0];
   }
-  selection.SOURCE=work.sources.find(s=>s.chapter_id===selection.CH.id) || work.sources[0];
+  selection.SOURCE=source || work.sources.find(s=>s.chapter_id===selection.CH?.id) || work.sources[0];
   return selection;
 }
 export function searchLibrary(index,query,limit=60) {
