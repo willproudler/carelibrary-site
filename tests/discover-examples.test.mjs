@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {buildAtlasModel} from '../discover-atlas.mjs';
 import {savedLateralSamples} from '../discover-experiments.mjs';
 import {incoming} from '../library-core.mjs';
-const data=JSON.parse(fs.readFileSync(new URL('../data/library.json',import.meta.url)));
+const data=JSON.parse(fs.readFileSync(new URL('./fixtures/original-public-library.json',import.meta.url)));
 test('every map edge is supported by saved claim or passage references',()=>{
  const {index,nodes,edges}=buildAtlasModel(data);
  assert.equal(nodes.size,133);

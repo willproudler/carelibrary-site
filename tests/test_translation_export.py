@@ -57,8 +57,8 @@ class TranslationExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no longer the approved revision"):
             exporter.saved_translations(None, {}, {"id": "WB_MEMA", "sha256": "different-revision"}, {}, {}, {})
 
-    def test_export_is_limited_to_five_saved_bergson_sheets(self):
-        library = json.loads((SITE / "data/library.json").read_text())
+    def test_original_export_fixture_has_five_saved_bergson_sheets(self):
+        library = json.loads((SITE / "tests/fixtures/original-public-library.json").read_text())
         exported = []
         for work in library["works"]:
             self.assertEqual(work["cover_url"], f"./assets/covers/{work['slug']}.png")

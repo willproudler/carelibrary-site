@@ -1,8 +1,8 @@
-import mountField from './native/study-field.mjs?v=6230fc4664e04d61';
+import mountField from './native/study-field.mjs?v=bbc209f3c86c6efe';
 import {publicFields,fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=20261014-current';
-import mountReader from './native/study-desk.mjs?v=6230fc4664e04d61';
-import mountViewer from './native/reference-viewer.mjs?v=6230fc4664e04d61';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6230fc4664e04d61';
+import mountReader from './native/study-desk.mjs?v=bbc209f3c86c6efe';
+import mountViewer from './native/reference-viewer.mjs?v=bbc209f3c86c6efe';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=bbc209f3c86c6efe';
 import {searchLibrary} from './library-core.mjs?v=20261014-current';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
@@ -16,7 +16,7 @@ function notice(message){const el=$('#notice');el.textContent=message;el.hidden=
 async function start(){
  const response=await fetch('./data/library.json',{cache:'no-cache'});if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
  const data=await response.json();data.lateral=data.lateral||{id:"",title:"",parents:[],sections:[]};const adapter=createPublicReaderAdapter(data),{index}=adapter;
- const [css,scope,viewerCSS,viewerHTML,fieldCSS]=await Promise.all(['./native/study-desk.css?v=6230fc4664e04d61','./native/public-scope.css?v=20261014-current','./native/reference-viewer.css?v=6230fc4664e04d61','./native/reference-viewer.html?v=6230fc4664e04d61','./native/study-field.css?v=6230fc4664e04d61'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
+ const [css,scope,viewerCSS,viewerHTML,fieldCSS]=await Promise.all(['./native/study-desk.css?v=bbc209f3c86c6efe','./native/public-scope.css?v=20261014-current','./native/reference-viewer.css?v=bbc209f3c86c6efe','./native/reference-viewer.html?v=bbc209f3c86c6efe','./native/study-field.css?v=bbc209f3c86c6efe'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
  shadow.innerHTML=`<style>${css}\n${scope}\n${fieldCSS}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div><div class="field-desk" data-field-desk hidden style="height:100%;min-height:0"></div>`;
  // CARE's viewer deliberately uses the document surface (isolate_styles=False).

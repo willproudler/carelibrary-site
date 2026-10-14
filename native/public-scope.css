@@ -11,3 +11,6 @@ option[value="unprocessed"]{display:none}
 [data-book-menu-action="restart_book"]{display:none!important}
 
 .study-desk[hidden],.field-desk[hidden]{display:none!important}
+
+/* Portrait browsing belongs to the private Mac library. */
+[data-portrait-open],[data-book-menu-action="book_portrait"],[data-book-menu-action="author_library"]{display:none!important}

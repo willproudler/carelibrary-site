@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createPublicReaderAdapter} from '../public-reader-adapter.mjs';
 import {createDiscoverController} from '../discover-reader.mjs';
-const data=JSON.parse(fs.readFileSync(new URL('../data/library.json',import.meta.url)));
+const data=JSON.parse(fs.readFileSync(new URL('./fixtures/original-public-library.json',import.meta.url)));
+const published=JSON.parse(fs.readFileSync(new URL('../data/library.json',import.meta.url)));
 const bergson=data.works.find(work=>work.slug==='bergson');
 const translated=bergson.units.filter(unit=>unit.translations?.length);
 const chooseEnglish=(adapter,state)=>adapter.reduce(state,'public_reading_language',{work_id:bergson.id,language_code:'en'});
@@ -130,8 +131,8 @@ test('missing English variants use original text without claiming an English tra
 
 
 test('every published saved English source and CARE pane opens in English',()=>{
- const a=createPublicReaderAdapter(data);
- for(const work of data.works)for(const pane of [...work.sources,...work.units]){
+ const a=createPublicReaderAdapter(published);
+ for(const work of published.works)for(const pane of [...work.sources,...work.units]){
   const english=pane.translations?.find(row=>row.language_code==='en');if(!english)continue;
   const state={workId:work.id};
   const projected=pane.layer?a.unit(pane.id,state):a.chapter(pane.id,state);

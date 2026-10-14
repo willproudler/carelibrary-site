@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {atlasView, buildAtlasModel} from '../discover-atlas.mjs';
 
-const data = JSON.parse(fs.readFileSync(new URL('../data/library.json', import.meta.url)));
+const data = JSON.parse(fs.readFileSync(new URL('./fixtures/original-public-library.json', import.meta.url)));
 const model = buildAtlasModel(data);
 
 test('the initial atlas shows only Hume and has no lateral node or edge', () => {
@@ -42,4 +42,15 @@ test('explicit lateral status draws only its two recorded parents', () => {
     assert.ok([...view.nodes.values()].every(node => !node.work || node.work.slug !== 'bergson'));
     assert.deepEqual(new Set([...view.edges.values()].filter(edge => edge.target === data.lateral.id).map(edge => edge.source)), new Set(data.lateral.parents));
   }
+});
+
+test('the atlas remains a book map when a previously published lateral is removed',()=>{
+ const revised=structuredClone(data);delete revised.lateral;
+ const model=buildAtlasModel(revised);
+ for(const status of [{},{book:'lateral',connectionId:'XR_KPR_THN'},{book:'kant'}]){
+  const view=atlasView(revised,model,status);
+  assert.equal(view.lateral,false);
+  assert.equal(view.works.length,1);
+  assert.ok(!view.nodes.has('XR_KPR_THN'));
+ }
 });

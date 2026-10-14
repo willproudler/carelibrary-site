@@ -8,16 +8,17 @@ const data=JSON.parse(readFileSync(new URL('../data/library.json',import.meta.ur
 
 test('every public CARE sheet uses clean prose without changing canonical text or routes',()=>{
   const original=JSON.stringify(data),adapter=createPublicReaderAdapter(data);
+  const originalState={readingLanguages:Object.fromEntries(data.works.map(work=>[work.id,'original']))};
   let count=0;
-  for(const source of [...data.works.flatMap(work=>work.units),data.lateral]){
-    const display=adapter.unit(source.id);
+  for(const source of [...data.works.flatMap(work=>work.units),data.lateral].filter(Boolean)){
+    const display=adapter.unit(source.id,originalState);
     for(const [sectionIndex,section] of source.sections.entries()){
       for(const [position,item] of section.items.entries()){
         const projected=display.sections[sectionIndex].items[position];
         assert.equal(projected.text,item.text);
         assert.deepEqual(projected.source_trace,item.refs);
         assert.doesNotMatch(projected.reading_text,/^\[(?:Persistent|Mutating|Attractor|Emergent|Terminal)\]|\n(?:Relation Type|Inheritance Type|Source Trace)\s*[—:]/);
-        const card=adapter.card(item.id);
+        const card=adapter.card(item.id,{state:originalState});
         assert.equal(card.text,item.text);
         assert.equal(card.reading_text,projected.reading_text);
         if(projected.reading_text!==item.text)count++;
