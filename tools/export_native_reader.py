@@ -11,12 +11,25 @@ from care_platform.study_desk_component import STUDY_DESK_CSS, STUDY_DESK_JS, CA
 
 destination = Path(__file__).resolve().parents[1] / "native"
 destination.mkdir(exist_ok=True)
-assets = {"study-desk.css": STUDY_DESK_CSS, "study-desk.mjs": STUDY_DESK_JS}
+# Public source translations may have their own paragraph boundaries. Those
+# reading-only rows must not offer a route to an invented source passage.
+def public_source_reader_js(source):
+    anchor = '  const passages=arr(chapter.passages).map(passage=>{\n'
+    plain = '    if(passage.route_available===false)return `<div class="passage-row"><article class="passage"><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`\n'
+    if plain not in source:
+        if source.count(anchor) != 1:
+            raise ValueError("The source reader changed; update its public translation compatibility patch.")
+        source = source.replace(anchor, anchor + plain)
+    return source.replace('chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":"EXACT SOURCE"',
+                          'chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"')
+
+assets = {"study-desk.css": STUDY_DESK_CSS, "study-desk.mjs": public_source_reader_js(STUDY_DESK_JS)}
 for name, contents in assets.items():
     (destination / name).write_text(contents)
 (destination / "reader-version.json").write_text(json.dumps({
     "version": CARE_STUDY_DESK_VERSION,
     "source": "care_platform/study_desk_component.py",
+    "compatibility_changes": ["Keep unaligned source translations readable without inventing passage routes"],
     "assets": {name: hashlib.sha256(contents.encode()).hexdigest() for name, contents in assets.items()},
 }, indent=2) + "\n")
 print(f"Exported {CARE_STUDY_DESK_VERSION}: original shelf and reading panes")

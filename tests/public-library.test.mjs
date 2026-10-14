@@ -5,12 +5,13 @@ import {indexLibrary,incoming,selectionFor,LAYERS,searchLibrary} from '../librar
 import {createPublicReaderAdapter} from '../public-reader-adapter.mjs';
 const raw=fs.readFileSync(new URL('../data/library.json',import.meta.url),'utf8');
 const data=JSON.parse(raw),index=indexLibrary(data);
-test('the release contains only the three authorised books and their saved lateral',()=>{
- assert.deepEqual(data.works.map(w=>w.slug),['kant','hume','bergson']);assert.equal(data.lateral.id,'XR_KPR_THN');
+test('the curated books and saved lateral remain intact as beta books are added',()=>{
+ const curated=data.works.filter(w=>['kant','hume','bergson'].includes(w.slug));
+ assert.deepEqual(curated.map(w=>w.slug),['kant','hume','bergson']);assert.equal(data.lateral.id,'XR_KPR_THN');
  assert.deepEqual(data.lateral.parents,['WB_THN','WB_KPR']);
- assert.equal(data.works.reduce((n,w)=>n+w.units.length,0),79);
+ assert.equal(curated.reduce((n,w)=>n+w.units.length,0),79);
  assert.doesNotMatch(raw,/\/Users\/|api_key|apiKey|encrypted_api|access_token|Anna_s_Archive/);
- for(const n of index.nodes.values())assert.match(n.id,/^(?:(?:RAW|CH|CL|MC|WB)_(?:KPR|THN|MEMA)(?:_|:|$)|XR_KPR_THN)/);
+ for(const n of index.nodes.values())if(!n.work || curated.includes(n.work))assert.match(n.id,/^(?:(?:RAW|CH|CL|MC|WB)_(?:KPR|THN|MEMA)(?:_|:|$)|XR_KPR_THN)/);
 });
 test('all saved references and lateral parent pins resolve inside the public versions',()=>{
  for(const n of index.nodes.values())for(const link of incoming(n))assert.ok(index.nodes.has(link.id),`${n.id} -> ${link.id}`);
@@ -50,9 +51,10 @@ test('source and claim search returns real references without changing records',
 test('native CARE projection retains all sheets and source paragraphs',()=>{
  const a=createPublicReaderAdapter(data);
  for(const w of data.works)for(const u of [...w.sources,...w.units]){
-  const payload=a.workspace({workId:w.id,unitId:u.layer?u.id:'',rawUnitId:u.layer?'':u.id});
+  const originalState={readingLanguages:{[w.id]:'original'}};
+  const payload=a.workspace({...originalState,workId:w.id,unitId:u.layer?u.id:'',rawUnitId:u.layer?'':u.id});
   assert.equal(payload.stack.care_path.length,new Set(w.units.map(row=>row.layer)).size);assert.equal(payload.stack.chapters.length,w.sources.length);
-  const expanded=a.outline(w.id,{id:u.id,layer:u.layer||'SOURCE',request_id:'check'});assert.ok(!expanded.error);
+  const expanded=a.outline(w.id,{id:u.id,layer:u.layer||'SOURCE',request_id:'check'},originalState);assert.ok(!expanded.error);
   if(u.layer)assert.deepEqual(expanded.unit.sections.flatMap(s=>s.items.map(i=>i.text)),u.sections.flatMap(s=>s.items.map(i=>i.text)));
   else assert.deepEqual(expanded.chapter.passages.map(p=>p.text),u.paragraphs.map(p=>p.text));
  }
@@ -61,7 +63,7 @@ test('native CARE projection retains all sheets and source paragraphs',()=>{
 });
 test('native routes use recorded edges, maintain book boundaries and expose both lateral parents',()=>{
  const a=createPublicReaderAdapter(data);
- for(const w of data.works){const id=w.units.find(u=>u.layer==='WB').sections[0].items[0].id,r=a.reference(id);
+ for(const w of data.works.filter(w=>['kant','hume','bergson'].includes(w.slug))){const id=w.units.find(u=>u.layer==='WB').sections[0].items[0].id,r=a.reference(id);
   assert.ok(r.route_layers.SOURCE.length);
   for(const edge of r.route_edges){assert.equal(index.nodes.get(edge.source_id).work.id,w.id);assert.equal(index.nodes.get(edge.target_id).work.id,w.id);assert.ok(incoming(index.nodes.get(edge.target_id)).some(l=>l.id===edge.source_id));}
  }
@@ -77,7 +79,7 @@ test('Bergson preserves its French edition and three-level reading without joini
  assert.equal(b.sources.length,6);assert.equal(b.units.length,9);
  assert.deepEqual(new Set(b.units.map(unit=>unit.layer)),new Set(['CH','CL','WB']));
  assert.equal(a.workspace({workId:b.id}).connection_options.length,0);
- assert.deepEqual(new Set(a.savedConnection.members.map(member=>member.id)),new Set(data.works.filter(work=>work.slug!=='bergson').map(work=>work.id)));
+ assert.deepEqual(new Set(a.savedConnection.members.map(member=>member.id)),new Set(data.works.filter(work=>work.units.some(unit=>data.lateral.parents.includes(unit.id))).map(work=>work.id)));
  for(const u of b.units.filter(unit=>unit.layer==='CH'))for(const section of u.sections)for(const item of section.items){
   assert.equal(item.grounding.review,'unreviewed');
   for(const passage of item.passages)assert.equal(index.nodes.get(passage.id).work.id,b.id);

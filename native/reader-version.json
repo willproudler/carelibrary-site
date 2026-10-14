@@ -3,8 +3,11 @@
   "source": "care_platform/study_desk_component.py",
   "assets": {
     "study-desk.css": "fb32d4d8ec1e17d8d4add462c80fcc698d3c6a6e1e928f58c3f5c1941b2a1035",
-    "study-desk.mjs": "14f74fdb0d974f672fe05a101592587ba58f05f7961f9756ad3736a2053cf5e2",
-    "reading-views.mjs": "131f880acaf13ed70635839f34e758edea21778d4d6c0c5b8dddcae6287a4414"
+    "study-desk.mjs": "5271bd4748fd1970eb6356aeb19b142ac1a559baab8e780643deb11bab8d2b71",
+    "reading-views.mjs": "82c2165584f2af474532bac2faa7f50d582a72e147663354750626e6c31fd2b8"
   },
-  "reading_presentation": "care-item-presentation/7"
+  "reading_presentation": "care-item-presentation/7",
+  "compatibility_changes": [
+    "Keep unaligned source translations readable without inventing passage routes"
+  ]
 }

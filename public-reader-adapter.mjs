@@ -4,7 +4,7 @@
  */
 import {indexLibrary, incoming, selectionFor} from './library-core.mjs';
 import {publicReadingText} from './native/reading-views.mjs?v=20261006';
-import {ORIGINAL, selectedVariant, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=20261005-covers2';
+import {ORIGINAL, selectedVariant, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=20261014-english';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
@@ -92,25 +92,28 @@ export function createPublicReaderAdapter(data) {
     return projected;
   }
 
-  function chapter(id) {
-    if (chapterCache.has(id)) return chapterCache.get(id);
+  function chapter(id, state = {}) {
     const source = index.units.get(id);
     if (!source || source.layer !== 'SOURCE') throw new Error('This source chapter is not in the public collection.');
-    const rows = array(source.paragraphs);
+    const variant = selectedVariant(source,source.work,state), reading = variant || source;
+    const cacheKey = `${id}\0${variant?.id || ORIGINAL}`;
+    if (chapterCache.has(cacheKey)) return chapterCache.get(cacheKey);
+    const rows = array(reading.paragraphs), canonicalIds = new Set(array(source.paragraphs).map(row=>row.id));
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
-      sequence_number:source.order, title:source.title, label:source.title,
-      passage_count:rows.length, source_versions:describePaneLanguages(source,source.work),
+      sequence_number:source.order, title:reading.title || source.title, label:reading.title || source.title,
+      source_rendition_type:variant?.rendition_type || (variant ? 'machine' : 'original'),
+      passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
       passages:rows.map((passage, position) => ({
         id:passage.id, text:passage.text, reading_text:passage.text,
         reading_html:inline(passage.text), reading_block_html:block(passage.text),
         address:passage.kind === 'display' ? `Reading paragraph ${position + 1}` : passage.id,
         sequence:position + 1, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',
         axioms:usesFor(passage.id, source.work).map(link => link.id),
-        source_kind:passage.kind || 'passage',
+        source_kind:passage.kind || 'passage', route_available:canonicalIds.has(passage.id),
       })),
     };
-    chapterCache.set(id, result);
+    chapterCache.set(cacheKey, result);
     return result;
   }
 
@@ -125,7 +128,7 @@ export function createPublicReaderAdapter(data) {
       edition_label:work.edition,
       chapters:work.sources.map(source => ({id:source.id, raw_unit_id:source.id, care_unit_id:source.chapter_id,
         chapter_number:source.order, sequence_number:source.order, title:source.title, readable:true})),
-      active_chapter:chapter(selected.SOURCE.id),
+      active_chapter:chapter(selected.SOURCE.id,state),
       care_path:BASE_LAYERS.flatMap(layer => selected[layer] ? [unit(selected[layer].id,state)] : []),
       sheet_options:Object.fromEntries(BASE_LAYERS.map(layer => [layer, work.units.filter(row => row.layer === layer).map(row => ({
         id:row.id, type:layer, title:row.title, available:true, sequence_number:row.order,
@@ -140,20 +143,22 @@ export function createPublicReaderAdapter(data) {
   function card(id, {connection = false, state = {}} = {}) {
     const node = nodeFor(id), isPassage = node.kind === 'passage';
     const isSheet = ['unit','source'].includes(node.kind);
-    const native = !isPassage && !isSheet ? unit(node.unit.id,state).sections.flatMap(section => section.items).find(item => item.id === id) : null;
+    const sourceReading = node.unit.layer === 'SOURCE' ? chapter(node.unit.id,state) : null;
+    const native = isPassage ? sourceReading.passages.find(item=>item.id === id) : !isSheet ? unit(node.unit.id,state).sections.flatMap(section => section.items).find(item => item.id === id) : null;
     const canonical = native?.text ?? node.text ?? '';
-    const display = native?.reading_text ?? canonical, language = describePaneLanguages(index.units.get(node.unit.id),node.work,state);
-    const displayUnit = node.unit.layer === 'SOURCE' ? node.unit : unit(node.unit.id,state);
+    const readingState = isPassage && !native ? {...state,paneVersions:{...state.paneVersions,[node.unit.id]:ORIGINAL}} : state;
+    const display = native?.reading_text ?? canonical, language = describePaneLanguages(index.units.get(node.unit.id),node.work,readingState);
+    const displayUnit = node.unit.layer === 'SOURCE' ? (isPassage && !native ? node.unit : sourceReading) : unit(node.unit.id,state);
     return {
       ...(native || {}), id:node.id, kind:isPassage ? 'passage' : isSheet ? 'sheet' : 'axiom', resolved:true,
       text:canonical, reading_text:display, reading_html:inline(display), reading_block_html:block(display),
       reading_language_code:language.language_code,reading_language_name:language.language_name,is_translation:language.is_translation,translation_id:language.selected_id,
-      title:isPassage ? node.unit.title : native?.section_name || node.section || node.title || node.id,
+      title:isPassage ? displayUnit.title : native?.section_name || node.section || node.title || node.id,
       layer:isPassage ? 'SOURCE' : node.unit.layer,
       unit_id:node.unit.id, local_id:node.id.split(':').slice(1).join(':'),
       sheet_title:displayUnit.title, chapter_title:displayUnit.title,
       work_id:node.work?.id || '', work_title:node.work?.title || lateral.title, author:node.work?.author || '',
-      metadata:[node.work?.title || lateral.title, node.work?.author, node.unit.revision,language.is_translation?`${language.language_name} · saved machine translation`:''].filter(Boolean).join(' · '),
+      metadata:[node.work?.title || lateral.title, node.work?.author, node.unit.revision,language.is_translation?`${language.language_name} · ${language.rendition_type === 'supplied' ? 'supplied translation' : 'saved machine translation'}`:''].filter(Boolean).join(' · '),
       mc_level:mcLevel(node.unit),
       ...(connection ? {source_pane:paneId(node.unit)} : {}),
     };
@@ -216,12 +221,14 @@ export function createPublicReaderAdapter(data) {
       return {...result,error:'This strip is not available in this public edition.'};
     if (layer.includes(':') && (base !== 'MC' || layer.split(':')[1] !== text(mcLevel(original) || 'legacy')))
       return {...result,error:'This CARE sheet belongs to a different layer.'};
-    return {...result, ...(base === 'SOURCE' ? {chapter:chapter(id)} : {unit:unit(id,state)})};
+    return {...result, ...(base === 'SOURCE' ? {chapter:chapter(id,state)} : {unit:unit(id,state)})};
   }
 
   function connectionPane(original, state = {}) {
     const isSource = original.layer === 'SOURCE';
-    const reading = isSource ? {sections:[{number:'',name:'Saved source passages',items:chapter(original.id).passages.map(row => ({...row,layer:'SOURCE',kind:'passage'}))}]} : unit(original.id,state);
+    const source = isSource ? chapter(original.id,state) : null;
+    const sourceState = source?.passages.some(row=>!row.route_available) ? {...state,paneVersions:{...state.paneVersions,[original.id]:ORIGINAL}} : state;
+    const reading = isSource ? {sections:[{number:'',name:'Saved source passages',items:chapter(original.id,sourceState).passages.map(row => ({...row,layer:'SOURCE',kind:'passage'}))}]} : unit(original.id,state);
     return {
       id:paneId(original), unit_id:original.id, layer:original.layer,
       role:original.id === lateral.id ? 'reading' : 'origin',
@@ -292,7 +299,7 @@ export function createPublicReaderAdapter(data) {
       if(!work || !describeBookLanguages(work,state).options.some(row=>row.code===language))return state;
       if(work.id!==currentWork.id && !(state.connectionId===lateral.id && lateralWorks.some(row=>row.id===work.id)))return state;
       next.readingLanguages={...state.readingLanguages,[work.id]:language};
-      next.paneVersions={...state.paneVersions};for(const row of work.units)delete next.paneVersions[row.id];
+      next.paneVersions={...state.paneVersions};for(const row of [...work.sources,...work.units])delete next.paneVersions[row.id];
       clearOutline();
     } else if(kind === 'version_action') {
       const row=index.units.get(value?.unit_id),variantId=text(value?.variant_id);

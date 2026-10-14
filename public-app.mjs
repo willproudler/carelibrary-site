@@ -1,6 +1,6 @@
-import mountReader from './native/study-desk.mjs?v=1.73';
+import mountReader from './native/study-desk.mjs?v=20261014-english';
 import mountViewer from './native/reference-viewer.mjs?v=20261005';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261006';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261014-english';
 import {searchLibrary} from './library-core.mjs';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
@@ -12,7 +12,7 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const response=await fetch('./data/library.json?v=20261005-covers2');if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
+ const response=await fetch('./data/library.json',{cache:'no-cache'});if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
  const data=await response.json(),adapter=createPublicReaderAdapter(data),{index}=adapter;
  const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css?v=1.73','./native/public-scope.css?v=20261005-covers2','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
