@@ -34,12 +34,19 @@
       "sections": 13,
       "units": 21,
       "items": 2332
+    },
+    {
+      "slug": "beta-eb6edcaef3392c37",
+      "seal": "SEAL_MHON_E70740882C0756CA2C1F",
+      "sections": 25,
+      "units": 38,
+      "items": 3031
     }
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 19704198,
-  "sha256": "ff678c76eae20fc0b7aa81c897dc88932cf7a30e8a2ba5d0913a7b17766d583c",
+  "bytes": 21720041,
+  "sha256": "887886b170d4325f7009915a286257f1f94414b4f3354eeca933902635d14851",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",
