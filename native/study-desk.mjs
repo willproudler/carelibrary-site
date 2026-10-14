@@ -1158,7 +1158,7 @@ function setupLibrarySelection(runtime){
   runtime.onLibrarySelectionClick=event=>{
     const target=event.target
     const publish=target.closest("[data-library-selection-action=publish_beta]")
-    if(publish&&runtime.data.library_selection_enabled){runtime.emitLibrarySelection("publish_beta",{publication_kind:shelfScope(runtime.data)||"book"});return true}
+    if(publish&&runtime.data.library_selection_enabled){const scope=shelfScope(runtime.data);runtime.emitLibrarySelection("publish_beta",{publication_kind:scope==="dialogue"?"book":scope||"book"});return true}
     if(!librarySelectionAvailable(runtime.data))return false
     if(target.closest("[data-library-selection-toggle]")){runtime.librarySelecting=!runtime.librarySelecting;runtime.closeBookMenu();runtime.paintLibrarySelection();return true}
     if(target.closest("[data-library-selection-clear]")){runtime.setLibrarySelected([]);root.querySelector("[data-library-selection-toggle]")?.focus({preventScroll:true});return true}
@@ -1239,7 +1239,7 @@ function fieldSourceCover(book){
   while(members.length<4)members.push(members[members.length-1])
   return `<span class="book-cover field-stack-cover" style="${style(book)}" aria-hidden="true">${members.map(member=>`<span class="field-stack-book" style="${style(member)}">${fieldMemberCover(member,book)}</span>`).join("")}<span class="field-cover-badge">${count} ${count===1?"book":"books"}</span></span>`
 }
-function fieldShelfCard(book){
+function fieldShelfCard(book,data={}){
   const label=shelfFieldLabel(book.field),count=Number(book.member_count||arr(book.member_titles).length||0)
   const motifs={
     lateral:'<circle cx="36" cy="43" r="23"/><circle cx="64" cy="43" r="23"/><path d="M16 43h68M50 13v60"/>',
@@ -1253,7 +1253,8 @@ function fieldShelfCard(book){
   const subtitle=book.author||(count?`${count} ${count===1?"source book":"source books"}`:"CARE library")
   const memberText=count?`${count} ${count===1?"source book":"source books"}`:""
   const cover=["lateral","corpus"].includes(book.field)?fieldSourceCover(book):`<span class="book-cover" style="--cloth:${esc(book.cloth||"#263239")};--foil:${esc(book.foil||"#f4e8cc")}"><span class="book-cover-fallback"><span class="field-cover-label">${esc(label)}</span><svg class="field-cover-art" viewBox="0 0 100 92" aria-hidden="true">${motifs[book.field]||motifs.corpus}</svg><strong>${esc(book.title)}</strong><small>${esc(subtitle)}</small></span>${image}</span>`
-  return `<div class="book-card book-field"><button type="button" class="book-open" data-open-field="${esc(book.id)}" aria-label="${esc(`Read ${label}: ${book.title}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong>${esc(book.title)}</strong>${book.author?`<span>${esc(book.author)}</span>`:""}${book.description?`<span class="field-description">${esc(book.description)}</span>`:""}${memberText?`<span class="field-members">${esc(memberText)}</span>`:""}<span class="book-layers"><b class="book-kind">${esc(label)}</b>${arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")}</span></span></button></div>`
+  const menu=data.library_selection_enabled&&["lateral","corpus"].includes(book.field)?shelfMenuToggle(book,"Reading options"):""
+  return `<div class="book-card book-field" data-book-field="${esc(book.id)}"><button type="button" class="book-open" data-open-field="${esc(book.id)}" aria-label="${esc(`Read ${label}: ${book.title}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong>${esc(book.title)}</strong>${book.author?`<span>${esc(book.author)}</span>`:""}${book.description?`<span class="field-description">${esc(book.description)}</span>`:""}${memberText?`<span class="field-members">${esc(memberText)}</span>`:""}<span class="book-layers"><b class="book-kind">${esc(label)}</b>${arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")}</span></span></button>${menu}</div>`
 }
 function dialogueJacketTitle(book){
   const title=String(book.dialogue_cover?.title||book.title||"Untitled conversation")
@@ -1283,14 +1284,17 @@ function dialogueBookCover(book){
   const image=cover.image_url?`<img src="${esc(cover.image_url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`:""
   return `<span class="book-cover dialogue-cover" style="--dialogue-cloth:${palettes[seed%palettes.length]};--dialogue-title-size:${size}rem" aria-hidden="true"><span class="dialogue-cover-label">Dialogue<svg viewBox="0 0 32 12"><path d="M1 6h4m3-3v6m4-8v10m4-7v4m4-6v8m4-7v6m3-3h4"/></svg></span><span class="dialogue-cover-image"><svg class="dialogue-voice-art" viewBox="0 0 160 90" aria-hidden="true"><path d="M30 62V31a22 22 0 1 1 36 16L46 69V47"/><path class="voice-secondary" d="M81 62V31a22 22 0 1 1 36 16L97 69V47"/><path d="M0 78C38 78 38 17 79 17s43 61 81 61" opacity=".24"/><path class="voice-secondary" d="M0 15c40 0 40 61 80 61s40-61 80-61" opacity=".4"/></svg>${image}</span><span class="dialogue-cover-copy"><strong class="dialogue-cover-title">${esc(title)}</strong><small class="dialogue-cover-author">${esc(author)}</small></span></span>`
 }
+function shelfMenuToggle(book,label="Book options"){
+  return `<button type="button" class="book-menu-toggle" data-book-menu-toggle="${esc(book.id)}" aria-label="${esc(`Options for ${book.title}`)}" aria-haspopup="menu" aria-expanded="false" title="${esc(label)}"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/></svg></button>`
+}
 function shelfCard(book,data={}){
-  if(isShelfField(book))return fieldShelfCard(book)
+  if(isShelfField(book))return fieldShelfCard(book,data)
   const collection=isCollection(book),count=arr(book.members).length,dialogue=!collection&&book.content_kind==="dialogue"
   const image=book.cover_url?`<img src="${esc(book.cover_url)}" alt="" loading="lazy" onerror="this.remove()">`:""
   const cover=dialogue&&!book.cover_url?dialogueBookCover(book):`<span class="book-cover" style="--cloth:${esc(book.cloth||"#263239")};--foil:${esc(book.foil||"#f4e8cc")}"><span class="book-cover-fallback"><i aria-hidden="true"></i><strong>${esc(book.title)}</strong><small>${esc(book.author)}</small></span>${image}</span>`
   const layers=arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")
   const kind=collection?`${count} ${book.content_kind==="lecture"?"lectures":"volumes"}`:book.content_kind==="lecture"?"Lecture":book.content_kind==="dialogue"?"Dialogue":""
-  const menu=collection?"":`<button type="button" class="book-menu-toggle" data-book-menu-toggle="${esc(book.id)}" aria-label="${esc(`Options for ${book.title}`)}" aria-haspopup="menu" aria-expanded="false" title="Book options"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/></svg></button>`
+  const menu=collection?"":shelfMenuToggle(book,dialogue?"Dialogue options":"Book options")
   const canSelect=librarySelectionAvailable(data)&&libraryMemberIds(book).length>0,checked=libraryCheckState(book,new Set(librarySelectedIds(data)))
   const selection=canSelect?`<button type="button" class="book-selection" data-library-select="${esc(book.id)}" role="checkbox" aria-checked="${checked}" aria-label="${esc(collection?`Select all ${count} books in ${book.title}`:`Select ${book.title}`)}"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path data-selection-mark d="${checked==="mixed"?"M6 10h8":checked==="true"?"m6 10 3 3 5-6":""}"/></svg></button>`:""
   return `<div class="book-card ${collection?"book-collection":dialogue?"book-dialogue":""} ${canSelect&&checked==="true"?"is-selected":canSelect&&checked==="mixed"?"is-part-selected":""}" ${collection?"":`data-book-work="${esc(book.id)}"`}><button type="button" class="book-open" ${collection?"data-open-collection":"data-open-work"}="${esc(book.id)}" aria-label="${esc(`${collection?"Open collection":"Study"}: ${book.title}${collection?`, ${kind}`:""}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong title="${esc(book.title)}">${esc(book.title)}</strong><span>${esc(book.author)}${!collection&&book.year?` · ${esc(book.year)}`:""}</span><span class="book-layers">${kind?`<b class="book-kind">${esc(kind)}</b>`:""}${book.archived?'<b class="book-kind">Archived</b>':""}${layers}</span></span></button>${selection}${menu}</div>`
@@ -1309,13 +1313,19 @@ function setupBookMenu(runtime){
   }
   runtime.openBookMenu=(card,{anchor=null,x=null,y=null,last=false}={})=>{
     runtime.closeBookMenu()
-    const workId=String(card?.dataset.bookWork||""),book=shelfLeaves(runtime.data?.books).find(item=>String(item.id)===workId&&item.item_type!=="collection")
-    if(!book||!workId)return false
-    const toggle=card.querySelector("[data-book-menu-toggle]"),origin=anchor||card.querySelector("[data-open-work]"),rect=(origin||card).getBoundingClientRect()
+    const fieldId=String(card?.dataset.bookField||""),workId=String(card?.dataset.bookWork||"")
+    const book=fieldId?arr(runtime.data?.fields).find(item=>String(item.id)===fieldId&&["lateral","corpus"].includes(item.field)):shelfLeaves(runtime.data?.books).find(item=>String(item.id)===workId&&item.item_type!=="collection")
+    if(!book||fieldId&&!runtime.data?.library_selection_enabled||!fieldId&&!workId)return false
+    const toggle=card.querySelector("[data-book-menu-toggle]"),origin=anchor||card.querySelector(fieldId?"[data-open-field]":"[data-open-work]"),rect=(origin||card).getBoundingClientRect()
     const menu=doc.createElement("div");menu.className="book-context-menu";menu.id="care-book-context-menu";menu.setAttribute("data-book-context-menu","");menu.setAttribute("role","menu");menu.setAttribute("aria-label",`Options for ${book.title||"this book"}`)
-    const actions=[["book_portrait","Book portrait",'<path d="M3 3h6v14H3zM11 3h6v14h-6z"/>'],["author_library","Author’s library",'<circle cx="10" cy="6" r="3"/><path d="M4 17c0-7 12-7 12 0"/>'],["book_info","Book info",'<circle cx="10" cy="10" r="7"/><path d="M10 9v5m0-8h.01"/>'],["translate_book","Translate book",'<path d="M2 4h10M7 2v2M4 4c0 5 5 7 7 8M10 4c0 5-5 7-8 8m9 5 4-10 4 10m-6-3h4"/>'],["restart_book","Start again from scratch",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>'],["copy_title","Copy title",'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 13H3V3h10v1"/>'],book.archived?["restore_book","Restore",'<path d="M4 7v10h12V7M3 3h14v4H3zM10 14V9m-2 2 2-2 2 2"/>']:["archive_book","Archive",'<path d="M3 3h14v4H3zM4 7v10h12V7M8 10h4"/>']]
-    if(librarySelectionAvailable(runtime.data)&&libraryBooks(runtime.data).has(workId))actions.splice(3,0,["publish_beta","Publish to beta",'<path d="M10 13V3m-4 4 4-4 4 4M3 12v5h14v-5"/>'])
-    if(librarySelectionAvailable(runtime.data)&&libraryBooks(runtime.data).has(workId))actions.splice(4,0,["update_beta_version","Update beta version",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>'])
+    const actions=fieldId?[
+      ["publish_beta","Publish / update beta",'<path d="M10 13V3m-4 4 4-4 4 4M3 12v5h14v-5"/>'],
+      ...(book.field==="lateral"?[["field_rerun_latest","Re-run with latest book versions…",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>']]:[]),
+      ["copy_title","Copy title",'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 13H3V3h10v1"/>'],
+      ["field_archive","Archive",'<path d="M3 3h14v4H3zM4 7v10h12V7M8 10h4"/>'],
+    ]:[["book_portrait","Book portrait",'<path d="M3 3h6v14H3zM11 3h6v14h-6z"/>'],["author_library","Author’s library",'<circle cx="10" cy="6" r="3"/><path d="M4 17c0-7 12-7 12 0"/>'],["book_info","Book info",'<circle cx="10" cy="10" r="7"/><path d="M10 9v5m0-8h.01"/>'],["translate_book","Translate book",'<path d="M2 4h10M7 2v2M4 4c0 5 5 7 7 8M10 4c0 5-5 7-8 8m9 5 4-10 4 10m-6-3h4"/>'],["restart_book","Start again from scratch",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>'],["copy_title","Copy title",'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 13H3V3h10v1"/>'],book.archived?["restore_book","Restore",'<path d="M4 7v10h12V7M3 3h14v4H3zM10 14V9m-2 2 2-2 2 2"/>']:["archive_book","Archive",'<path d="M3 3h14v4H3zM4 7v10h12V7M8 10h4"/>']]
+    if(!fieldId&&runtime.data.library_selection_enabled&&libraryBooks(runtime.data).has(workId))actions.splice(3,0,["publish_beta","Publish to beta",'<path d="M10 13V3m-4 4 4-4 4 4M3 12v5h14v-5"/>'])
+    if(!fieldId&&runtime.data.library_selection_enabled&&libraryBooks(runtime.data).has(workId))actions.splice(4,0,["update_beta_version","Update beta version",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>'])
     for(const [action,label,path] of actions){
       const button=doc.createElement("button");button.type="button";button.tabIndex=-1;button.setAttribute("role","menuitem");button.setAttribute("data-book-menu-action",action)
       const icon=doc.createElement("span");icon.className="book-menu-icon";icon.setAttribute("aria-hidden","true");icon.innerHTML=`<svg viewBox="0 0 20 20">${path}</svg>`
@@ -1345,11 +1355,18 @@ function setupBookMenu(runtime){
   runtime.activateBookMenu=button=>{
     const current=runtime.bookMenu,action=button?.dataset.bookMenuAction;if(!current||!action)return false
     if(action==="copy_title"){runtime.copyBookTitle(button);return true}
+    if(isShelfField(current.book)){
+      const field=current.book.field,field_id=String(current.book.id)
+      if(!runtime.data.library_selection_enabled||!["lateral","corpus"].includes(field)||!arr(runtime.data.fields).some(item=>String(item.id)===field_id&&item.field===field))return false
+      if(!["publish_beta","field_archive","field_rerun_latest"].includes(action)||action==="field_rerun_latest"&&field!=="lateral")return false
+      runtime.closeBookMenu({restoreFocus:true})
+      return runtime.emitLibrarySelection(action,action==="publish_beta"?{publication_kind:field,field_ids:[field_id],work_ids:[]}:{field_id,field,work_ids:[]})
+    }
     if(["publish_beta","update_beta_version"].includes(action)){
       const work_id=String(current.book.id)
-      if(!librarySelectionAvailable(runtime.data)||!libraryBooks(runtime.data).has(work_id))return false
+      if(!runtime.data.library_selection_enabled||!libraryBooks(runtime.data).has(work_id))return false
       runtime.closeBookMenu({restoreFocus:true})
-      return runtime.emitLibrarySelection(action,{work_ids:[work_id]})
+      return runtime.emitLibrarySelection(action,{work_ids:[work_id],publication_kind:"book"})
     }
     if(!["book_info","translate_book","restart_book","archive_book","restore_book","book_portrait","author_library"].includes(action))return false
     const work_id=String(current.book.id);runtime.closeBookMenu({restoreFocus:true})
@@ -1361,12 +1378,12 @@ function setupBookMenu(runtime){
     const toggle=event.target?.closest?.("[data-book-menu-toggle]");if(!toggle)return false
     event.preventDefault?.();event.stopPropagation?.()
     if(runtime.bookMenu?.toggle===toggle)runtime.closeBookMenu({restoreFocus:true})
-    else runtime.openBookMenu(toggle.closest("[data-book-work]"),{anchor:toggle})
+    else runtime.openBookMenu(toggle.closest("[data-book-work]")||toggle.closest("[data-book-field]"),{anchor:toggle})
     return true
   }
   runtime.onBookContextMenu=event=>{
-    const card=event.target?.closest?.("[data-book-work]");if(!card)return
-    if(runtime.openBookMenu(card,{anchor:card.querySelector("[data-open-work]"),x:event.clientX,y:event.clientY})){event.preventDefault();event.stopPropagation()}
+    const card=event.target?.closest?.("[data-book-work]")||event.target?.closest?.("[data-book-field]");if(!card)return
+    if(runtime.openBookMenu(card,{anchor:card.querySelector("[data-open-work]")||card.querySelector("[data-open-field]"),x:event.clientX,y:event.clientY})){event.preventDefault();event.stopPropagation()}
   }
   runtime.onBookMenuKey=event=>{
     const current=runtime.bookMenu,key=event.key
@@ -1384,9 +1401,9 @@ function setupBookMenu(runtime){
       }
     }
     if(event.metaKey||event.ctrlKey||event.altKey||event.isComposing)return false
-    const toggle=event.target?.closest?.("[data-book-menu-toggle]"),card=event.target?.closest?.("[data-book-work]")
+    const toggle=event.target?.closest?.("[data-book-menu-toggle]"),card=event.target?.closest?.("[data-book-work]")||event.target?.closest?.("[data-book-field]")
     if(card&&(key==="ContextMenu"||(event.shiftKey&&key==="F10")||(toggle&&["ArrowDown","ArrowUp"].includes(key)))){
-      event.preventDefault();event.stopPropagation();return runtime.openBookMenu(card,{anchor:toggle||card.querySelector("[data-open-work]"),last:key==="ArrowUp"})
+      event.preventDefault();event.stopPropagation();return runtime.openBookMenu(card,{anchor:toggle||card.querySelector("[data-open-work]")||card.querySelector("[data-open-field]"),last:key==="ArrowUp"})
     }
     return false
   }

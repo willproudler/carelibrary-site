@@ -1,5 +1,5 @@
 /* Discover uses the shipped field and axiom viewers for published comparisons. */
-import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=59d5753af7404ea2';
+import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=a63dd9a83abd5bd5';
 
 const copy = value => structuredClone(value);
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -107,11 +107,11 @@ export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,on
     };
     const [loaded,{default:mountField},{default:mountViewer},css,scope,viewerCSS,viewerHTML]=await Promise.all([
       loadPublicField(field,(path,options)=>fetchFile(new URL(path,import.meta.url),options)),
-      import('./native/study-field.mjs?v=59d5753af7404ea2'),
-      import('./native/reference-viewer.mjs?v=59d5753af7404ea2'),
-      readText('./native/study-field.css?v=59d5753af7404ea2'),
-      readText('./native/public-scope.css?v=59d5753af7404ea2'),
-      readText('./native/reference-viewer.css?v=59d5753af7404ea2'),readText('./native/reference-viewer.html?v=59d5753af7404ea2'),
+      import('./native/study-field.mjs?v=a63dd9a83abd5bd5'),
+      import('./native/reference-viewer.mjs?v=a63dd9a83abd5bd5'),
+      readText('./native/study-field.css?v=a63dd9a83abd5bd5'),
+      readText('./native/public-scope.css?v=a63dd9a83abd5bd5'),
+      readText('./native/reference-viewer.css?v=a63dd9a83abd5bd5'),readText('./native/reference-viewer.html?v=a63dd9a83abd5bd5'),
     ]);
     const controller=createDiscoverFieldController(loaded,adapter);
     const shadow=host.shadowRoot||host.attachShadow({mode:'open'});

@@ -797,7 +797,7 @@ button{border-radius:999px}
 .book-context-menu{position:fixed;z-index:1000;display:grid;gap:2px;min-width:11.5rem;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;padding:.3rem;border:1px solid #39443f;border-radius:10px;background:#151c1c;box-shadow:0 12px 36px rgba(0,0,0,.38);color:#e4e8df;font-family:var(--st-font,ui-sans-serif,system-ui,sans-serif)}
 .book-context-menu button{display:flex;align-items:center;gap:.65rem;width:100%;min-height:2.25rem;padding:.5rem .7rem;border:0;border-radius:6px;background:transparent;color:inherit;text-align:left;font:500 .75rem/1.2 var(--st-font,ui-sans-serif,system-ui,sans-serif);cursor:pointer;white-space:nowrap}
 .book-context-menu button:hover,.book-context-menu button:focus-visible{outline:none;background:#29362f;color:#fff}
-.book-context-menu button[data-book-menu-action="archive_book"],.book-context-menu button[data-book-menu-action="restore_book"]{margin-top:.2rem;border-top:1px solid #303b35;border-radius:0 0 6px 6px;color:#c8b690}
+.book-context-menu button[data-book-menu-action="archive_book"],.book-context-menu button[data-book-menu-action="restore_book"],.book-context-menu button[data-book-menu-action="field_archive"]{margin-top:.2rem;border-top:1px solid #303b35;border-radius:0 0 6px 6px;color:#c8b690}
 .book-menu-icon{display:grid;place-items:center;width:1rem;height:1rem;color:#9caf9f}
 .book-menu-icon svg{width:1rem;height:1rem;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .book-menu-status{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
