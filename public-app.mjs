@@ -22,7 +22,7 @@ async function start(){
  // CARE's viewer deliberately uses the document surface (isolate_styles=False).
  const viewerHost=document.createElement('div');document.body.append(viewerHost);const viewerShadow=viewerHost;
  viewerShadow.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
- let state={workId:data.works[0].id,routeMode:'incoming',outlineUnits:[]},view='library',cleanup,viewerCleanup;
+ let state={workId:(data.works[0]?.id||''),routeMode:'incoming',outlineUnits:[]},view='library',cleanup,viewerCleanup;
  let opened=[],history=[],historyIndex=-1;
  let saved=readLocal('care-public-saved-v1',{bookmarks:[],favourites:[]});
  saved.bookmarks=(saved.bookmarks||[]).filter(row=>index.units.has(row.care_unit_id));saved.favourites=(saved.favourites||[]).filter(id=>index.nodes.has(id));
@@ -37,7 +37,7 @@ async function start(){
   const row=adapter.card(node.id),citation=[node.work?.author,node.work?.title||data.lateral.title,node.id].filter(Boolean).join(', ')+'.';
   const alignmentNote=node.grounding?.type==='Unresolved'?'Source alignment unresolved':node.passages?.some(p=>p.review==='unreviewed')?'AI source links · awaiting review':'';
   return {...row,scope:'',metadata:[row.author,row.work_title,row.chapter_title,alignmentNote].filter(Boolean),citation,citation_short:citation,citation_ibid:`Ibid., ${node.id}.`,
-   destination:urlFor(node,{route:true}),sheet_destination:urlFor(node),studio_route:{work:node.work?.id||data.works[0].id},open_label:'Open Routes',favourite:saved.favourites.includes(node.id)};
+   destination:urlFor(node,{route:true}),sheet_destination:urlFor(node),studio_route:{work:node.work?.id||(data.works[0]?.id||'')},open_label:'Open Routes',favourite:saved.favourites.includes(node.id)};
  });
  const references=baseReferences.flatMap(row=>[row,{...row,scope:`public:${row.unit_id}`},...(row.work_id?[{...row,scope:`work:${row.work_id}`}]:[])]);
  function currentKey(){return state.connectionId||state.workId;}
@@ -56,8 +56,8 @@ async function start(){
   if(!key){view='library';window.history.replaceState(null,'',location.pathname);paint();return;}
   const work=adapter.workFor(key);
   if(work)state=standaloneBookState(work.id,bookStates.get(work.id));
-  else if(fieldFor(key))state={workId:data.works[0].id,...bookStates.get(key),connectionId:key};
-  else state={workId:data.works[0].id,...bookStates.get(data.lateral.id),connectionId:data.lateral.id};
+  else if(fieldFor(key))state={workId:(data.works[0]?.id||''),...bookStates.get(key),connectionId:key};
+  else state={workId:(data.works[0]?.id||''),...bookStates.get(data.lateral.id),connectionId:data.lateral.id};
   view='workspace';syncURL();paint();
  }
  function closeTab(key){
@@ -180,8 +180,8 @@ async function start(){
  async function routeFromURL(){
   const request=++routeRequest;
   try{saveState();const p=new URLSearchParams(location.hash.slice(1));const field=fieldFor(p.get('field')),lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
-   if(field){await loadPublicField(field);if(request!==routeRequest)return;state={workId:data.works[0].id,...bookStates.get(field.id),connectionId:field.id};view='workspace';if(!opened.includes(currentKey()))opened.push(currentKey());paint();return;}
-   if(data.lateral.id&&(lateral===data.lateral.id||p.has('compare'))){state={workId:data.works[0].id,...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';}
+   if(field){await loadPublicField(field);if(request!==routeRequest)return;state={workId:(data.works[0]?.id||''),...bookStates.get(field.id),connectionId:field.id};view='workspace';if(!opened.includes(currentKey()))opened.push(currentKey());paint();return;}
+   if(data.lateral.id&&(lateral===data.lateral.id||p.has('compare'))){state={workId:(data.works[0]?.id||''),...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';}
    else if(work){state=standaloneBookState(work.id,bookStates.get(work.id));view='workspace';}
    else{view=['laterals','corpuses'].includes(p.get('view'))?p.get('view'):'library';paint();return;}
    if(p.has('unit')&&p.get('unit')!==data.lateral.id){state.unitId=p.get('unit');state.rawUnitId='';state.referenceId='';}
