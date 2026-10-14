@@ -29,13 +29,6 @@
       "items": 1124
     },
     {
-      "slug": "beta-8599b7e7b1c3c438",
-      "seal": "SEAL_TFRR_BD670CE1DA8B7814EAB2",
-      "sections": 13,
-      "units": 21,
-      "items": 2332
-    },
-    {
       "slug": "beta-eb6edcaef3392c37",
       "seal": "SEAL_MHON_E70740882C0756CA2C1F",
       "sections": 25,
@@ -45,8 +38,8 @@
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 21720041,
-  "sha256": "a89e4046afc556798dd81726913773b9d695fd25642e53c2c1f5b67083e9c1e1",
+  "bytes": 16957566,
+  "sha256": "c99a21a465f4b46e5e5d413d7c2aaf1cef7657ec465ec493ed8e9d737343bc26",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",
