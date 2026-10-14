@@ -1,8 +1,7 @@
-/* Discover uses the shipped field and axiom viewers for published comparisons. */
-import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=a63dd9a83abd5bd5';
+/* Discover uses the shipped field reader for published comparisons. */
+import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
 
 const copy = value => structuredClone(value);
-const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 /** Pure, isolated state for one already loaded published lateral or corpus. */
 export function createDiscoverFieldController(field,adapter) {
@@ -72,17 +71,7 @@ export function createDiscoverFieldController(field,adapter) {
     referenceId:state.fieldReference?.id||'',scope:state.fieldReference?.source_pane||'',
     book:'field:'+field.id,connectionId:field.id,workId:memberWorkIds[0]||'',memberWorkIds:[...memberWorkIds],
   };}
-  function viewerPayload(){
-    const references=Object.entries(field.references||{}).map(([key,reference])=>({
-      ...reference,scope:reference.source_pane||key.slice(0,key.lastIndexOf('|')),
-      kind:reference.kind||'axiom',resolved:true,reading_html:reference.reading_html||esc(reference.text||''),
-    }));
-    const selected=state.fieldSelected||state.fieldReference;
-    const current=references.find(reference=>reference.id===selected?.id&&reference.scope===selected?.source_pane);
-    return {studio_mode:true,references,default_id:current?.id||'',default_scope:current?.scope||'',
-      default_kind:current?.kind||'axiom',follow_default:true};
-  }
-  return {open,clearRoute,dispatch,getState,status,viewerPayload,
+  return {open,clearRoute,dispatch,getState,status,
     payload:()=>fieldPayload(field,adapter,state),href:()=>'./#field='+encodeURIComponent(field.id)};
 }
 
@@ -92,49 +81,34 @@ const embedCSS=`
 .discover-field-notice{position:absolute;z-index:70;left:1rem;right:1rem;top:3.5rem;margin:0;padding:.75rem 1rem;border:1px solid #665d76;border-radius:8px;background:#24202c;color:#ece8df;font:14px/1.5 system-ui,sans-serif}
 `;
 
-/** Mounts into its own shadow root, with an owned document-surface axiom viewer. */
+/** Mounts the reading into its own shadow root. */
 export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,onLibrary}) {
   if(!host)return null;
   const doc=host.ownerDocument,view=doc.defaultView;
   const fetchFile=fetcher||view.fetch.bind(view);
   host.setAttribute('aria-busy','true');
-  let viewerHost,cleanup,viewerCleanup,noticeTimer,destroyed=false;
+  let cleanup,noticeTimer,destroyed=false;
   try{
     const readText=async path=>{
       const response=await fetchFile(new URL(path,import.meta.url));
       if(!response.ok)throw Error('A reading component could not load. Please try again.');
       return response.text();
     };
-    const [loaded,{default:mountField},{default:mountViewer},css,scope,viewerCSS,viewerHTML]=await Promise.all([
+    const [loaded,{default:mountField},css,scope]=await Promise.all([
       loadPublicField(field,(path,options)=>fetchFile(new URL(path,import.meta.url),options)),
-      import('./native/study-field.mjs?v=a63dd9a83abd5bd5'),
-      import('./native/reference-viewer.mjs?v=a63dd9a83abd5bd5'),
-      readText('./native/study-field.css?v=a63dd9a83abd5bd5'),
-      readText('./native/public-scope.css?v=a63dd9a83abd5bd5'),
-      readText('./native/reference-viewer.css?v=a63dd9a83abd5bd5'),readText('./native/reference-viewer.html?v=a63dd9a83abd5bd5'),
+      import('./native/study-field.mjs?v=225b9b9a34331c20'),
+      readText('./native/study-field.css?v=225b9b9a34331c20'),
+      readText('./native/public-scope.css?v=225b9b9a34331c20'),
     ]);
     const controller=createDiscoverFieldController(loaded,adapter);
     const shadow=host.shadowRoot||host.attachShadow({mode:'open'});
     shadow.innerHTML=`<style>${css}\n${scope}\n${embedCSS}</style><div class="field-desk" data-field-desk tabindex="0"></div><p class="discover-field-notice" role="status" hidden></p>`;
     const noticeElement=shadow.querySelector('.discover-field-notice');
-    viewerHost=doc.createElement('div');
-    viewerHost.setAttribute('data-discover-field-viewer','');
-    viewerHost.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n[data-discover-field-viewer] .crv-tool-rate,[data-discover-field-viewer] .crv-tool-quality,[data-discover-field-viewer] .crv-tool-collect,[data-discover-field-viewer] .crv-tool-sheet,[data-discover-field-viewer] .crv-tool-reveal-sheet{display:none!important}[data-discover-field-viewer] .crv-launcher{bottom:40px}[data-discover-field-viewer] .crv-panel{bottom:100px}</style>${viewerHTML}`;
-    doc.body.append(viewerHost);
     const notify=()=>onStatus?.(controller.status());
     const notice=message=>{
       noticeElement.textContent=message;noticeElement.hidden=false;view.clearTimeout(noticeTimer);
       noticeTimer=view.setTimeout(()=>{noticeElement.hidden=true;},4500);
     };
-    function paintViewer(){
-      viewerCleanup?.();
-      viewerCleanup=mountViewer({parentElement:viewerHost,data:controller.viewerPayload(),setTriggerValue:(kind,value)=>{
-        if(destroyed||kind!=='action')return;
-        if(['studio_open_reference','studio_open_sheet'].includes(value.type)){
-          try{controller.open({ref:value.id,scope:value.scope||''});paint();}catch(error){notice(error.message);}
-        }
-      }});
-    }
     function paint(){
       if(destroyed)return;
       cleanup?.();
@@ -146,19 +120,19 @@ export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,on
         }
         try{
           controller.dispatch(action);
-          if(action.type==='selected_axiom'){paintViewer();notify();}else paint();
+          if(action.type==='selected_axiom')notify();else paint();
         }catch(error){notice(error.message);}
       }});
-      paintViewer();notify();
+      notify();
     }
     const api={
       open(request={}){controller.open(request);paint();return controller.status();},
       clearRoute(){controller.clearRoute();paint();return controller.status();},
       status:()=>controller.status(),
-      destroy(){if(destroyed)return;destroyed=true;cleanup?.();viewerCleanup?.();view.clearTimeout(noticeTimer);viewerHost.remove();shadow.replaceChildren();},
+      destroy(){if(destroyed)return;destroyed=true;cleanup?.();view.clearTimeout(noticeTimer);shadow.replaceChildren();},
     };
     paint();
     return api;
-  }catch(error){cleanup?.();viewerCleanup?.();viewerHost?.remove();throw error;}
+  }catch(error){cleanup?.();throw error;}
   finally{host.removeAttribute('aria-busy');}
 }

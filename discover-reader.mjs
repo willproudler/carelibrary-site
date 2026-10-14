@@ -1,9 +1,8 @@
 /* The Discover page mounts CARE's shipped reader against the selected public
  * collection. No authoring, generation, account or private-library API is used. */
-import mountReader from './native/study-desk.mjs?v=a63dd9a83abd5bd5';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=a63dd9a83abd5bd5';
-import {createDiscoverReferenceViewer} from './discover-reference-viewer.mjs?v=a63dd9a83abd5bd5';
-import {loadPublicField} from './public-fields.mjs?v=a63dd9a83abd5bd5';
+import mountReader from './native/study-desk.mjs?v=225b9b9a34331c20';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=225b9b9a34331c20';
+import {loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
   hume:'CH_THN_INTR:AS1',
@@ -153,7 +152,7 @@ export async function mountDiscoverReader(host,options={}) {
   host.setAttribute('aria-busy','true');
   try{
     const fetcher=options.fetch||view.fetch.bind(view);
-    const urls=['./data/library.json','./native/study-desk.css?v=a63dd9a83abd5bd5','./native/public-scope.css?v=a63dd9a83abd5bd5'];
+    const urls=['./data/library.json','./native/study-desk.css?v=225b9b9a34331c20','./native/public-scope.css?v=225b9b9a34331c20'];
     const [data,css,scope]=await Promise.all(urls.map(async (url,index)=>{
       const response=await fetcher(new URL(url,import.meta.url),index===0?{cache:'no-cache'}:{});
       if(!response.ok)throw Error('The reading could not load. Please try again.');
@@ -161,11 +160,6 @@ export async function mountDiscoverReader(host,options={}) {
     }));
     const controller=data.works?.length?createDiscoverController(data):null;
     const adapter=controller?.adapter||createPublicReaderAdapter(data),choices=discoverChoices(data);
-    const bookViewer=await createDiscoverReferenceViewer({document:doc,fetcher,onAction:action=>{
-      const node=adapter.index.nodes.get(action.id);if(!node||!controller)return;
-      if(action.type==='studio_open_reference')open({book:node.work?.slug,ref:node.id});
-      else if(action.type==='studio_open_sheet')open({book:node.work?.slug,unit:node.unit.id});
-    }});
     if(!choices.length)throw Error('No readings have been published yet.');
     if(selector){
       selector.replaceChildren(...choices.map(choice=>{const option=doc.createElement('option');option.value=choice.value;option.textContent=choice.label;return option;}));
@@ -192,9 +186,6 @@ export async function mountDiscoverReader(host,options={}) {
       cleanup?.();cleanup=mountReader({parentElement:bookHost,data:controller.payload(),
         setStateValue:(kind,value)=>{controller.dispatch(kind,value);},setTriggerValue:dispatch});
       const readButton=bookHost.querySelector('[data-reader-view="normal"]');if(readButton)readButton.textContent='Read';
-      const state=controller.getState(),id=state.selectedAxiom?.passage_id||state.selectedAxiom?.axiom_id||state.connectionSelection?.reference_id||state.connectionReferenceId||state.referenceId||'';
-      const references=[...adapter.index.nodes.values()].filter(node=>['claim','passage'].includes(node.kind)&&(node.work?.id===state.workId||node.unit?.id===state.connectionId)).map(node=>({...adapter.card(node.id,{state}),kind:node.kind==='passage'?'passage':'axiom',resolved:true}));
-      bookViewer.render({studio_mode:true,references,default_id:id,default_kind:adapter.index.nodes.get(id)?.kind==='passage'?'passage':'axiom',follow_default:true});
       publish();
     }
     function queuePaint(){
@@ -213,14 +204,14 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=a63dd9a83abd5bd5')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=225b9b9a34331c20')]);
           if(destroyed||version!==requestVersion)return;
           const nextHost=doc.createElement('div');nextHost.style.cssText='height:100%;min-height:0';
           const nextApi=await module.mountDiscoverField({host:nextHost,field,adapter,fetcher,
             onStatus:current=>{if(!destroyed&&fieldHost===nextHost)publish(current);},
             onLibrary:href=>{view.location.href=href;}});
           if(destroyed||version!==requestVersion){nextApi.destroy();return;}
-          removeField();cleanup?.();cleanup=null;bookViewer.hide();bookHost.hidden=true;
+          removeField();cleanup?.();cleanup=null;bookHost.hidden=true;
           fieldHost=nextHost;fieldApi=nextApi;shadow.append(nextHost);
           if(request.ref)fieldApi.open({...request,fieldId:identity});
           publish();
@@ -239,7 +230,7 @@ export async function mountDiscoverReader(host,options={}) {
     const closeButtons=[...doc.querySelectorAll('[data-discover-close-route]')];
     selector?.addEventListener('change',choose);closeButtons.forEach(button=>button.addEventListener('click',close));
     view.removeEventListener('care:discover-open',receiveEarly);view.addEventListener('care:discover-open',receive);
-    const api={open,status,destroy(){destroyed=true;++requestVersion;cleanup?.();bookViewer.destroy();removeField();if(mapSection)mapSection.hidden=false;selector?.removeEventListener('change',choose);closeButtons.forEach(button=>button.removeEventListener('click',close));view.removeEventListener('care:discover-open',receive);delete host.discoverReader;}};
+    const api={open,status,destroy(){destroyed=true;++requestVersion;cleanup?.();removeField();if(mapSection)mapSection.hidden=false;selector?.removeEventListener('change',choose);closeButtons.forEach(button=>button.removeEventListener('click',close));view.removeEventListener('care:discover-open',receive);delete host.discoverReader;}};
     host.discoverReader=api;
     await open(loadingRequest||discoverInitialReading(data));
     view.dispatchEvent(new view.CustomEvent('care:discover-ready',{detail:status()}));

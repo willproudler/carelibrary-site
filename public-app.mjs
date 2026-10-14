@@ -1,8 +1,8 @@
-import mountField from './native/study-field.mjs?v=a63dd9a83abd5bd5';
-import {publicFields,fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=a63dd9a83abd5bd5';
-import mountReader from './native/study-desk.mjs?v=a63dd9a83abd5bd5';
-import mountViewer from './native/reference-viewer.mjs?v=a63dd9a83abd5bd5';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=a63dd9a83abd5bd5';
+import mountField from './native/study-field.mjs?v=225b9b9a34331c20';
+import {publicFields,fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
+import mountReader from './native/study-desk.mjs?v=225b9b9a34331c20';
+import mountViewer from './native/reference-viewer.mjs?v=225b9b9a34331c20';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=225b9b9a34331c20';
 import {searchLibrary} from './library-core.mjs?v=20261014-current';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
@@ -16,12 +16,12 @@ function notice(message){const el=$('#notice');el.textContent=message;el.hidden=
 async function start(){
  const response=await fetch('./data/library.json',{cache:'no-cache'});if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
  const data=await response.json();data.lateral=data.lateral||{id:"",title:"",parents:[],sections:[]};const adapter=createPublicReaderAdapter(data),{index}=adapter;
- const [css,scope,viewerCSS,viewerHTML,fieldCSS]=await Promise.all(['./native/study-desk.css?v=a63dd9a83abd5bd5','./native/public-scope.css?v=a63dd9a83abd5bd5','./native/reference-viewer.css?v=a63dd9a83abd5bd5','./native/reference-viewer.html?v=a63dd9a83abd5bd5','./native/study-field.css?v=a63dd9a83abd5bd5'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
+ const [css,scope,viewerCSS,viewerHTML,fieldCSS]=await Promise.all(['./native/study-desk.css?v=225b9b9a34331c20','./native/public-scope.css?v=225b9b9a34331c20','./native/reference-viewer.css?v=225b9b9a34331c20','./native/reference-viewer.html?v=225b9b9a34331c20','./native/study-field.css?v=225b9b9a34331c20'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
  shadow.innerHTML=`<style>${css}\n${scope}\n${fieldCSS}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div><div class="field-desk" data-field-desk hidden style="height:100%;min-height:0"></div>`;
  // CARE's viewer deliberately uses the document surface (isolate_styles=False).
  const viewerHost=document.createElement('div');document.body.append(viewerHost);const viewerShadow=viewerHost;
- viewerShadow.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-launcher{bottom:40px}.crv-panel{bottom:100px}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
+ viewerShadow.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
  let state={workId:data.works[0].id,routeMode:'incoming',outlineUnits:[]},view='library',cleanup,viewerCleanup;
  let opened=[],history=[],historyIndex=-1;
  let saved=readLocal('care-public-saved-v1',{bookmarks:[],favourites:[]});

@@ -31,14 +31,12 @@ test('Discover field status names the selected publication and only its public m
   assert.match(payload.field.member_load_errors.PRIVATE,/not been published/);
 });
 
-test('opening a repeated claim keeps the exact source pane in routes and axiom viewer',()=>{
+test('opening a repeated claim keeps the exact source pane in routes and selection',()=>{
   const {reader}=fixture();
   reader.open({book:'field:FIELD:lateral:chosen',ref:'REUSED',scope:'second-pane'});
   assert.equal(reader.payload().reference.text,'Second exact claim');
   assert.equal(reader.status().scope,'second-pane');
-  assert.equal(reader.viewerPayload().default_scope,'second-pane');
-  assert.equal(reader.viewerPayload().default_id,'REUSED');
-  assert.equal(reader.viewerPayload().references.filter(row=>row.id==='REUSED').length,2);
+  assert.deepEqual(reader.getState().fieldSelected,{id:'REUSED',source_pane:'second-pane'});
 });
 
 test('stale field identity, missing route, ambiguous route and wrong scope preserve current reading',()=>{
@@ -66,15 +64,14 @@ test('unique route restores exact key scope and clearRoute keeps the field and m
   assert.equal(reader.payload().reference,null);
   assert.equal(reader.payload().stacks.LATEST_SECOND.active_unit_id,'CH_SECOND');
   assert.equal(reader.status().connectionId,'FIELD:lateral:chosen');
-  assert.equal(reader.viewerPayload().default_scope,'first-pane');
+  assert.deepEqual(reader.getState().fieldSelected,{id:'UNIQUE',source_pane:'first-pane'});
 });
 
-test('selection updates the axiom viewer without replacing the current route',()=>{
+test('selection preserves its source pane without replacing the current route',()=>{
   const {reader}=fixture();reader.open({ref:'UNIQUE'});
   reader.dispatch({type:'selected_axiom',source_pane:'second-pane',value:{axiom_id:'REUSED'}});
   assert.equal(reader.status().referenceId,'UNIQUE');
-  assert.equal(reader.viewerPayload().default_id,'REUSED');
-  assert.equal(reader.viewerPayload().default_scope,'second-pane');
+  assert.deepEqual(reader.getState().fieldSelected,{id:'REUSED',source_pane:'second-pane'});
 });
 
 test('member source navigation rejects unpublished, unrelated and stale sheets without losing state',()=>{
