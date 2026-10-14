@@ -1,9 +1,9 @@
 /* The Discover page mounts CARE's shipped reader against the selected public
  * collection. No authoring, generation, account or private-library API is used. */
-import mountReader from './native/study-desk.mjs?v=bbc209f3c86c6efe';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=bbc209f3c86c6efe';
-import {createDiscoverReferenceViewer} from './discover-reference-viewer.mjs?v=bbc209f3c86c6efe';
-import {loadPublicField} from './public-fields.mjs?v=20261014-current';
+import mountReader from './native/study-desk.mjs?v=59d5753af7404ea2';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=59d5753af7404ea2';
+import {createDiscoverReferenceViewer} from './discover-reference-viewer.mjs?v=59d5753af7404ea2';
+import {loadPublicField} from './public-fields.mjs?v=59d5753af7404ea2';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
   hume:'CH_THN_INTR:AS1',
@@ -153,7 +153,7 @@ export async function mountDiscoverReader(host,options={}) {
   host.setAttribute('aria-busy','true');
   try{
     const fetcher=options.fetch||view.fetch.bind(view);
-    const urls=['./data/library.json','./native/study-desk.css?v=bbc209f3c86c6efe','./native/public-scope.css?v=20261014-current'];
+    const urls=['./data/library.json','./native/study-desk.css?v=59d5753af7404ea2','./native/public-scope.css?v=59d5753af7404ea2'];
     const [data,css,scope]=await Promise.all(urls.map(async (url,index)=>{
       const response=await fetcher(new URL(url,import.meta.url),index===0?{cache:'no-cache'}:{});
       if(!response.ok)throw Error('The reading could not load. Please try again.');
@@ -213,7 +213,7 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=bbc209f3c86c6efe')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=59d5753af7404ea2')]);
           if(destroyed||version!==requestVersion)return;
           const nextHost=doc.createElement('div');nextHost.style.cssText='height:100%;min-height:0';
           const nextApi=await module.mountDiscoverField({host:nextHost,field,adapter,fetcher,
