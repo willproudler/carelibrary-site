@@ -7,7 +7,7 @@ const TEXT_SIZE_KEY = "care-reference-viewer-text-size-v1"
 const TEXT_SCALES = [.78,.88,1,1.12,1.26]
 const layerColor = layer => ({
   CB:"#a96624",WB:"#9a4327",MC:"#594f88",CL:"#2d6b67",CH:"#3d668b",
-  NUMO:"#3d765a",XR:"#6e4f9a",XS:"#8b4f86",SC:"#8f394b",XA:"#51667e",PASSAGE:"#8a6849"
+  NUMO:"#3d765a",XR:"#6e4f9a",XS:"#8b4f86",SC:"#8f394b",XA:"#51667e",SOURCE:"#8a431d",PASSAGE:"#8a431d"
 }[String(layer || "").toUpperCase()] || "#b56f3b")
 function setup(parentElement, root, setTriggerValue) {
   const runtime = {
@@ -28,6 +28,7 @@ function setup(parentElement, root, setTriggerValue) {
     const parsedScale = savedScale === null ? Number.NaN : Number(savedScale)
     if (Number.isInteger(parsedScale)) runtime.textScaleIndex = Math.max(0,Math.min(TEXT_SCALES.length-1,parsedScale))
   } catch (_) {}
+  runtime.stars.innerHTML=""
   for (let score=1;score<=5;score+=1) { const button=document.createElement("button");button.type="button";button.className="crv-star";button.dataset.score=String(score);button.setAttribute("aria-label",`${score} star${score===1?"":"s"}`);button.textContent="★";runtime.stars.append(button) }
   const surfaceFor = element => element.closest(".care-axiom,.relative-card,.passage-card,.related-axiom,.lineage-node,.lineage-passage-card,.family-card") || element
   runtime.historyRecords = () => {
@@ -88,7 +89,7 @@ function setup(parentElement, root, setTriggerValue) {
     const hasEdition=Boolean(runtime.edition)
     if(runtime.surface==="edition"&&!hasEdition)runtime.surface="read"
     runtime.root.style.setProperty("--crv-text-scale",String(TEXT_SCALES[runtime.textScaleIndex]))
-    runtime.root.style.setProperty("--crv-accent",ref?.accent||layerColor(ref?.layer || ref?.kind))
+    runtime.root.style.setProperty("--crv-accent",runtime.paneAccent||ref?.accent||layerColor(ref?.layer || ref?.kind))
     runtime.textSmaller.disabled=runtime.textScaleIndex===0;runtime.textLarger.disabled=runtime.textScaleIndex===TEXT_SCALES.length-1
     runtime.panel.hidden = !runtime.open
     runtime.launcher.setAttribute("aria-expanded", runtime.open ? "true" : "false")
@@ -176,7 +177,7 @@ function setup(parentElement, root, setTriggerValue) {
   }
   runtime.select = (ref,{open=runtime.open,scroll=false,remember=true}={}) => {
     if (!ref) return
-    runtime.selected=ref;runtime.open=open;runtime.surface="read";runtime.toolScreen="home";if(remember)runtime.remember(ref);runtime.render();if(scroll)runtime.scrollTo(ref)
+    runtime.paneAccent="";runtime.selected=ref;runtime.open=open;runtime.surface="read";runtime.toolScreen="home";if(remember)runtime.remember(ref);runtime.render();if(scroll)runtime.scrollTo(ref)
   }
   runtime.move = delta => {
     if (!runtime.sequence.length) return
@@ -265,7 +266,7 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.showEdition = () => {if(!runtime.edition)return;runtime.open=true;runtime.surface="edition";runtime.toolScreen="home";runtime.render()}
   runtime.showRead = () => {runtime.surface="read";runtime.toolScreen="home";runtime.render()}
   runtime.emit = (type,payload={}) => { if(!runtime.selected?.id)return;runtime.setTriggerValue("action",{type,id:runtime.selected.id,scope:runtime.selected.scope||"",nonce:`${Date.now()}-${Math.random()}`,...payload}) }
-  runtime.onLauncher = () => { runtime.open = !runtime.open; runtime.render() }
+  runtime.onLauncher = () => { runtime.previewSource=null;runtime.open = !runtime.open; runtime.render() }
   runtime.setTextScale = delta => {
     const next=Math.max(0,Math.min(TEXT_SCALES.length-1,runtime.textScaleIndex+delta))
     if(next===runtime.textScaleIndex)return
@@ -275,7 +276,7 @@ function setup(parentElement, root, setTriggerValue) {
   }
   runtime.onTextSmaller = () => runtime.setTextScale(-1)
   runtime.onTextLarger = () => runtime.setTextScale(1)
-  runtime.onClose = () => { runtime.open = false;runtime.surface="read";runtime.toolScreen="home";runtime.render() }
+  runtime.onClose = () => { runtime.previewSource=null;runtime.open = false;runtime.surface="read";runtime.toolScreen="home";runtime.render() }
   runtime.onClear = () => { runtime.selected = null;runtime.surface="read";runtime.toolScreen="home";runtime.open = true;runtime.render() }
   runtime.onPrevious = () => runtime.move(-1)
   runtime.onNext = () => runtime.move(1)
@@ -301,8 +302,19 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.onSheetCollect=()=>{if(!runtime.sheetContext)return;runtime.showStatus("Full CARE sheet added");runtime.emit("sheet_collect",{sheet_id:runtime.sheetContext.unit_id||""})}
   runtime.onSheetExport=()=>{if(!runtime.sheetContext)return;runtime.emit("sheet_export",{sheet_id:runtime.sheetContext.unit_id||""})}
   runtime.onEditionPrepare=()=>{if(!runtime.edition)return;runtime.editionPrepare.disabled=true;runtime.editionPrepare.textContent="Preparing the complete edition…";runtime.editionStatus.textContent="Binding every finding, quotation, and cited axiom…";runtime.setTriggerValue("action",{type:"edition_prepare",id:runtime.edition.signature||"edition",nonce:`${Date.now()}-${Math.random()}`})}
-  runtime.onReferencePreview=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:true,remember:!selected})}
+  runtime.onReferencePreview=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;runtime.previewSource=detail.source||null;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:true,remember:!selected})}
+  runtime.onReferenceDismissPreview=event=>{if(!runtime.previewSource||event.detail?.source!==runtime.previewSource)return;runtime.previewSource=null;runtime.open=false;runtime.render()}
   runtime.onReferenceSelect=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:runtime.open,remember:!selected});event.preventDefault?.()}
+  runtime.onPaneFocus = event => {
+    if(!runtime.studioMode)return
+    const path=typeof event.composedPath==="function"?event.composedPath():[event.target]
+    const pane=path.find(node=>node instanceof Element&&node.matches('.desk-window[data-layer],.field-pane[data-pane]'))
+    if(!pane)return
+    const field=pane.matches('.field-pane'),style=pane.ownerDocument.defaultView.getComputedStyle(pane)
+    const accent=style.getPropertyValue(field?'--color':'--pane-accent').trim()
+    if(!/^#[0-9a-f]{3,8}$/i.test(accent)&&!/^rgba?\([\d.,%\s]+\)$/i.test(accent)&&!/^hsla?\([\d.,%\s]+\)$/i.test(accent))return
+    runtime.paneAccent=accent;runtime.root.style.setProperty('--crv-accent',accent)
+  }
   runtime.onDocumentClick = event => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     if (event.target instanceof Element && event.target.closest("a[data-care-reference-direct]")) return
@@ -330,7 +342,7 @@ function setup(parentElement, root, setTriggerValue) {
     // The ordinary CARE sheet owns its selection controls. These attributes
     // are absent inside Routes, whose viewer shortcuts remain unchanged.
     const path=typeof event.composedPath==="function"?event.composedPath():[event.target]
-    if(path.some(node=>node instanceof HTMLElement&&node.matches("[data-reading-sheet]")))return
+    if(path.some(node=>node instanceof HTMLElement&&(node.matches("[data-reading-sheet]")||node.matches('[data-pane="original"]'))))return
     if(runtime.eventComesFromEditable(event))return
     const origin=event.composedPath?.()[0]||event.target
     const target=origin instanceof Element?origin:null
@@ -379,10 +391,13 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.toolFavourite.addEventListener("click",runtime.onToolFavourite);runtime.toolCollect.addEventListener("click",runtime.onToolCollect);runtime.toolFamily.addEventListener("click",runtime.onToolFamily);runtime.toolRevealSheet.addEventListener("click",runtime.onToolRevealSheet);runtime.toolBacks.forEach(button=>button.addEventListener("click",runtime.onToolBack))
   runtime.stars.addEventListener("click",runtime.onStars);runtime.qualityScreen.addEventListener("click",runtime.onQuality);runtime.historyClear.addEventListener("click",runtime.onHistoryClear)
   runtime.sheetScreen.addEventListener("click",runtime.onSheetMode);runtime.sheetTraces.addEventListener("click",runtime.onSheetTraces);runtime.sheetCollect.addEventListener("click",runtime.onSheetCollect);runtime.sheetExport.addEventListener("click",runtime.onSheetExport)
+  document.addEventListener("pointerdown",runtime.onPaneFocus,true)
+  document.addEventListener("focusin",runtime.onPaneFocus,true)
   document.addEventListener("click", runtime.onDocumentClick, true)
   document.addEventListener("keydown",runtime.onDocumentKeydown,true)
   document.addEventListener("copy",runtime.onDocumentCopy,true)
   window.addEventListener("care-reference-preview",runtime.onReferencePreview)
+  window.addEventListener("care-reference-dismiss-preview",runtime.onReferenceDismissPreview)
   window.addEventListener("care-reference-select",runtime.onReferenceSelect)
   Object.assign(runtime,SAVED_VIEWERS.get(parentElement)||{})
   INSTANCES.set(parentElement, runtime)
@@ -390,7 +405,11 @@ function setup(parentElement, root, setTriggerValue) {
 }
 
 function teardown(parentElement, runtime) {
-  SAVED_VIEWERS.set(parentElement,{selected:runtime.selected,defaultKey:runtime.defaultKey,open:runtime.open,surface:runtime.surface,toolScreen:runtime.toolScreen,textScaleIndex:runtime.textScaleIndex})
+  // The host may return an earlier render's cleanup after its replacement is
+  // already live. That cleanup must neither detach new handlers nor save stale state.
+  if(runtime.disposed)return
+  runtime.disposed=true
+  SAVED_VIEWERS.set(parentElement,{selected:runtime.selected,defaultKey:runtime.defaultKey,open:runtime.open,openRequest:runtime.openRequest,previewSource:runtime.previewSource,surface:runtime.surface,toolScreen:runtime.toolScreen,textScaleIndex:runtime.textScaleIndex,paneAccent:runtime.paneAccent})
   runtime.renderLineageFlow(null)
   runtime.markSpatial(null)
   runtime.launcher.removeEventListener("click", runtime.onLauncher); runtime.close.removeEventListener("click", runtime.onClose)
@@ -406,13 +425,16 @@ function teardown(parentElement, runtime) {
   runtime.toolFavourite.removeEventListener("click",runtime.onToolFavourite);runtime.toolCollect.removeEventListener("click",runtime.onToolCollect);runtime.toolFamily.removeEventListener("click",runtime.onToolFamily);runtime.toolRevealSheet.removeEventListener("click",runtime.onToolRevealSheet);runtime.toolBacks.forEach(button=>button.removeEventListener("click",runtime.onToolBack))
   runtime.stars.removeEventListener("click",runtime.onStars);runtime.qualityScreen.removeEventListener("click",runtime.onQuality);runtime.historyClear.removeEventListener("click",runtime.onHistoryClear)
   runtime.sheetScreen.removeEventListener("click",runtime.onSheetMode);runtime.sheetTraces.removeEventListener("click",runtime.onSheetTraces);runtime.sheetCollect.removeEventListener("click",runtime.onSheetCollect);runtime.sheetExport.removeEventListener("click",runtime.onSheetExport)
+  document.removeEventListener("pointerdown",runtime.onPaneFocus,true)
+  document.removeEventListener("focusin",runtime.onPaneFocus,true)
   document.removeEventListener("click", runtime.onDocumentClick, true)
   document.removeEventListener("keydown",runtime.onDocumentKeydown,true)
   document.removeEventListener("copy",runtime.onDocumentCopy,true)
   window.removeEventListener("care-reference-preview",runtime.onReferencePreview)
+  window.removeEventListener("care-reference-dismiss-preview",runtime.onReferenceDismissPreview)
   window.removeEventListener("care-reference-select",runtime.onReferenceSelect)
   if (runtime.statusTimer !== null) window.clearTimeout(runtime.statusTimer)
-  INSTANCES.delete(parentElement)
+  if(INSTANCES.get(parentElement)===runtime)INSTANCES.delete(parentElement)
 }
 
 export default function(component) {
@@ -420,7 +442,11 @@ export default function(component) {
   const root = parentElement.querySelector("[data-care-reference-viewer-root]")
   if (!root) return
   let runtime = INSTANCES.get(parentElement)
-  if (!runtime) runtime = setup(parentElement, root, setTriggerValue)
+  // Dispose before binding this render. A late host cleanup then becomes a
+  // no-op, while setup restores the viewer's saved selection and reading state.
+  if(runtime)teardown(parentElement,runtime)
+  runtime = setup(parentElement, root, setTriggerValue)
+  runtime.renderCleanup=()=>teardown(parentElement,runtime)
   runtime.setTriggerValue = setTriggerValue
   runtime.studioMode = Boolean(data?.studio_mode)
   runtime.routeDownload = data?.route_download||null
@@ -437,6 +463,7 @@ export default function(component) {
   const defaultChanged = Boolean(data?.follow_default) && runtime.defaultKey !== defaultKey
   runtime.defaultKey = data?.follow_default ? defaultKey : null
   if (defaultChanged || !runtime.selected || !runtime.registry.has(keyFor(runtime.selected.kind, runtime.selected.id, runtime.selected.scope))) {
+    runtime.paneAccent=""
     runtime.selected = defaultRef || null
     if (defaultChanged) {runtime.surface="read";runtime.toolScreen="home"}
     if (defaultRef) runtime.remember(defaultRef)
@@ -459,5 +486,5 @@ export default function(component) {
   }
   runtime.render()
   if(runtime.studioMode)window.dispatchEvent(new CustomEvent("care-reference-viewer-ready"))
-  return () => teardown(parentElement, runtime)
+  return runtime.renderCleanup
 }

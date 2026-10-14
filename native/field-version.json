@@ -1,0 +1,9 @@
+{
+  "version": "care-study-field/2.24",
+  "source": "care_platform/study_field_component.py",
+  "assets": {
+    "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
+    "study-field.css": "78ecda9ee766b8ea6f53383afae61088bd1a39a99e1231242335b2efd35ce7ff",
+    "study-field.mjs": "77c2e8947830e308e28a5bdef84221bc8ef9913f7704cf4e4daee1ff360c34c4"
+  }
+}

@@ -1,7 +1,7 @@
 /* Small, read-only previews of the existing Lateral and Corpus environments.
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
-import {publicReadingText} from './native/reading-views.mjs?v=20261006';
+import {publicReadingText} from './native/reading-views.mjs?v=cb943c40614490fe';
 export const LATERAL_SAMPLES = Object.freeze([
   {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},
   {label:'Difference', id:'XR_KPR_THN:TLC-02', explanation:'Identify where their explanations differ. Hume explains how habit forms expectations; Kant asks what makes experience possible.'},
@@ -125,8 +125,16 @@ export async function mountDiscoverExperiments(host,options={}){
   host.addEventListener('click',onClick);paintBook();
   try{
     let data=options.data;
-    if(!data){const response=await (options.fetch||view.fetch.bind(view))(new URL('./data/library.json?v=20261005',import.meta.url));if(!response.ok)throw Error('The saved lateral could not load.');data=await response.json();}
-    samples=savedLateralSamples(data);paintSample();
+    if(!data){const response=await (options.fetch||view.fetch.bind(view))(new URL('./data/library.json',import.meta.url),{cache:'no-cache'});if(!response.ok)throw Error('The saved lateral could not load.');data=await response.json();}
+    if(data.lateral?.id==='XR_KPR_THN'){
+      samples=savedLateralSamples(data);paintSample();
+    }else{
+      $('.de-strands').hidden=true;
+      $('.de-sample-tabs').hidden=true;
+      $('.de-saved-claim').hidden=true;
+      $('.de-card-foot').hidden=true;
+      $('.de-explanation').textContent='Selected laterals can be published from the Mac Library. Open the beta Library to see the readings currently shared.';
+    }
   }catch(error){$('.de-explanation').textContent='The saved comparison is temporarily unavailable. Open the public reading room to try again.';}
   return {destroy(){host.removeEventListener('click',onClick);}};
 }

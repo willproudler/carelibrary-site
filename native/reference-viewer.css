@@ -86,6 +86,12 @@
 .crv-quality-grid button span{color:var(--crv-accent)}
 .crv-history-item:hover,.crv-history-item:focus-visible{border-color:color-mix(in srgb,var(--crv-accent) 65%,transparent);background:color-mix(in srgb,var(--crv-accent) 8%,transparent)}
 .crv-sheet-actions button:hover,.crv-sheet-actions button:focus-visible,.crv-sheet-modes button:hover,.crv-sheet-modes button:focus-visible,.crv-sheet-traces:hover,.crv-sheet-traces:focus-visible{outline-color:color-mix(in srgb,var(--crv-accent) 36%,transparent)}
+/* The original's immersive surface keeps CARE close, but quiet. */
+body[data-care-original-reading="true"] .st-key-care_study_command,body[data-care-original-reading="true"] .st-key-care_study_workspace_strip{visibility:hidden!important;pointer-events:none!important}
+body[data-care-original-reading="true"] .st-key-care_study_surface{z-index:999980!important;overflow:visible!important}
+body[data-care-original-reading="true"] .crv-launcher{min-height:2.5rem;padding:.5rem .85rem;border-color:color-mix(in srgb,var(--crv-accent) 28%,transparent);box-shadow:0 6px 24px #00000016;font-size:.76rem;font-weight:550;opacity:.62;transition:opacity .2s ease}
+body[data-care-original-reading="true"] .crv-launcher:hover,body[data-care-original-reading="true"] .crv-launcher:focus-visible,body[data-care-original-reading="true"] .crv-launcher[aria-expanded="true"]{opacity:1}
+body[data-care-original-reading="true"] .crv-panel{border-color:color-mix(in srgb,var(--crv-accent) 22%,transparent);box-shadow:0 16px 60px #00000026;background:color-mix(in srgb,var(--st-background-color,#fff) 96%,transparent)}
 [data-care-reference-kind].previewing:not(a):not(button):not(.care-axiom){outline:2px solid color-mix(in srgb,var(--crv-accent,var(--st-primary-color,#ff4b4b)) 78%,transparent);outline-offset:2px}
 [data-care-reference-bookmark].previewing{outline:none}
 @media(max-width:640px){.crv-launcher{right:max(.65rem,env(safe-area-inset-right));bottom:max(.65rem,env(safe-area-inset-bottom))}.crv-panel{right:.5rem;bottom:max(4.3rem,calc(env(safe-area-inset-bottom) + 3.75rem));width:calc(100vw - 1rem);max-height:82vh;border-radius:18px}.crv-header{gap:.45rem}.crv-header-actions{gap:.2rem}.crv-text-size button{width:1.65rem}.crv-close,.crv-previous,.crv-next{width:1.85rem;height:1.85rem}.crv-tool-grid{gap:.45rem}.crv-tool-grid button,.crv-tool-grid a{min-height:4.35rem;padding:.62rem}.crv-tool-icon{width:2rem;height:2rem;font-size:1.05rem}.crv-history-list{max-height:13rem}.crv-shortcuts{display:none}}

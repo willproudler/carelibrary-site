@@ -2,8 +2,8 @@
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=20261014-recovery';
-import {publicReadingText} from './native/reading-views.mjs?v=20261006';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=20261014-current';
+import {publicReadingText} from './native/reading-views.mjs?v=cb943c40614490fe';
 import {ORIGINAL, selectedVariant, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=20261014-english';
 
 const array = value => Array.isArray(value) ? value : [];
@@ -19,7 +19,7 @@ const mcLevel = unit => {
 // Conservative local presentation: preserve wording and escape source HTML.
 // These are display views only; the unchanged text remains on every record.
 function inline(value) {
-  return escape(value).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+  return escape(value).replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
     .replace(/\n/g, '<br>');
 }
@@ -85,7 +85,7 @@ export function createPublicReaderAdapter(data) {
         items:array(section.items).map((item, position) => nativeItem(item, section, position, original)),
       })),
       identity:{title:reading.title || original.title, kicker:original.layer === 'CH' ? `CHAPTER ${original.order}` : ({CL:'CLUSTER',MC:'META-CLUSTER',WB:'WHOLE BOOK',XR:'LATERAL'}[original.layer] || original.layer),
-        context:original.work?.title || `${lateralWorks.map(work => work.title).join(' × ')} · Saved diagnostic reading`},
+        context:original.work?.title || `${lateralWorks.map(work => work.title).join(' × ')} · Saved diagnostic reading`,...original.identity,...(variant?.title?{title:variant.title}:{})},
     };
     projected.item_count = projected.sections.reduce((sum, section) => sum + section.items.length, 0);
     unitCache.set(cacheKey, projected);
@@ -307,7 +307,7 @@ export function createPublicReaderAdapter(data) {
       if(row.work.id!==currentWork.id && !(state.connectionId===lateral.id && lateralWorks.some(work=>work.id===row.work.id)))return state;
       next.paneVersions={...state.paneVersions,[row.id]:variantId};clearOutline();
     } else if (kind === 'open_work') {next.workId=requiredWork(value).id;next.unitId='';next.rawUnitId='';next.referenceId='';next.connectionId='';clearOutline();}
-    else if (kind === 'open_field') {if (value === lateral.id) {next.connectionId=lateral.id;next.connectionReferenceId='';}}
+    else if (kind === 'open_field') {if (!lateral.id || value !== lateral.id)return state;next.connectionId=lateral.id;next.connectionReferenceId='';}
     else if (kind === 'open_chapter' || kind === 'open_sheet') {
       const row=index.units.get(value);if(!row || row.work?.id !== currentWork.id)return state;
       next.unitId=kind === 'open_sheet' ? value : '';next.rawUnitId=kind === 'open_chapter' ? value : '';next.referenceId='';
@@ -321,6 +321,7 @@ export function createPublicReaderAdapter(data) {
       next.outlineResponse=outline(currentWork.id,value,state);
       if (!next.outlineResponse.error) next.outlineUnits=[...array(state.outlineUnits).filter(row=>row.id !== next.outlineResponse.id),next.outlineResponse];
     } else if (kind === 'connection_action') {
+      if(!lateral.id)return state;
       const action=value?.action;
       if (action === 'open' && value.id === lateral.id) {next.connectionId=lateral.id;next.connectionReferenceId='';next.referenceId='';}
       else if (action === 'close') {next.connectionId='';next.connectionReferenceId='';}

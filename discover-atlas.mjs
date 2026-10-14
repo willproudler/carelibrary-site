@@ -34,7 +34,7 @@ function svgElement(name, attributes = {}, content = '') {
 // The full reference index stays available, while the drawing includes only
 // the selected book or the recorded parents of an explicitly opened lateral.
 export function atlasView(data, model, status = {}) {
-  const lateral = status.book === 'lateral' || status.connectionId === data.lateral.id;
+  const lateral = Boolean(data.lateral?.id && (status.book === 'lateral' || status.connectionId === data.lateral.id));
   const fallback = data.works.find(work => work.slug === 'hume') || data.works[0];
   const selectedWork = data.works.find(work => work.slug === status.book || work.id === status.workId) || fallback;
   const works = lateral
@@ -317,7 +317,7 @@ const host = typeof document === 'undefined' ? null : document.getElementById('d
 if (host) {
   host.setAttribute('aria-busy', 'true');
   Promise.all([
-    fetch(new URL('./data/library.json?v=20261005', import.meta.url)).then(response => { if (!response.ok) throw new Error('The collection could not load.'); return response.json(); }),
+    fetch(new URL('./data/library.json', import.meta.url), {cache:'no-cache'}).then(response => { if (!response.ok) throw new Error('The collection could not load.'); return response.json(); }),
     fetch(new URL('./data/showcase.json?v=20261005', import.meta.url)).then(response => { if (!response.ok) throw new Error('The reading route could not load.'); return response.json(); }),
   ]).then(([data, showcase]) => mountDiscoverAtlas(host, data, showcase)).catch(error => {
     host.innerHTML = `<p class="discover-atlas__error">The collection map could not load. <a href="./library.html">Open the public library</a>.</p>`;

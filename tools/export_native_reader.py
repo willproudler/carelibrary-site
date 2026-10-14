@@ -42,7 +42,8 @@ from care_platform.item_presentation import ITEM_PRESENTATION_VERSION
 public_library = json.loads((destination.parent / "data" / "library.json").read_text())
 titles = {unit["id"]: unit.get("title") or work["title"]
           for work in public_library["works"] for unit in work["units"]}
-titles[public_library["lateral"]["id"]] = public_library["lateral"]["title"]
+if public_library.get("lateral"):
+    titles[public_library["lateral"]["id"]] = public_library["lateral"]["title"]
 reading_views = {}
 def collect_reading_views(value):
     if isinstance(value, dict):
@@ -103,4 +104,22 @@ for field in registration.keywords:
     "source": "care_platform/reference_viewer.py",
     "compatibility_changes": ["Resolve the keyboard event origin across the standalone desk ShadowRoot"],
     "assets": viewer_assets,
+}, indent=2) + "\n")
+
+# Export the same saved lateral/corpus reader used by the Mac application.
+from care_platform import study_field_component as field_component
+field_tree = ast.parse((root / "care_platform/study_field_component.py").read_text())
+registration = next(node.value for node in field_tree.body if isinstance(node, ast.Assign)
+                    and any(getattr(target, "id", "") == "_FIELD_READER" for target in node.targets))
+field_assets = {}
+for keyword in registration.keywords:
+    if keyword.arg not in ("html", "css", "js"):
+        continue
+    contents = eval(compile(ast.Expression(keyword.value), "<field-assets>", "eval"), vars(field_component))
+    name = "study-field." + {"html": "html", "css": "css", "js": "mjs"}[keyword.arg]
+    (destination / name).write_text(contents)
+    field_assets[name] = hashlib.sha256(contents.encode()).hexdigest()
+(destination / "field-version.json").write_text(json.dumps({
+    "version": field_component.FIELD_READER_VERSION,
+    "source": "care_platform/study_field_component.py", "assets": field_assets,
 }, indent=2) + "\n")

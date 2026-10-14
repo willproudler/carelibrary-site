@@ -1,7 +1,7 @@
 /* The Discover page mounts CARE's shipped reader against the fixed public
  * collection. No authoring, generation, account or private-library API is used. */
-import mountReader from './native/study-desk.mjs?v=20261014-english';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261014-english';
+import mountReader from './native/study-desk.mjs?v=6230fc4664e04d61';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6230fc4664e04d61';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
   hume:'CH_THN_INTR:AS1',
@@ -16,6 +16,19 @@ const routeKey = state => JSON.stringify([state.workId,state.connectionId,state.
 /** Pure controller, shared by the browser embed and the route integration tests. */
 export function createDiscoverController(data) {
   const adapter=createPublicReaderAdapter(data),bookStates=new Map();
+  const savedLateral=data.lateral?.id ? data.lateral : null;
+  const defaultWork=adapter.workFor('hume') || data.works[0];
+  if(!defaultWork)throw Error('No books have been published yet.');
+  const exampleFor=work=>{
+    const preferred=adapter.index.nodes.get(DISCOVER_EXAMPLES[work.slug]);
+    if(preferred?.work?.id===work.id&&preferred.kind==='claim')return preferred.id;
+    return [...adapter.index.nodes.values()].find(node=>node.work?.id===work.id&&node.kind==='claim')?.id||'';
+  };
+  const lateralExample=()=>{
+    const preferred=adapter.index.nodes.get(DISCOVER_EXAMPLES.lateral);
+    return preferred?.unit?.id===savedLateral?.id ? preferred.id :
+      savedLateral?.sections?.flatMap(section=>section.items||[])[0]?.id||'';
+  };
   let state,history=[],position=-1;
   const key=()=>state.connectionId?'lateral':adapter.workFor(state.workId).slug;
   const remember=()=>{
@@ -34,14 +47,16 @@ export function createDiscoverController(data) {
     const node=adapter.index.nodes.get(referenceId||unitId);
     if((referenceId||unitId)&&!node)throw Error('This reading is not in the public collection.');
     if(referenceId&&!['claim','passage'].includes(node.kind))throw Error('Choose an individual claim or passage to open its route.');
-    const lateral=request.book==='lateral'||unitId===data.lateral.id||node?.unit?.id===data.lateral.id;
-    const book=lateral?'lateral':request.book||node?.work?.slug||'hume';
-    const work=adapter.workFor(lateral?'hume':book);
+    const lateral=Boolean(request.book==='lateral'||savedLateral&&(unitId===savedLateral.id||node?.unit?.id===savedLateral.id));
+    if(lateral&&!savedLateral)throw Error('This lateral is no longer published. Choose a book from the Library.');
+    const book=lateral?'lateral':request.book||node?.work?.slug||defaultWork.slug;
+    const work=lateral ? data.works.find(work=>work.id===defaultWork.id&&work.units.some(unit=>savedLateral.parents.includes(unit.id)))
+      ||data.works.find(work=>work.units.some(unit=>savedLateral.parents.includes(unit.id)))||defaultWork : adapter.workFor(book);
     if(!work)throw Error('This book is not in the public collection.');
     if(!lateral&&node&&node.work?.id!==work.id)throw Error('This reference belongs to a different book.');
     if(state)bookStates.set(key(),copy(state));
-    let next=bookStates.has(book)?copy(bookStates.get(book)):{workId:work.id,routeMode:'both',outlineUnits:[],referenceId:DISCOVER_EXAMPLES[book]};
-    if(lateral){next.workId=work.id;next.connectionId=data.lateral.id;next.referenceId='';next.connectionReferenceId=referenceId||next.connectionReferenceId||DISCOVER_EXAMPLES.lateral;next.connectionRouteMode=request.routeMode||next.connectionRouteMode||'incoming';}
+    let next=bookStates.has(book)?copy(bookStates.get(book)):{workId:work.id,routeMode:'both',outlineUnits:[],referenceId:exampleFor(work)};
+    if(lateral){next.workId=work.id;next.connectionId=savedLateral.id;next.referenceId='';next.connectionReferenceId=referenceId||next.connectionReferenceId||lateralExample();next.connectionRouteMode=request.routeMode||next.connectionRouteMode||'incoming';}
     else if(referenceId){next.referenceId=referenceId;next.routeMode=request.routeMode||'both';next.selectedAxiom=null;}
     else if(unitId){
       if(!['unit','source'].includes(node.kind))throw Error('Choose a chapter or CARE sheet to read.');
@@ -51,7 +66,7 @@ export function createDiscoverController(data) {
   }
   function dispatch(kind,value){
     if(kind==='open_work')return open({book:adapter.workFor(value)?.slug||value});
-    if(kind==='open_field')return value===data.lateral.id?open({book:'lateral'}):getState();
+    if(kind==='open_field')return savedLateral&&value===savedLateral.id?open({book:'lateral'}):getState();
     if(kind==='navigate_route'){
       const target=position+Number(value);
       if(![-1,1].includes(Number(value))||target<0||target>=history.length)return getState();
@@ -73,7 +88,7 @@ export function createDiscoverController(data) {
   function status(){
     const work=adapter.workFor(state.workId),referenceId=state.connectionReferenceId||state.referenceId||'';
     return {workId:work.id,book:key(),referenceId,routeMode:state.connectionReferenceId?state.connectionRouteMode:state.routeMode,
-      unitId:state.unitId||state.rawUnitId||'',connectionId:state.connectionId||'',title:state.connectionId?data.lateral.title:work.title};
+      unitId:state.unitId||state.rawUnitId||'',connectionId:state.connectionId||'',title:state.connectionId?savedLateral?.title||work.title:work.title};
   }
   function href(){
     const current=status(),params=new URLSearchParams();
@@ -83,7 +98,7 @@ export function createDiscoverController(data) {
     else if(state.rawUnitId)params.set('source',state.rawUnitId);
     return './#'+params;
   }
-  open({book:'hume'});
+  open({book:defaultWork.slug});
   return {adapter,open,dispatch,getState,payload,status,href};
 }
 
@@ -114,13 +129,20 @@ export async function mountDiscoverReader(host,options={}) {
   host.setAttribute('aria-busy','true');
   try{
     const fetcher=options.fetch||view.fetch.bind(view);
-    const urls=['./data/library.json?v=20261005-covers2','./native/study-desk.css?v=1.73','./native/public-scope.css?v=20261005-covers2'];
+    const urls=['./data/library.json','./native/study-desk.css?v=6230fc4664e04d61','./native/public-scope.css?v=20261014-current'];
     const [data,css,scope]=await Promise.all(urls.map(async (url,index)=>{
-      const response=await fetcher(new URL(url,import.meta.url));
+      const response=await fetcher(new URL(url,import.meta.url),index===0?{cache:'no-cache'}:{});
       if(!response.ok)throw Error('The reading could not load. Please try again.');
       return index===0?response.json():response.text();
     }));
     const controller=createDiscoverController(data);
+    if(selector){
+      const selected=selector.value;
+      const choices=data.works.map(work=>({value:work.slug,label:[work.author,work.title].filter(Boolean).join(' · ')}));
+      if(data.lateral?.id)choices.push({value:'lateral',label:data.lateral.title||'Saved lateral'});
+      selector.replaceChildren(...choices.map(choice=>{const option=doc.createElement('option');option.value=choice.value;option.textContent=choice.label;return option;}));
+      selector.value=choices.some(choice=>choice.value===selected)?selected:controller.status().book;
+    }
     const shadow=host.shadowRoot||host.attachShadow({mode:'open'});
     shadow.innerHTML=`<style>${css}\n${scope}\n${embedCSS}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div>`;
     let cleanup,destroyed=false,paintQueued=false;
