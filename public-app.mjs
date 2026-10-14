@@ -1,7 +1,7 @@
 import mountReader from './native/study-desk.mjs?v=20261014-english';
 import mountViewer from './native/reference-viewer.mjs?v=20261005';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261014-english';
-import {searchLibrary} from './library-core.mjs';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=20261014-recovery';
+import {searchLibrary} from './library-core.mjs?v=20261014-recovery';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -13,7 +13,7 @@ function notice(message){const el=$('#notice');el.textContent=message;el.hidden=
 
 async function start(){
  const response=await fetch('./data/library.json',{cache:'no-cache'});if(!response.ok)throw Error('CARE Library Beta could not load. Please refresh to try again.');
- const data=await response.json(),adapter=createPublicReaderAdapter(data),{index}=adapter;
+ const data=await response.json();data.lateral=data.lateral||{id:"",title:"",parents:[],sections:[]};const adapter=createPublicReaderAdapter(data),{index}=adapter;
  const [css,scope,viewerCSS,viewerHTML]=await Promise.all(['./native/study-desk.css?v=1.73','./native/public-scope.css?v=20261005-covers2','./native/reference-viewer.css','./native/reference-viewer.html'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('A reading component could not load. Please refresh.');return r.text();}));
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
  shadow.innerHTML=`<style>${css}\n${scope}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div>`;
@@ -27,7 +27,7 @@ async function start(){
  const bookStates=new Map();
  let readingMenu=null;
  const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,cover_url:work.cover_url,publication_year:Number.parseInt(work.year),content_kind:'book',has_source:true,has_care:true,layers:[...new Set(work.units.map(unit=>unit.layer))],cloth:work.slug==='kant'?'#303b4c':work.slug==='bergson'?'#50403c':'#3b4531',foil:'#cf9b61',language_code:work.language_code||'en',language_name:work.language_name||'English'}));
- const fields=[adapter.savedConnection];
+ const fields=data.lateral.id?[adapter.savedConnection]:[];
  const lateralBooks=data.works.filter(work=>adapter.savedConnection.members.some(member=>member.id===work.id));
  function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return '#'+p;}
  const baseReferences=[...index.nodes.values()].filter(n=>['claim','passage'].includes(n.kind)).map(node=>{
@@ -137,7 +137,7 @@ async function start(){
  }
  function routeFromURL(){
   try{saveState();const p=new URLSearchParams(location.hash.slice(1));const lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
-   if(lateral===data.lateral.id||p.has('compare')){state={workId:data.works[0].id,...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';}
+   if(data.lateral.id&&(lateral===data.lateral.id||p.has('compare'))){state={workId:data.works[0].id,...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';}
    else if(work){state=standaloneBookState(work.id,bookStates.get(work.id));view='workspace';}
    else{view=p.get('view')==='laterals'?'laterals':'library';paint();return;}
    if(p.has('unit')&&p.get('unit')!==data.lateral.id){state.unitId=p.get('unit');state.rawUnitId='';state.referenceId='';}

@@ -2,7 +2,7 @@
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=20261014-recovery';
 import {publicReadingText} from './native/reading-views.mjs?v=20261006';
 import {ORIGINAL, selectedVariant, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=20261014-english';
 
@@ -34,7 +34,7 @@ function block(value) {
 export function createPublicReaderAdapter(data) {
   const index = indexLibrary(data);
   const worksById = new Map(data.works.map(work => [work.id, work]));
-  const lateral = data.lateral;
+  const lateral = data.lateral || {id:"",title:"",parents:[],sections:[]};
   const lateralWorks = data.works.filter(work => work.units.some(unit => lateral.parents.includes(unit.id)));
   const unitCache = new Map(), chapterCache = new Map();
   const workFor = value => worksById.get(value) || index.works.get(value);
@@ -247,7 +247,7 @@ export function createPublicReaderAdapter(data) {
     layers:['XR'],members,member_count:members.length,member_titles:members.map(member => member.title),version:lateral.revision};
 
   function connection(work, state) {
-    if (state.connectionId !== lateral.id) return null;
+    if (!lateral.id || state.connectionId !== lateral.id) return null;
     const ref = state.connectionReferenceId ? reference(state.connectionReferenceId, state.connectionRouteMode || 'incoming', {connection:true,state}) : null;
     const originUnits = ref ? unique([ref.unit_id,...Object.values(ref.route_layers).flat().map(row => row.unit_id)]) : [];
     const panes = [connectionPane(index.units.get(lateral.id),state)];

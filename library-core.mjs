@@ -15,7 +15,7 @@ export function indexLibrary(data) {
     }
     for(const u of w.units) registerUnit(u,w);
   }
-  registerUnit(data.lateral,null);
+  if(data.lateral?.id) registerUnit(data.lateral,null);
   for(const n of nodes.values()) for(const link of incoming(n)) {
     if(!nodes.has(link.id)) throw new Error(`Missing public reference: ${link.id}`);
     if(!outgoing.has(link.id)) outgoing.set(link.id,[]);
