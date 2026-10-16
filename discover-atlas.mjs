@@ -46,6 +46,16 @@ export function atlasView(data, model, status = {}) {
   return { lateral, book: lateral ? 'lateral' : selectedWork.slug, works, nodes, edges };
 }
 
+// The homepage map is an example of one book's structure. Reader navigation
+// may highlight a route in that example, but cannot replace it with another
+// book (or with a newly published lateral).
+export function atlasStatusMatchesView(view, model, status = {}) {
+  if (status.connectionId || (status.book && status.book !== view.book)) return false;
+  if (status.workId && !view.works.some(work => work.id === status.workId)) return false;
+  const selected = model.index.nodes.get(status.referenceId || status.unitId);
+  return !selected || view.nodes.has(selected.unit.id);
+}
+
 function arrange(view, portrait = false) {
   let height = portrait ? 0 : 594;
   view.works.forEach((work, position) => {
@@ -89,8 +99,7 @@ function pathBetween(source, target, portrait = false) {
 export function mountDiscoverAtlas(host, data, showcase = {}) {
   const model = buildAtlasModel(data);
   let portrait = host.clientWidth <= 700;
-  let view = atlasView(data, model);
-  let lastBook = view.book;
+  const view = atlasView(data, model);
   let currentStatus = { book: view.book };
   let selectedReference = '', selectedUnit = '';
   let orderedNodes = [];
@@ -273,17 +282,14 @@ export function mountDiscoverAtlas(host, data, showcase = {}) {
   }
 
   function sync(status = {}) {
-    const next = atlasView(data, model, status);
-    if (!next.lateral) lastBook = next.book;
-    const changed = next.book !== view.book;
-    view = next; currentStatus = status;
-    if (changed) draw();
+    if (!atlasStatusMatchesView(view, model, status)) return;
+    currentStatus = status;
     selectStatus(status);
   }
 
   host.querySelector('.discover-atlas__back').addEventListener('click', () => {
-    sync({ book: lastBook });
-    window.dispatchEvent(new CustomEvent('care:discover-open', { detail: { book: lastBook } }));
+    sync({ book: view.book });
+    window.dispatchEvent(new CustomEvent('care:discover-open', { detail: { book: view.book } }));
     host.focus({ preventScroll: true });
     queueMicrotask(() => host.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
   });
@@ -300,6 +306,7 @@ export function mountDiscoverAtlas(host, data, showcase = {}) {
   window.addEventListener('care:discover-route', onRoute);
   window.addEventListener('care:discover-ready', onRoute);
   draw();
+  selectStatus(currentStatus);
   sync(document.getElementById('discover-reader')?.discoverReader?.status() || currentStatus);
   const resize = new ResizeObserver(entries => {
     const nextPortrait = entries[0].contentRect.width <= 700;

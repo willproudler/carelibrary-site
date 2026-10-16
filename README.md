@@ -6,7 +6,7 @@ Chapter and sheet titles open searchable jump menus. Dragging a chapter rail pre
 
 - `index.html`: native library shelf and reading workspace. Kant, Hume, Bergson, saved Kant–Hume lateral, source/CH/CL/MC/WB panes, chapter rails, outline strips, routes, reading skins, local search and bookmarks.
 - `welcome.html`: compatibility redirect to the same native library.
-- `about.html`: minimal Discover CARE page with the working native reader, a map of the current book that expands into a purple Kant–Hume lateral when selected, a compact “180+ languages” section with examples and translation context, and plain explanations of laterals and corpuses.
+- `about.html`: minimal Discover CARE page with the working native reader, a stable Hume map, a searchable books-only reading chooser, and the featured published lateral in the “Compare two books” card, a compact “180+ languages” section with examples and translation context, and plain explanations of laterals and corpuses.
 - `library.html`: compatibility redirect to the public library.
 
 The public site has two pages: the Library and Discover CARE. Both run without a bottom banner or footer navigation. Retired statement, rights and inactive beta pages are preserved in Git history and in a local archive outside this published directory; they are no longer served or included in the sitemap.

@@ -2,6 +2,7 @@
  * collection. No authoring, generation, account or private-library API is used. */
 import mountReader from './native/study-desk.mjs?v=225b9b9a34331c20';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=225b9b9a34331c20';
+import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
 import {loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
@@ -15,32 +16,22 @@ const copy = value => structuredClone(value);
 const routeKey = state => JSON.stringify([state.workId,state.connectionId,state.referenceId,state.connectionReferenceId,state.routeMode,state.connectionRouteMode,state.unitId,state.rawUnitId]);
 
 export function discoverChoices(data) {
-  const choices=(data.works||[]).map(work=>({value:work.slug,type:'book',id:work.id,
+  return (data.works||[]).map(work=>({value:work.slug,type:'book',id:work.id,
+    author:work.author||'',title:work.title,
     label:[work.author,work.title].filter(Boolean).join(' · ')}));
-  for(const field of data.fields||[]){
-    if(!field.id||!['lateral','corpus'].includes(field.field)||choices.some(choice=>choice.type==='field'&&choice.id===field.id))continue;
-    choices.push({value:'field:'+field.id,type:'field',id:field.id,
-      label:`${field.field==='corpus'?'Corpus':'Lateral'} · ${field.title||field.id}`});
-  }
-  if(data.lateral?.id&&!choices.some(choice=>choice.type==='field'&&choice.id===data.lateral.id))
-    choices.push({value:'lateral',type:'field',id:data.lateral.id,label:data.lateral.title||'Saved lateral'});
-  return choices;
 }
 
 export function discoverInitialReading(data) {
-  const choices=discoverChoices(data),featured=data.featured_reading;
-  const selected=choices.find(choice=>choice.type===featured?.type&&choice.id===featured?.id)
-    ||choices.find(choice=>choice.type==='book'&&choice.value==='hume')||choices[0];
-  if(!selected)return null;
-  return selected.value.startsWith('field:')?{field:selected.id}:{book:selected.value};
+  const choices=discoverChoices(data);
+  const selected=choices.find(choice=>choice.value==='hume')||choices[0];
+  return selected?{book:selected.value}:null;
 }
 
 /** Pure controller, shared by the browser embed and the route integration tests. */
 export function createDiscoverController(data) {
   const adapter=createPublicReaderAdapter(data),bookStates=new Map();
   const savedLateral=data.lateral?.id ? data.lateral : null;
-  const defaultWork=(data.featured_reading?.type==='book'&&data.works.find(work=>work.id===data.featured_reading.id))
-    ||adapter.workFor('hume') || data.works[0];
+  const defaultWork=adapter.workFor('hume') || data.works[0];
   if(!defaultWork)throw Error('No books have been published yet.');
   const exampleFor=work=>{
     const preferred=adapter.index.nodes.get(DISCOVER_EXAMPLES[work.slug]);
@@ -135,7 +126,7 @@ const embedCSS = `
 `;
 
 /** Auto-mounts #discover-reader. External controls may be omitted.
- * #discover-book: published book slugs, legacy lateral, or field:<id>; #discover-open: reading link.
+ * #discover-book: searchable published-book chooser; #discover-open: reading link.
  * #discover-reader-status: optional live status; [data-discover-close-route]: optional close button.
  * window care:discover-open detail: {book?,field?,ref?,scope?,unit?,routeMode?}.
  * window care:discover-route detail: {workId,book,referenceId,routeMode,unitId,connectionId,title}.
@@ -160,21 +151,18 @@ export async function mountDiscoverReader(host,options={}) {
     }));
     const controller=data.works?.length?createDiscoverController(data):null;
     const adapter=controller?.adapter||createPublicReaderAdapter(data),choices=discoverChoices(data);
-    if(!choices.length)throw Error('No readings have been published yet.');
-    if(selector){
-      selector.replaceChildren(...choices.map(choice=>{const option=doc.createElement('option');option.value=choice.value;option.textContent=choice.label;return option;}));
-    }
+    if(!choices.length)throw Error('No books have been published yet.');
+    const picker=mountDiscoverBookPicker(selector,choices,book=>open({book}));
     const shadow=host.shadowRoot||host.attachShadow({mode:'open'});
     shadow.innerHTML=`<style>${css}\n${scope}\n${embedCSS}</style><div data-discover-book style="height:100%;min-height:0"><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div></div>`;
-    const bookHost=shadow.querySelector('[data-discover-book]'),mapSection=doc.querySelector('#discover-atlas')?.closest('section');
+    const bookHost=shadow.querySelector('[data-discover-book]');
     let cleanup,fieldApi,fieldHost,destroyed=false,paintQueued=false,requestVersion=0;
     const notify=message=>{if(statusElement)statusElement.textContent=message;};
     const status=()=>fieldApi?fieldApi.status():controller?.status();
     function publish(current=status()){
       if(!current)return;
       host.dataset.book=current.book;host.dataset.reference=current.referenceId||'';
-      if(selector)selector.value=current.book;
-      if(mapSection)mapSection.hidden=Boolean(current.fieldId);
+      picker?.select(current.book);
       if(openLink){openLink.href=current.fieldId?'./#field='+encodeURIComponent(current.fieldId):controller.href();openLink.setAttribute('aria-label',`Open ${current.title} in the reading room`);}
       notify(current.referenceId?'A saved route is open. Select a passage or claim to explore its connections.':'Read every scale. Select a passage or claim, then choose Routes to follow its connections.');
       view.dispatchEvent(new view.CustomEvent('care:discover-route',{detail:current}));
@@ -225,12 +213,12 @@ export async function mountDiscoverReader(host,options={}) {
         notify(error.message);
       }finally{if(version===requestVersion)host.removeAttribute('aria-busy');}
     }
-    const receive=event=>open(event.detail||{}),choose=()=>open({book:selector.value});
+    const receive=event=>open(event.detail||{});
     const close=()=>fieldApi?fieldApi.clearRoute():controller&&dispatch(controller.status().connectionId?'connection_action':'clear_reference',controller.status().connectionId?{action:'clear_reference'}:true);
     const closeButtons=[...doc.querySelectorAll('[data-discover-close-route]')];
-    selector?.addEventListener('change',choose);closeButtons.forEach(button=>button.addEventListener('click',close));
+    closeButtons.forEach(button=>button.addEventListener('click',close));
     view.removeEventListener('care:discover-open',receiveEarly);view.addEventListener('care:discover-open',receive);
-    const api={open,status,destroy(){destroyed=true;++requestVersion;cleanup?.();removeField();if(mapSection)mapSection.hidden=false;selector?.removeEventListener('change',choose);closeButtons.forEach(button=>button.removeEventListener('click',close));view.removeEventListener('care:discover-open',receive);delete host.discoverReader;}};
+    const api={open,status,destroy(){destroyed=true;++requestVersion;cleanup?.();removeField();picker?.destroy();closeButtons.forEach(button=>button.removeEventListener('click',close));view.removeEventListener('care:discover-open',receive);delete host.discoverReader;}};
     host.discoverReader=api;
     await open(loadingRequest||discoverInitialReading(data));
     view.dispatchEvent(new view.CustomEvent('care:discover-ready',{detail:status()}));

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {atlasView, buildAtlasModel} from '../discover-atlas.mjs';
+import {atlasView, atlasStatusMatchesView, buildAtlasModel} from '../discover-atlas.mjs';
 
 const data = JSON.parse(fs.readFileSync(new URL('./fixtures/original-public-library.json', import.meta.url)));
 const model = buildAtlasModel(data);
@@ -15,6 +15,40 @@ test('the initial atlas shows only Hume and has no lateral node or edge', () => 
   assert.ok([...view.nodes.values()].every(node => node.work?.slug === 'hume'));
   assert.ok([...view.edges.values()].every(edge => view.nodes.has(edge.source) && view.nodes.has(edge.target)));
   assert.ok(!view.nodes.has(data.lateral.id));
+});
+
+test('newly featured books and laterals never replace the Hume homepage example', () => {
+  for (const featured_reading of [
+    {type: 'book', id: data.works.find(work => work.slug === 'kant').id},
+    {type: 'field', id: data.lateral.id},
+  ]) {
+    const revised = {...data, works: [...data.works].reverse(), featured_reading};
+    const view = atlasView(revised, model);
+    assert.equal(view.book, 'hume');
+    assert.equal(view.lateral, false);
+    assert.ok([...view.nodes.values()].every(node => node.work?.slug === 'hume'));
+  }
+});
+
+test('reader events can highlight Hume routes without replacing the homepage map', () => {
+  const view = atlasView(data, model);
+  const hume = data.works.find(work => work.slug === 'hume');
+  const kant = data.works.find(work => work.slug === 'kant');
+  for (const status of [
+    {book: 'hume', workId: hume.id, referenceId: 'CH_THN_INTR:AS1'},
+    {referenceId: 'RAW_THN_INTR:P0001'},
+    {book: 'hume', unitId: 'WB_THN'},
+  ]) assert.equal(atlasStatusMatchesView(view, model, status), true);
+  for (const status of [
+    {book: 'kant', workId: kant.id, referenceId: 'CH_KPR_INTRODUCTION:AS1'},
+    {workId: kant.id},
+    {referenceId: 'CH_KPR_INTRODUCTION:AS1'},
+    {unitId: 'WB_KPR'},
+    {book: 'lateral', connectionId: data.lateral.id},
+    {book: 'hume', workId: hume.id, connectionId: data.lateral.id},
+    {book: 'field:' + data.lateral.id},
+  ]) assert.equal(atlasStatusMatchesView(view, model, status), false);
+  assert.equal(view.book, 'hume');
 });
 
 test('book selection changes the map even with no selected reference', () => {

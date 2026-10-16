@@ -1,7 +1,8 @@
 /* Small, read-only previews of the existing Lateral and Corpus environments.
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
-import {publicReadingText} from './native/reading-views.mjs?v=cb943c40614490fe';
+import {publicReadingText} from './native/reading-views.mjs?v=20261006';
+import {loadPublicField} from './public-fields.mjs?v=20261016-books';
 export const LATERAL_SAMPLES = Object.freeze([
   {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},
   {label:'Difference', id:'XR_KPR_THN:TLC-02', explanation:'Identify where their explanations differ. Hume explains how habit forms expectations; Kant asks what makes experience possible.'},
@@ -57,6 +58,30 @@ export function savedLateralSamples(data){
   });
 }
 
+// A featured field belongs to the comparison card, never the book chooser.
+export function featuredLateral(data){
+  const laterals=(data.fields||[]).filter(field=>field.id&&field.field==='lateral');
+  return laterals.find(field=>data.featured_reading?.type==='field'&&field.id===data.featured_reading.id)
+    ||laterals.at(-1)||null;
+}
+
+export function publishedLateralSamples(field){
+  const panes=(field.bundle?.panes||[]).filter(pane=>pane.layer==='XR'&&pane.role!=='source');
+  const items=panes.flatMap(pane=>(pane.items||[]).map(item=>({...item,pane: pane.id})));
+  const saved=LATERAL_SAMPLES.map(sample=>({sample,item:items.find(item=>item.id===sample.id)}));
+  if(saved.every(({item})=>item))return saved.map(({sample,item})=>({
+    label:sample.label,id:item.id,pane:item.pane,text:item.reading_text||item.text,
+    explanation:item.reading_text||item.text,refs:item.source_trace||[],
+  }));
+  const sections=new Set();
+  return items.filter(item=>{
+    const key=item.pane+'|'+item.section_name;
+    if(!(item.reading_text||item.text)||sections.has(key))return false;
+    sections.add(key);return true;
+  }).slice(0,3).map(item=>({label:item.section_name||'Saved analysis',id:item.id,pane:item.pane,
+    text:item.reading_text||item.text,explanation:item.reading_text||item.text,refs:item.source_trace||[]}));
+}
+
 function mapMarkup(){
   return `<svg viewBox="0 30 760 300" role="img" aria-label="Schematic map of places associated with the selected texts and their authors">
     <g class="de-map-grid">${[90,180,270].map(y=>`<path d="M25 ${y}H735"/>`).join('')}${[190,380,570].map(x=>`<path d="M${x} 45V315"/>`).join('')}</g>
@@ -68,16 +93,17 @@ function mapMarkup(){
 export async function mountDiscoverExperiments(host,options={}){
   if(!host)return null;
   const doc=host.ownerDocument,view=doc.defaultView;
-  let selectedSample=0,selectedBook=0,samples=[];
+  let selectedSample=0,selectedBook=0,samples=[],lateralHref='./#view=laterals',published=false;
   host.classList.add('discover-experiments');
   host.innerHTML=`<section class="de-card de-lateral" aria-labelledby="de-lateral-title">
       <div class="de-heading"><p class="de-label">Laterals</p><h2 id="de-lateral-title">Compare two books.</h2><p class="de-description">A lateral compares two books: where their arguments agree, where they differ, and what could be developed from both.</p></div>
+      <h3 class="de-featured-title" hidden></h3><p class="de-featured-books" hidden></p>
       <div class="de-strands" aria-hidden="true"><span>Hume</span><span>Kant</span>
         <svg viewBox="0 0 560 74"><g class="de-rungs"><path d="M140 27L140 47M180 47L180 27M220 48L220 26M260 29L260 45M300 27L300 47M340 47L340 27M380 48L380 26M420 29L420 45"/></g><path class="de-strand-a" d="M22 37H72C112 37 116 12 146 17S177 65 212 55S249 11 284 20S319 64 354 54S390 13 425 21S452 37 490 37H538"/><path class="de-strand-b" d="M22 37H72C112 37 116 62 146 57S177 9 212 19S249 63 284 54S319 10 354 20S390 61 425 53S452 37 490 37H538"/><circle cx="22" cy="37" r="5"/><circle cx="538" cy="37" r="5"/></svg>
       </div>
       <div class="de-sample-tabs" role="group" aria-label="Explore the saved lateral">${LATERAL_SAMPLES.map((sample,i)=>`<button type="button" data-sample="${i}" aria-pressed="${i===0}" disabled>${sample.label}</button>`).join('')}</div>
       <div class="de-claim"><p class="de-explanation" aria-live="polite" aria-atomic="true">Loading the saved comparison…</p><details class="de-saved-claim"><summary>Read the saved analysis</summary><p class="de-claim-text"></p><p class="de-claim-kind"></p><span class="de-claim-ref"></span></details></div>
-      <div class="de-card-foot"><button type="button" class="de-show" data-show-lateral disabled>Show this lateral <span aria-hidden="true">↑</span></button><button type="button" class="de-open" data-open-lateral disabled>Read this claim <span aria-hidden="true">↗</span></button></div>
+      <div class="de-card-foot"><a class="de-show" data-show-lateral href="./#view=laterals">Open comparison <span aria-hidden="true">↗</span></a><a class="de-open" href="./#view=laterals">All laterals <span aria-hidden="true">↗</span></a></div>
     </section>
     <section class="de-card de-corpus" aria-labelledby="de-corpus-title">
       <div class="de-heading"><p class="de-label">Corpuses</p><h2 id="de-corpus-title">Study a collection.</h2><p class="de-description">A corpus groups books by author, subject, place or time period. CARE analyses them together to find shared ideas, differences and changes across the collection.</p></div>
@@ -95,10 +121,10 @@ export async function mountDiscoverExperiments(host,options={}){
     $('.de-claim-text').textContent=prose;
     $('.de-claim-kind').textContent=selectedSample===2?'A proposal from the saved comparison. No new work has been generated in this example.':'';
     $('.de-saved-claim').open=false;
+    $('.de-saved-claim').hidden=published;
     $('.de-claim-ref').textContent=sample.id;
     host.querySelectorAll('[data-sample]').forEach(button=>{button.disabled=false;button.setAttribute('aria-pressed',String(Number(button.dataset.sample)===selectedSample));});
-    $('[data-open-lateral]').disabled=false;
-    $('[data-show-lateral]').disabled=false;
+    $('[data-show-lateral]').href=lateralHref;
     $('.de-lateral').dataset.mode=String(selectedSample);
   }
   function paintBook(){
@@ -114,28 +140,42 @@ export async function mountDiscoverExperiments(host,options={}){
     if(!button||!host.contains(button)||button.disabled)return;
     if(button.hasAttribute('data-sample')){selectedSample=Number(button.dataset.sample);paintSample();}
     if(button.hasAttribute('data-book')){selectedBook=Number(button.dataset.book);paintBook();}
-    if(button.hasAttribute('data-open-lateral')||button.hasAttribute('data-show-lateral')){
-      const sample=samples[selectedSample];
-      if(!sample)return;
-      view.dispatchEvent(new view.CustomEvent('care:discover-open',{detail:{book:'lateral',unit:'XR_KPR_THN',ref:sample.id}}));
-      const destination=doc.querySelector(button.hasAttribute('data-show-lateral')?'#discover-atlas':'#discover-reader');
-      if(destination)queueMicrotask(()=>{destination.scrollIntoView({behavior:view.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});destination.focus({preventScroll:true});});
-    }
+
   }
   host.addEventListener('click',onClick);paintBook();
   try{
     let data=options.data;
     if(!data){const response=await (options.fetch||view.fetch.bind(view))(new URL('./data/library.json',import.meta.url),{cache:'no-cache'});if(!response.ok)throw Error('The saved lateral could not load.');data=await response.json();}
-    if(data.lateral?.id==='XR_KPR_THN'){
+    const field=featuredLateral(data);
+    if(field){
+      published=true;lateralHref='./#field='+encodeURIComponent(field.id);
+      $('[data-show-lateral]').href=lateralHref;
+      const members=field.members||[];
+      const authors=members.map(member=>member.author).filter(Boolean);
+      $('.de-featured-title').hidden=false;
+      $('.de-featured-title').textContent=authors.length?authors.join(' × '):field.title;
+      $('.de-featured-books').hidden=false;
+      $('.de-featured-books').textContent=members.length?members.map(member=>member.title).join(' × '):'';
+      const strandLabels=host.querySelectorAll('.de-strands>span');
+      strandLabels.forEach((label,i)=>{label.textContent=members[i]?.author||members[i]?.title||'';});
+      const fetcher=options.fetch||view.fetch.bind(view);
+      await loadPublicField(field,(url,init)=>fetcher(new URL(url,import.meta.url),init));
+      samples=publishedLateralSamples(field);
+      $('.de-sample-tabs').innerHTML=samples.map((sample,i)=>`<button type="button" data-sample="${i}" aria-pressed="${i===0}">${escapeHTML(sample.label)}</button>`).join('');
+      if(samples.length)paintSample();
+      else{$('.de-explanation').textContent='Open this published comparison to explore its saved readings.';$('.de-saved-claim').hidden=true;}
+    }else if(data.lateral?.id==='XR_KPR_THN'){
+      lateralHref='./#lateral='+encodeURIComponent(data.lateral.id);
       samples=savedLateralSamples(data);paintSample();
     }else{
       $('.de-strands').hidden=true;
       $('.de-sample-tabs').hidden=true;
       $('.de-saved-claim').hidden=true;
-      $('.de-card-foot').hidden=true;
+      $('.de-card-foot').hidden=false;
+      $('[data-show-lateral]').hidden=true;
       $('.de-explanation').textContent='Selected laterals can be published from the Mac Library. Open the beta Library to see the readings currently shared.';
     }
-  }catch(error){$('.de-explanation').textContent='The saved comparison is temporarily unavailable. Open the public reading room to try again.';}
+  }catch(error){$('.de-explanation').textContent='The saved comparison preview could not load. Open the comparison in the Library to read it.';$('.de-sample-tabs').hidden=true;$('.de-saved-claim').hidden=true;}
   return {destroy(){host.removeEventListener('click',onClick);}};
 }
 

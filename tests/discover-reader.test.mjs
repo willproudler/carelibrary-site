@@ -103,38 +103,30 @@ test('Discover can start from a source-only public book without fixed demonstrat
   assert.equal(reader.payload().reference,null);
 });
 
-test('Discover opens the exact featured published book before the former Hume default',()=>{
-  const featured=structuredClone(data),kant=featured.works.find(work=>work.slug==='kant');
-  featured.featured_reading={type:'book',id:kant.id};
-  assert.deepEqual(discoverInitialReading(featured),{book:'kant'});
-  const reader=createDiscoverController(featured);
-  assert.equal(reader.status().workId,kant.id);
-  assert.equal(reader.payload().reference.id,DISCOVER_EXAMPLES.kant);
-  reader.open({book:'hume'});
-  assert.equal(reader.status().book,'hume');
-});
-
-test('Discover features a saved field without publishing or inventing its missing source members',()=>{
-  const featured={works:[],fields:[{id:'FIELD:published',title:'Selected corpus',field:'corpus',
-    members:[{work_id:'PRIVATE:never-published'}],bundle_url:'./data/fields/selected.json'}],
-    featured_reading:{type:'field',id:'FIELD:published'}};
-  assert.deepEqual(discoverInitialReading(featured),{field:'FIELD:published'});
-  assert.deepEqual(discoverChoices(featured).map(choice=>choice.id),['FIELD:published']);
-  assert.equal(featured.works.length,0);
-});
-
-test('removed or mistyped featured readings fall back to a real public reading',()=>{
-  for(const featured_reading of [{type:'field',id:data.works[0].id},{type:'book',id:'REMOVED'},null]){
-    assert.deepEqual(discoverInitialReading({...data,featured_reading}),{book:'hume'});
+test('featured books and laterals never replace Hume as the opening book',()=>{
+  for(const featured_reading of [{type:'book',id:data.works[0].id},{type:'field',id:'FIELD:published'},null]){
+    const featured={...data,featured_reading,fields:[{id:'FIELD:published',field:'lateral',title:'Latest comparison'}]};
+    assert.deepEqual(discoverInitialReading(featured),{book:'hume'});
+    assert.equal(createDiscoverController(featured).status().book,'hume');
+    assert.ok(discoverChoices(featured).every(choice=>choice.type==='book'));
   }
-  assert.equal(discoverInitialReading({works:[],fields:[]}),null);
-  const legacy={...data,featured_reading:{type:'field',id:data.lateral.id}};
-  assert.deepEqual(discoverInitialReading(legacy),{book:'lateral'});
 });
 
-test('Discover choices keep field identity separate and omit duplicate or unsupported shelf entries',()=>{
-  const fields=[{id:'SAME',title:'Corpus',field:'corpus'},{id:'SAME',title:'Duplicate',field:'corpus'},
-    {id:'HIDDEN',title:'Private draft',field:'draft'}];
-  const fixture={works:[{id:'SAME',slug:'same',title:'Book'}],fields,lateral:null};
-  assert.deepEqual(discoverChoices(fixture).map(choice=>[choice.type,choice.id]),[['book','SAME'],['field','SAME']]);
+test('a catalogue with only fields has no default book or book choices',()=>{
+  const featured={works:[],fields:[{id:'FIELD:published',field:'lateral'}],featured_reading:{type:'field',id:'FIELD:published'}};
+  assert.equal(discoverInitialReading(featured),null);
+  assert.deepEqual(discoverChoices(featured),[]);
+});
+
+test('a missing Hume falls back to the first published book and ignores featured fields',()=>{
+  const works=data.works.filter(work=>work.slug!=='hume');
+  const featured={...data,works,lateral:null,featured_reading:{type:'field',id:data.lateral.id}};
+  assert.deepEqual(discoverInitialReading(featured),{book:works[0].slug});
+  assert.equal(createDiscoverController(featured).status().book,works[0].slug);
+});
+
+test('book choices preserve titles and authors and exclude every kind of field',()=>{
+  const fixture={works:[{id:'SAME',slug:'same',title:'Book',author:'Author'}],
+    fields:[{id:'SAME',field:'corpus'},{id:'OTHER',field:'lateral'}],lateral:{id:'LEGACY'}};
+  assert.deepEqual(discoverChoices(fixture),[{type:'book',id:'SAME',value:'same',title:'Book',author:'Author',label:'Author · Book'}]);
 });
