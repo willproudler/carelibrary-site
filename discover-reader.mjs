@@ -1,7 +1,7 @@
 /* The Discover page mounts CARE's shipped reader against the selected public
  * collection. No authoring, generation, account or private-library API is used. */
 import mountReader from './native/study-desk.mjs?v=225b9b9a34331c20';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=225b9b9a34331c20';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=c7ad5fdb32c4fa44';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
 import {loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
 

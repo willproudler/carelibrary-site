@@ -2,8 +2,8 @@ import mountField from './native/study-field.mjs?v=225b9b9a34331c20';
 import {publicFields,fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
 import mountReader from './native/study-desk.mjs?v=225b9b9a34331c20';
 import mountViewer from './native/reference-viewer.mjs?v=225b9b9a34331c20';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=225b9b9a34331c20';
-import {searchLibrary} from './library-core.mjs?v=20261014-current';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=c7ad5fdb32c4fa44';
+import {searchLibrary} from './library-core.mjs?v=c7ad5fdb32c4fa44';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -119,7 +119,7 @@ async function start(){
  }
  function showBookInfo(work){
   let dialog=$('#book-info-dialog');if(!dialog){dialog=document.createElement('dialog');dialog.id='book-info-dialog';dialog.setAttribute('aria-labelledby','book-info-title');document.body.append(dialog);}
-  dialog.innerHTML=`<div class="dialog-heading"><h2 id="book-info-title">${esc(work.title)}</h2><button aria-label="Close book info">×</button></div><dl>${[['Author',work.author],['Year',work.year],['Edition',work.edition],['Version',work.version_label]].filter(([,value])=>value).map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>${work.description?`<p>${esc(work.description)}</p>`:''}<p>${work.sources.length} source chapters · ${work.units.length} CARE readings</p>`;
+  dialog.innerHTML=`<div class="dialog-heading"><h2 id="book-info-title">${esc(work.title)}</h2><button aria-label="Close book info">×</button></div><dl>${[['Author',work.author],['Original title',work.original_title && work.original_title !== work.title ? work.original_title : ''],['Year',work.year],['Edition',work.edition],['Version',work.version_label]].filter(([,value])=>value).map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>${work.description?`<p>${esc(work.description)}</p>`:''}<p>${work.sources.length} source chapters · ${work.units.length} CARE readings</p>`;
   dialog.querySelector('button').onclick=()=>dialog.close();dialog.showModal();
  }
  function paintFieldViewer(field){

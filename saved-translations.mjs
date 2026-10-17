@@ -22,12 +22,20 @@ export function selectedVariant(unit, work, state = {}) {
   const language = readingLanguage(work,state);
   return language !== ORIGINAL ? choices.find(row=>row.language_code === language) || null : null;
 }
+export function originalLabels(unit, work, state = {}) {
+  const explicit = state.paneVersions?.[unit?.id];
+  return explicit === ORIGINAL || explicit === undefined && state.readingLanguages?.[work?.id] === ORIGINAL;
+}
+export function paneTitle(unit, work, state = {}) {
+  const variant = selectedVariant(unit,work,state);
+  return variant?.title || (originalLabels(unit,work,state) ? unit.original_title || unit.title : unit.title);
+}
 const renditionLabel = row => row.rendition_type === 'supplied' ? 'supplied translation' : 'saved machine translation';
 export function paneLanguages(unit, work, state = {}) {
   const original = originalLanguage(unit,work), selected = selectedVariant(unit,work,state);
   const source = unit.layer === 'SOURCE' || Array.isArray(unit.paragraphs);
   const translatedMessage = source ? selected?.rendition_type === 'supplied' ? 'Supplied source translation. Recorded references still lead to the original source passages.' : 'Saved machine translation of the source text. The original remains available.' : 'Saved machine translation of CARE analysis. References lead to the original source passages.';
-  return {unit_id:unit.id,work_id:work?.id || '',title:selected?.title || unit.title,
+  return {unit_id:unit.id,work_id:work?.id || '',title:paneTitle(unit,work,state),
     selected_id:selected?.id || ORIGINAL,language_code:selected?.language_code || original.code,
     language_name:selected?.language_name || original.name,is_translation:Boolean(selected),rendition_type:selected?.rendition_type || (selected?'machine':'original'),
     options:[{id:ORIGINAL,language_code:original.code,label:`${original.name} · original`,available:true},

@@ -2,9 +2,9 @@
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=20261014-current';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=c7ad5fdb32c4fa44';
 import {publicReadingText} from './native/reading-views.mjs?v=cb943c40614490fe';
-import {ORIGINAL, selectedVariant, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=20261014-english';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=c7ad5fdb32c4fa44';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
@@ -72,20 +72,23 @@ export function createPublicReaderAdapter(data) {
     const original = index.units.get(id);
     if (!original || original.layer === 'SOURCE') throw new Error('This CARE sheet is not in the public collection.');
     const variant = selectedVariant(original, original.work, state), reading = variant || original;
-    const cacheKey = `${id}\0${variant?.id || ORIGINAL}`;
+    const showOriginalLabels = !variant && originalLabels(original,original.work,state), title = paneTitle(original,original.work,state);
+    const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${showOriginalLabels}`;
     if (unitCache.has(cacheKey)) return unitCache.get(cacheKey);
     const projected = {
       id:original.id, type:original.layer, layer:original.layer,
-      label:reading.title || original.title, title:reading.title || original.title, version:original.revision || '',
+      label:title, title, version:original.revision || '',
       sequence_number:original.order, chapter_number:original.layer === 'CH' ? original.order : undefined,
       mc_level:mcLevel(original),
       sheet_versions:describePaneLanguages(original,original.work,state),
-      sections:array(reading.sections).map(section => ({
-        number:text(section.number), name:section.name,
-        items:array(section.items).map((item, position) => nativeItem(item, section, position, original)),
-      })),
-      identity:{title:reading.title || original.title, kicker:original.layer === 'CH' ? `CHAPTER ${original.order}` : ({CL:'CLUSTER',MC:'META-CLUSTER',WB:'WHOLE BOOK',XR:'LATERAL'}[original.layer] || original.layer),
-        context:original.work?.title || `${lateralWorks.map(work => work.title).join(' × ')} · Saved diagnostic reading`,...original.identity,...(variant?.title?{title:variant.title}:{})},
+      sections:array(reading.sections).map(section => {
+        const displayed = showOriginalLabels ? {...section,name:section.original_name || section.name} : section;
+        return {number:text(displayed.number),name:displayed.name,
+          items:array(displayed.items).map((item, position) => nativeItem(item, displayed, position, original))};
+      }),
+      identity:{kicker:original.layer === 'CH' ? `CHAPTER ${original.order}` : ({CL:'CLUSTER',MC:'META-CLUSTER',WB:'WHOLE BOOK',XR:'LATERAL'}[original.layer] || original.layer),
+        context:original.work?.title || `${lateralWorks.map(work => work.title).join(' × ')} · Saved diagnostic reading`,...original.identity,title,
+        ...(showOriginalLabels && original.identity?.original_context?{context:original.identity.original_context}:{})},
     };
     projected.item_count = projected.sections.reduce((sum, section) => sum + section.items.length, 0);
     unitCache.set(cacheKey, projected);
@@ -96,12 +99,12 @@ export function createPublicReaderAdapter(data) {
     const source = index.units.get(id);
     if (!source || source.layer !== 'SOURCE') throw new Error('This source chapter is not in the public collection.');
     const variant = selectedVariant(source,source.work,state), reading = variant || source;
-    const cacheKey = `${id}\0${variant?.id || ORIGINAL}`;
+    const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${originalLabels(source,source.work,state)}`;
     if (chapterCache.has(cacheKey)) return chapterCache.get(cacheKey);
     const rows = array(reading.paragraphs), canonicalIds = new Set(array(source.paragraphs).map(row=>row.id));
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
-      sequence_number:source.order, title:reading.title || source.title, label:reading.title || source.title,
+      sequence_number:source.order, title:paneTitle(source,source.work,state), label:paneTitle(source,source.work,state),
       source_rendition_type:variant?.rendition_type || (variant ? 'machine' : 'original'),
       passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
       passages:rows.map((passage, position) => ({
@@ -127,11 +130,11 @@ export function createPublicReaderAdapter(data) {
       work:{id:work.id, title:work.title, author:work.author, cover_url:work.cover_url},
       edition_label:work.edition,
       chapters:work.sources.map(source => ({id:source.id, raw_unit_id:source.id, care_unit_id:source.chapter_id,
-        chapter_number:source.order, sequence_number:source.order, title:source.title, readable:true})),
+        chapter_number:source.order, sequence_number:source.order, title:paneTitle(source,work,state), readable:true})),
       active_chapter:chapter(selected.SOURCE.id,state),
       care_path:BASE_LAYERS.flatMap(layer => selected[layer] ? [unit(selected[layer].id,state)] : []),
       sheet_options:Object.fromEntries(BASE_LAYERS.map(layer => [layer, work.units.filter(row => row.layer === layer).map(row => ({
-        id:row.id, type:layer, title:row.title, available:true, sequence_number:row.order,
+        id:row.id, type:layer, title:paneTitle(row,work,state), available:true, sequence_number:row.order,
         chapter_number:layer === 'CH' ? row.order : undefined, mc_level:mcLevel(row),
       }))])),
       active_raw_unit_id:selected.SOURCE.id,
