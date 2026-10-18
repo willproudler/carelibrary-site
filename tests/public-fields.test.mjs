@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {publicFields,fieldPayload,fieldReference} from '../public-fields.mjs';
+import {publicFields,fieldPayload,fieldReference,loadPublicField} from '../public-fields.mjs';
 import {createPublicReaderAdapter} from '../public-reader-adapter.mjs';
 import {standaloneBookState} from '../reading-workspace.mjs';
 
@@ -59,7 +59,6 @@ test('ordinary book navigation never treats an empty connection identity as a re
 });
 
 test('field files load on demand and use the newest published cover metadata',async()=>{
-  const {loadPublicField}=await import('../public-fields.mjs');
   const field={id:'FIELD:selected',field:'corpus',members:[{id:'PUBLISHED',cover_url:'new-cover'}],bundle_url:'./data/fields/abc-def.json'};
   let calls=0;
   const loader=async(url)=>{calls++;assert.equal(url,field.bundle_url);return {ok:true,json:async()=>({bundle:{id:field.id,field:field.field,members:[{id:'PUBLISHED',cover_url:'old-cover'}]},references:{}})};};
@@ -67,4 +66,49 @@ test('field files load on demand and use the newest published cover metadata',as
   assert.equal(calls,1);assert.equal(field.bundle.members[0].cover_url,'new-cover');
   await assert.rejects(loadPublicField({...field,bundle:null,bundle_url:'https://elsewhere.example/private'},loader),/no published file/);
   await assert.rejects(loadPublicField({...field,bundle:null},async()=>({ok:true,json:async()=>({bundle:{id:'WRONG',field:'corpus'}})})),/does not match/);
+});
+
+const downloadableField=()=>({id:'FIELD:download',field:'lateral',bundle_url:'./data/fields/0123456789abcdef-fedcba9876543210.json'});
+const fieldResponse=field=>({ok:true,json:async()=>({bundle:{id:field.id,field:field.field,members:[],panes:[]},references:{}})});
+
+test('concurrent field readers share one bounded request and cache the immutable bundle',async()=>{
+  const field=downloadableField();let calls=0,release;
+  const fetcher=async(url,options)=>{
+    calls++;assert.equal(url,field.bundle_url);assert.equal(options.cache,'force-cache');
+    assert.ok(options.signal instanceof AbortSignal);
+    await new Promise(resolve=>{release=resolve;});return fieldResponse(field);
+  };
+  const first=loadPublicField(field,fetcher),second=loadPublicField(field,fetcher);
+  assert.equal(calls,1);assert.equal(field.bundle,undefined);
+  release();assert.equal(await first,field);assert.equal(await second,field);
+  await loadPublicField(field,fetcher);assert.equal(calls,1);
+});
+
+test('transient field failures retry once, and exhausted loads can be tried again',async()=>{
+  const field=downloadableField();let calls=0;
+  const fetcher=async()=>{calls++;return calls<3?{ok:false,status:503}:fieldResponse(field);};
+  await assert.rejects(loadPublicField(field,fetcher),/could not load/);
+  assert.equal(calls,2);assert.equal(field.bundle,undefined);
+  assert.equal(await loadPublicField(field,fetcher),field);assert.equal(calls,3);
+  const next=downloadableField();let nextCalls=0;
+  await loadPublicField(next,async()=>++nextCalls===1?{ok:false,status:503}:fieldResponse(next));
+  assert.equal(nextCalls,2);
+});
+
+test('a stalled field download aborts and a later retry can complete',async()=>{
+  const field=downloadableField();let aborted=false;
+  await assert.rejects(loadPublicField(field,(_url,{signal})=>new Promise((_resolve,reject)=>{
+    signal.addEventListener('abort',()=>{aborted=true;reject(new DOMException('Aborted','AbortError'));},{once:true});
+  }),{timeout:5,retries:0}),/took too long/);
+  assert.equal(aborted,true);assert.equal(field.bundle,undefined);
+  await loadPublicField(field,async()=>fieldResponse(field));
+  assert.equal(field.bundle.id,field.id);
+});
+
+test('invalid field routes never partially install a bundle or prevent retry',async()=>{
+  const field=downloadableField();
+  await assert.rejects(loadPublicField(field,async()=>({ok:true,json:async()=>({bundle:{id:field.id,field:field.field},references:[]})})),/incomplete routes/);
+  assert.equal(field.bundle,undefined);assert.equal(field.references,undefined);
+  await loadPublicField(field,async()=>fieldResponse(field));
+  assert.equal(field.bundle.id,field.id);
 });

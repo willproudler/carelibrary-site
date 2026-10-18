@@ -2,7 +2,8 @@
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
 import {publicReadingText} from './native/reading-views.mjs?v=20261006';
-import {loadPublicField} from './public-fields.mjs?v=20261016-books';
+import {loadPublicField} from './public-fields.mjs?v=20261018';
+import {loadLibrary} from './library-loader.mjs';
 export const LATERAL_SAMPLES = Object.freeze([
   {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},
   {label:'Difference', id:'XR_KPR_THN:TLC-02', explanation:'Identify where their explanations differ. Hume explains how habit forms expectations; Kant asks what makes experience possible.'},
@@ -144,8 +145,8 @@ export async function mountDiscoverExperiments(host,options={}){
   }
   host.addEventListener('click',onClick);paintBook();
   try{
-    let data=options.data;
-    if(!data){const response=await (options.fetch||view.fetch.bind(view))(new URL('./data/library.json',import.meta.url),{cache:'no-cache'});if(!response.ok)throw Error('The saved lateral could not load.');data=await response.json();}
+    const library=options.data?null:await (options.library||loadLibrary(options.fetch?{fetch:options.fetch}:{}));
+    const data=options.data||library.data;
     const field=featuredLateral(data);
     if(field){
       published=true;lateralHref='./#field='+encodeURIComponent(field.id);
@@ -165,6 +166,7 @@ export async function mountDiscoverExperiments(host,options={}){
       if(samples.length)paintSample();
       else{$('.de-explanation').textContent='Open this published comparison to explore its saved readings.';$('.de-saved-claim').hidden=true;}
     }else if(data.lateral?.id==='XR_KPR_THN'){
+      if(library)await library.ensureLateral();
       lateralHref='./#lateral='+encodeURIComponent(data.lateral.id);
       samples=savedLateralSamples(data);paintSample();
     }else{

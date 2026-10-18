@@ -3,7 +3,8 @@
 import mountReader from './native/study-desk.mjs?v=225b9b9a34331c20';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=c7ad5fdb32c4fa44';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
-import {loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
+import {loadPublicField} from './public-fields.mjs?v=20261018';
+import {loadLibrary} from './library-loader.mjs';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
   hume:'CH_THN_INTR:AS1',
@@ -29,8 +30,9 @@ export function discoverInitialReading(data) {
 
 /** Pure controller, shared by the browser embed and the route integration tests. */
 export function createDiscoverController(data) {
-  const adapter=createPublicReaderAdapter(data),bookStates=new Map();
-  const savedLateral=data.lateral?.id ? data.lateral : null;
+  let adapter=createPublicReaderAdapter(data),savedLateral=data.lateral?.id ? data.lateral : null;
+  let indexedWorks=[...data.works],indexedLateral=data.lateral;
+  const bookStates=new Map();
   const defaultWork=adapter.workFor('hume') || data.works[0];
   if(!defaultWork)throw Error('No books have been published yet.');
   const exampleFor=work=>{
@@ -112,8 +114,27 @@ export function createDiscoverController(data) {
     else if(state.rawUnitId)params.set('source',state.rawUnitId);
     return './#'+params;
   }
+  function refresh(){
+    if(indexedLateral===data.lateral&&indexedWorks.length===data.works.length&&indexedWorks.every((work,i)=>work===data.works[i]))return adapter;
+    adapter=createPublicReaderAdapter(data);savedLateral=data.lateral?.id ? data.lateral : null;
+    indexedWorks=[...data.works];indexedLateral=data.lateral;
+    return adapter;
+  }
   open({book:defaultWork.slug});
-  return {adapter,open,dispatch,getState,payload,status,href};
+  return {get adapter(){return adapter;},refresh,open,dispatch,getState,payload,status,href};
+}
+
+/** Load only the book (or comparison parents) needed by this request. */
+export async function prepareDiscoverReading(library,request={}) {
+  if(request.book==='lateral')await library.ensureLateral();
+  else if(request.book)await library.ensureWork(request.book);
+  const reference=request.ref||request.unit||request.source;
+  if(reference)await library.ensureReference(reference);
+  if(!request.book&&!reference){
+    const initial=discoverInitialReading(library.data);
+    if(initial)await library.ensureWork(initial.book);
+  }
+  return library.data;
 }
 
 const embedCSS = `
@@ -143,14 +164,19 @@ export async function mountDiscoverReader(host,options={}) {
   host.setAttribute('aria-busy','true');
   try{
     const fetcher=options.fetch||view.fetch.bind(view);
-    const urls=['./data/library.json','./native/study-desk.css?v=225b9b9a34331c20','./native/public-scope.css?v=225b9b9a34331c20'];
-    const [data,css,scope]=await Promise.all(urls.map(async (url,index)=>{
-      const response=await fetcher(new URL(url,import.meta.url),index===0?{cache:'no-cache'}:{});
+    const readText=async url=>{
+      const response=await fetcher(new URL(url,import.meta.url));
       if(!response.ok)throw Error('The reading could not load. Please try again.');
-      return index===0?response.json():response.text();
-    }));
+      return response.text();
+    };
+    const [library,css,scope]=await Promise.all([
+      options.library||loadLibrary(options.fetch?{fetch:options.fetch}:{}),
+      readText('./native/study-desk.css?v=225b9b9a34331c20'),
+      readText('./native/public-scope.css?v=225b9b9a34331c20'),
+    ]);
+    const data=await prepareDiscoverReading(library);
     const controller=data.works?.length?createDiscoverController(data):null;
-    const adapter=controller?.adapter||createPublicReaderAdapter(data),choices=discoverChoices(data);
+    const choices=discoverChoices(data);
     if(!choices.length)throw Error('No books have been published yet.');
     const picker=mountDiscoverBookPicker(selector,choices,book=>open({book}));
     const shadow=host.shadowRoot||host.attachShadow({mode:'open'});
@@ -181,6 +207,8 @@ export async function mountDiscoverReader(host,options={}) {
       queueMicrotask(()=>{paintQueued=false;paint();});
     }
     function dispatch(kind,value){
+      if(kind==='open_work'){open({book:controller?.adapter.workFor(value)?.slug||value});return;}
+      if(kind==='open_field'&&value===data.lateral?.id||kind==='connection_action'&&value?.action==='open'){open({book:'lateral'});return;}
       try{controller?.dispatch(kind,value);queuePaint();}catch(error){notify(error.message);}
     }
     async function open(request={}){
@@ -194,6 +222,10 @@ export async function mountDiscoverReader(host,options={}) {
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
           const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=225b9b9a34331c20')]);
           if(destroyed||version!==requestVersion)return;
+          const members=(field.bundle?.members||[]).map(member=>data.works.find(work=>work.id===(member.work_id||member.id)||work.version_work_id===(member.work_id||member.id))?.id).filter(Boolean);
+          await library.ensureWorks(members);
+          if(destroyed||version!==requestVersion)return;
+          const adapter=controller?.refresh()||createPublicReaderAdapter(data);
           const nextHost=doc.createElement('div');nextHost.style.cssText='height:100%;min-height:0';
           const nextApi=await module.mountDiscoverField({host:nextHost,field,adapter,fetcher,
             onStatus:current=>{if(!destroyed&&fieldHost===nextHost)publish(current);},
@@ -205,6 +237,10 @@ export async function mountDiscoverReader(host,options={}) {
           publish();
         }else{
           if(!controller)throw Error('Choose a published lateral or corpus.');
+          host.setAttribute('aria-busy','true');notify('Opening the reading…');
+          await prepareDiscoverReading(library,request);
+          if(destroyed||version!==requestVersion)return;
+          controller.refresh();
           controller.open(request);removeField();paint();
         }
       }catch(error){

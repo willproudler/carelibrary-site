@@ -109,3 +109,11 @@
     height: 50px;
   }
 }
+/* Keep every navigation control reachable on narrow phones. */
+@media (max-width: 700px) {
+  .app-header nav {justify-content:flex-start;overflow-x:auto;scrollbar-width:thin;}
+  .app-header nav>a,.app-header nav>button {flex-shrink:0;}
+}
+@media (max-width: 440px) {
+  .app-header nav>[data-page=search] {font-size:0;gap:0;}
+}

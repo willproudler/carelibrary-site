@@ -1,6 +1,6 @@
 # CARE Library Beta
 
-CARE Library Beta at https://carelibrary.org. It uses the original app’s shelf and study-desk renderer against a fixed export of three books. GitHub Pages serves it without a private application server, API key, account, or build step.
+CARE Library Beta at https://carelibrary.org. It uses the original app’s shelf and study-desk renderer against the published collection. GitHub Pages serves it without a private application server, API key or account. A Pages workflow prepares lightweight delivery files and verifies the release before publishing.
 
 Chapter and sheet titles open searchable jump menus. Dragging a chapter rail previews its heading before loading the reading on release. The workspace keeps every visible reading in a closeable tab; comparison menus can close the lateral or choose which book to keep. The wordmark and joined-box logo match the Mac loading screen, and browser icons use the Mac app artwork.
 
@@ -28,8 +28,18 @@ node --test tests/*.test.mjs
 
 The export tools are preparation utilities, never part of a visitor’s interaction. Do not publish the private workspace, credentials, source EPUB containers, unrelated works or commercial cover images. Future source editions need their own provenance and rights review. See `PUBLICATION_NOTES.md` and `data/export-audit.json`.
 
-Preview with `python3 -m http.server 4173 --bind 127.0.0.1` in this website directory. Open http://127.0.0.1:4173. Serve this directory only. Before release, check native panes, source routes, outline expansion, saved lateral, reference viewer, bookmarks, search, keyboard controls and mobile layout. Preserve `CNAME` and existing Pages settings.
+Prepare the local preview with `python3 tools/optimise-covers.py` (Pillow required) and `node tools/build-public-assets.mjs`, then run `python3 -m http.server 4173 --bind 127.0.0.1` in this website directory. Open http://127.0.0.1:4173. Serve this directory only. Before release, check native panes, source routes, outline expansion, saved lateral, reference viewer, bookmarks, search, keyboard controls and mobile layout. Preserve `CNAME` and existing Pages settings.
 
 The October 5 release adds Bergson’s original French *Matière et mémoire* (six source sections and nine CARE sheets, sealed WB R002). Its absent MC level stays absent. The shelf derives each book’s language and layers from the export. Lateral membership comes only from its pinned parents, so adding Bergson does not change the Kant–Hume comparison. Reader assets are synced from `care-study-desk/1.73`.
 
 The supplied Kant, Hume and Bergson PNG covers appear on the native shelf; the lateral combines its two parent covers. The same translation icon and FR/EN pane menus as the main app switch between the original reading and explicitly pinned saved translations. The toolbar follows the focused pane. Five Bergson CARE sheets have saved English machine translations (four chapters and the whole-book reading); its other four sheets and all source passages remain French. Changing language keeps canonical reference IDs and source routes. Visitors cannot create translations or other new readings.
+
+## Beta loading and Saved library
+
+The shelf reads `data/catalogue.json`; opening a book fetches only its immutable, content-addressed delivery file. Full-library search loads the collection on demand. Discover shares the same loader and initially loads Hume. The canonical `data/library.json` remains unchanged and is still the export input. The delivery files and compressed cover copies are generated at release time, so publishing a new book or translation automatically updates them.
+
+Saved readings open as a closeable red **Saved library** workspace tab, alongside books and fields. Existing browser bookmarks and favourites are retained, including entries temporarily absent from the public collection. Saved panes and axioms reopen at their exact location. Bookmarks remain local to the browser and device; this does not add Mac/browser sync.
+
+Requests have time limits and retry controls. A transient failure cannot erase saved readings or replace a good reading file. The reader prepares viewer references only for its current panes, instead of every item in the collection. A refresh control recovers sessions left open across a newer publication.
+
+GitHub Pages must use **GitHub Actions** as its build source. `.github/workflows/pages.yml` prepares delivery files, runs `node --test tests/*.test.mjs`, uploads the site and deploys it with the existing CNAME. A failed build does not replace the previous live site.

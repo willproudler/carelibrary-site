@@ -8,7 +8,8 @@ export function reconcileReadings(opened, current, reading = true) {
 export function closeReading(opened, closing, current, fallbackBook = '') {
   const remaining = opened.filter(key => key !== closing);
   if (closing !== current) return {opened:remaining, destination:current};
-  const destination = remaining.at(-1) || fallbackBook;
+  // Match the Mac workspace: right neighbour, then left, then the shelf.
+  const destination = remaining[Math.min(opened.indexOf(closing),remaining.length-1)] || fallbackBook;
   return {opened:reconcileReadings(remaining, destination), destination};
 }
 

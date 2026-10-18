@@ -19,6 +19,10 @@ test('closing a background reading never moves the active reader',()=>{
 test('closing the last ordinary book returns to the shelf',()=>{
  assert.deepEqual(closeReading(['kant'],'kant','kant'),{opened:[],destination:''});
 });
+test('closing the current reading chooses its right neighbour, then its left',()=>{
+ assert.deepEqual(closeReading(['kant','saved:library','hume','bergson'],'saved:library','saved:library'),{opened:['kant','hume','bergson'],destination:'hume'});
+ assert.deepEqual(closeReading(['kant','hume','saved:library'],'saved:library','saved:library'),{opened:['kant','hume'],destination:'hume'});
+});
 test('leaving a comparison preserves book position and drops comparison selections',()=>{
  const saved={workId:'kant',unitId:'CH_KPR_03',rawUnitId:'',referenceId:'CH_KPR_03:AS1',routeMode:'incoming',connectionId:'xr',connectionReferenceId:'XR:AS1',connectionSelection:{reference_id:'HUME:AS1'},connectionBooks:{hume:{unitId:'CH_THN_02'}}};
  const single=standaloneBookState('kant',saved);
