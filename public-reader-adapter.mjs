@@ -2,9 +2,9 @@
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=9cc86f99fc737162';
-import {publicReadingText} from './native/reading-views.mjs?v=cb943c40614490fe';
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=ca3e1b6f1abb15e7';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=21bcaf6e74c8e3e7';
+import {publicReadingText} from './native/reading-views.mjs?v=dd05ea4b1e9de824';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=21bcaf6e74c8e3e7';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
@@ -100,7 +100,7 @@ export function createPublicReaderAdapter(data) {
     const variant = selectedVariant(source,source.work,state), reading = variant || source;
     const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${originalLabels(source,source.work,state)}`;
     if (chapterCache.has(cacheKey)) return chapterCache.get(cacheKey);
-    const rows = array(reading.paragraphs), canonicalIds = new Set(array(source.paragraphs).map(row=>row.id));
+    const rows = array(reading.paragraphs), canonicalPassages = new Map(array(source.paragraphs).map(row=>[row.id,row]));
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
       sequence_number:source.order, title:paneTitle(source,source.work,state), label:paneTitle(source,source.work,state),
@@ -108,13 +108,21 @@ export function createPublicReaderAdapter(data) {
       passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
       passages:rows.map((passage, position) => {
         const display = sourceReadingText(passage.text,source,source.work,state);
+        const canonical = canonicalPassages.get(passage.id), prefix = canonical?.beautiful_omit_prefix;
+        // Only an attested canonical fragment can accompany the identical
+        // opening in a saved rendition; never infer one from translated text.
+        const omitPrefix = typeof prefix === 'string' && /^[A-Za-z]{1,4}$/.test(prefix)
+          && [canonical.text, passage.text].every(value => typeof value === 'string'
+            && value.startsWith(prefix + '\n\n') && value.slice(prefix.length + 2).trim()) ? prefix : '';
         return {
         id:passage.id, text:passage.text, reading_text:display,
+        ...(omitPrefix ? {beautiful_omit_prefix:omitPrefix} : {}),
         reading_html:inline(display), reading_block_html:block(display),
         address:passage.kind === 'display' ? `Reading paragraph ${position + 1}` : passage.id,
         sequence:position + 1, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',
         axioms:usesFor(passage.id, source.work).map(link => link.id),
-        source_kind:passage.kind || 'passage', route_available:canonicalIds.has(passage.id),
+        trace_count:array(index.outgoing.get(passage.id)).length,
+        source_kind:passage.kind || 'passage', route_available:canonicalPassages.has(passage.id),
       };}),
     };
     chapterCache.set(cacheKey, result);

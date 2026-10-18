@@ -189,12 +189,12 @@ function setupConnectionView(runtime,redraw){
   runtime.attachConnectionView=()=>{view?.addEventListener(eventName,change);view?.addEventListener('storage',storage);apply(read())}
   runtime.cleanupConnectionView=()=>{view?.removeEventListener(eventName,change);view?.removeEventListener('storage',storage)}
 }
-function readerViewOptions({showZoom=true,showAppearance=true,shortcuts='book'}={}){
+function readerViewOptions({showZoom=true,showAppearance=true,showBeautifulText=true,shortcuts='book'}={}){
   const text='<span class="desk-menu-heading">Text size</span><div class="desk-text-size" aria-label="Reading text size"><button type="button" data-text-size="-1" aria-label="Make text smaller">A−</button><button type="button" data-text-size="1" aria-label="Make text larger">A+</button></div>'
   const zoom=showZoom?'<span class="desk-menu-heading">Pane zoom</span>'+trackZoomControls():''
   const appearance=showAppearance?'<span class="desk-menu-heading">Appearance</span><div class="desk-skin" aria-label="Visual skin"><button type="button" data-skin-value="care">CARE</button><button type="button" data-skin-value="library">BOOK</button><button type="button" data-skin-value="classic">CLASSIC</button></div>':''
   const rows=shortcuts==='lateral'?[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane'],['− / + on a pane','Fold or unfold'],['Tab · Enter','Move to and use controls']]:[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane']]
-  return connectionViewControl()+text+zoom+appearance+`<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
+  return (showBeautifulText?beautifulTextControl():'')+connectionViewControl()+text+zoom+appearance+`<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
 }
 function readerMenuBar(data,tabs,options={}){
   const book=options.file??(data?.corpus_sheet?'<span class="desk-menu-heading">Saved reading</span><span class="desk-sheet-version-slot" data-sheet-version-slot></span>':`<span class="desk-menu-heading">Book versions</span>${buildVersionControl(data)||'<span class="desk-menu-empty">Current reading</span>'}<div class="desk-menu-rule"></div>${readerMenuLabel(originalFormatControl(data),'Original reading format')}${readerMenuLabel(originalDownloadControl(data),'Download original')}<span class="desk-sheet-version-slot" data-sheet-version-slot></span>`)
@@ -933,9 +933,12 @@ function sourcePane(data,selectedId,reference){
   if(isRouteReference(reference))return sourceRoutePane(data,selectedId,reference)
   const chapter=data?.active_chapter
   if(!chapter)return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE TEXT</strong><span>NOT REGISTERED</span></div><div class="window-body"><div class="inspector-empty"><div><b>NO READABLE CHAPTER</b><p>This book can still expose its available CARE sheets. Add or repair the source in CARE Library settings when needed.</p></div></div></div></section>`
+  // Direct references can precede passage-alignment registration. Protect
+  // every reference visible in the saved reading as well as the trace count.
+  const sourceDetailsInUse=new Set(arr(data.care_path).flatMap(unit=>[...arr(unit.items),...arr(unit.sections).flatMap(section=>arr(section.items))]).flatMap(item=>[...arr(item.source_trace),...arr(item.deep_source_trace),...arr(item.matrix_trace),...arr(item.passage_trace_ids)]).map(String))
   const passages=arr(chapter.passages).map(passage=>{
     if(passage.route_available===false)return `<div class="passage-row"><article class="passage"><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`
-    return `<div class="passage-row"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button></div>`
+    return `<div class="passage-row"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button></div>`
   }).join("")
   return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE / ${esc(chapter.label||chapter.title)}</strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}<h2 data-slider-preview-title>${esc(chapter.title)}</h2><p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
 }
@@ -3757,6 +3760,261 @@ function setupOriginalReader(runtime){
   }
 }
 
+
+const BEAUTIFUL_TEXT_KEY='care-beautiful-text-v1'
+const BEAUTIFUL_TEXT_EVENT='care-beautiful-text-change'
+const beautifulTextSessions=new WeakMap()
+let beautifulTextIdentity=0
+
+function beautifulTextControl(){
+  return '<button type="button" class="beautiful-text-toggle" data-beautiful-text-toggle aria-pressed="false" title="Gentle reading typography; source details remain available"><span class="beautiful-text-label">Beautiful text</span><span class="beautiful-text-switch" aria-hidden="true"></span></button>'
+}
+
+function beautifulSourceDetail(passage){
+  // Unknown trace coverage must never be treated as an empty trace list.
+  if(!passage||passage.trace_count!==0||!Array.isArray(passage.axioms)||passage.axioms.length||passage.route_available===false)return false
+  const populated=value=>Array.isArray(value)?value.length>0:value&&typeof value==='object'?Object.keys(value).length>0:typeof value==='string'?value.trim().length>0:!!value
+  for(const [key,value] of Object.entries(passage)){
+    if(key==='trace_count'||key==='axioms'||key==='route_available')continue
+    if(/trace|axiom|feed|route|reference/i.test(key)&&populated(value))return false
+  }
+  const text=String(passage.text??passage.reading_text??'').trim()
+  if(!text||/[\r\n]/.test(text))return false
+  const isURL=value=>{try{const url=new URL(value);return /^https?:$/.test(url.protocol)&&!!url.hostname&&!/\s|[<>]/.test(value)}catch(_){return false}}
+  if(isURL(text))return true
+  const link=text.match(/^\[([^\]\n]+)\]\((https?:\/\/[^\s<>]+)\)$/)
+  if(!link||!isURL(link[2]))return false
+  return link[1]===link[2]||/^Source scan \d+(?:\s*·\s*printed page (?:\d+|[ivxlcdm]+))?$/i.test(link[1])
+}
+
+function beautifulTextHasOCRWraps(value){
+  const text=String(value||'').replace(/\r\n?/g,'\n'),lines=text.split('\n').map(line=>line.trim())
+  if(text.length<180||(text.match(/\S+/g)||[]).length<35||lines.length<3||lines.some(line=>!line))return false
+  // Verse, tabular rows, lists, headings, formulae and intentionally indented
+  // material do not provide enough evidence for reflow.
+  if(/(?:^|\n)[ \t]{3,}\S|\t|(?:^|\n)\s*(?:[#>*•]|[-–—]\s|\d+[.)]\s)|[|=]|\$[^\n]+\$/.test(text))return false
+  const lengths=lines.map(line=>line.length),average=lengths.reduce((a,b)=>a+b,0)/lines.length
+  const continuation=lines.slice(1).filter(line=>/^[a-zà-öø-ÿ]/.test(line)).length
+  return average>=32&&lengths.filter(length=>length<18).length<=1&&continuation>=(lines.length-1)*.5
+}
+
+function beautifulTextJoinWord(left,right){
+  // Only unmistakable end fragments are joined. Ordinary compounds such as
+  // well-being, self-conscious and mother-in-law keep their hyphens.
+  if(left.length<3||/^(?:well|self|non|pre|post|anti|pro|neo|semi|multi|cross|half|all|ill|low|high|long|short|full|part|co|re|ex)$/i.test(left))return false
+  return /^(?:tion|tions|sion|sions|ation|ations|isation|ization|ical|ically|cal|cally|cial|tial|ness|nesses|ment|ments|able|ably|ible|ibly|ity|ities|ous|ously|ative|ence|ences|ance|ances|ary|aries|ory|ories|ology|ological|ful|fully|less|lessly|ing|ings|ed|ly|al|ally|ive|ively)$/.test(right)
+}
+
+function beautifulTextNormalizeProse(value,knownOCR=false){
+  let text=String(value??'').replace(/\u00ad/g,'')
+  if(!knownOCR&&!beautifulTextHasOCRWraps(text))return text
+  text=text.replace(/([A-Za-zÀ-ÖØ-öø-ÿ]{3,})-[ \t]*\r?\n[ \t]*([a-zà-öø-ÿ]+)/g,(all,left,right)=>beautifulTextJoinWord(left,right)?left+right:left+'-'+right)
+  return text.replace(/([^\n])[ \t]*\r?\n[ \t]*(?=[^\n])/g,'$1 ')
+}
+
+const BEAUTIFUL_TEXT_PROTECTED='a,pre,code,kbd,samp,math,svg,script,style,textarea,table,ul,ol,li,blockquote,h1,h2,h3,h4,h5,h6,.care-reading-math,.katex,.MathJax,[data-verse],[data-poetry],.verse,.poem,.poetry,[contenteditable]'
+
+function beautifulTextOmitVerifiedPrefix(container,prefix){
+  // This is an evidence-backed hint from the source payload, never a guess
+  // from the shape or length of a word. Only the first standalone fragment
+  // may be omitted, and only while working on a disposable reading clone.
+  if(typeof prefix!=='string'||!prefix||prefix!==prefix.trim()||/[\r\n]/.test(prefix))return false
+  const meaningful=node=>node.nodeType!==3||!!node.nodeValue?.trim()
+  let host=container,children=[...host.childNodes].filter(meaningful)
+  while(children.length===1&&children[0].nodeType===1&&children[0].matches('.care-reading-text,.care-reading-inline')){
+    host=children[0];children=[...host.childNodes].filter(meaningful)
+  }
+  const first=children[0]
+  if(!first)return false
+  const hasFollowing=children.slice(1).some(node=>!!node.textContent?.trim()||node.nodeType===1&&!!node.querySelector('img,svg,math'))
+  if(first.nodeType===1&&first.tagName==='P'&&first.textContent===prefix&&!first.querySelector('*')&&hasFollowing){first.remove();return true}
+  if(first.nodeType!==3)return false
+  const value=first.nodeValue||'',start=value.startsWith(prefix+'\n\n')?prefix+'\n\n':value.startsWith(prefix+'\r\n\r\n')?prefix+'\r\n\r\n':''
+  if(!start)return false
+  const remainder=value.slice(start.length)
+  if(!remainder.trim()&&!hasFollowing)return false
+  first.nodeValue=remainder
+  return true
+}
+
+function beautifulTextProseClone(container){
+  const clone=container.cloneNode(true),document=container.ownerDocument
+  const verifiedPrefix=container.dataset.beautifulOmitPrefix??container.closest('.passage')?.dataset.beautifulOmitPrefix
+  beautifulTextOmitVerifiedPrefix(clone,verifiedPrefix)
+  const paragraphs=[...clone.querySelectorAll('p')]
+  // Legacy public readers may provide plain text and <br> without a <p>.
+  if(!paragraphs.length&&!clone.querySelector('article,div,section,'+BEAUTIFUL_TEXT_PROTECTED))paragraphs.push(clone)
+  for(const paragraph of paragraphs){
+    if(paragraph.closest(BEAUTIFUL_TEXT_PROTECTED))continue
+    const stream=[]
+    const walk=node=>{
+      if(node.nodeType===3){stream.push({node,text:node.nodeValue||'',kind:'text'});return}
+      if(node.nodeType!==1)return
+      if(node.matches(BEAUTIFUL_TEXT_PROTECTED)){stream.push({node,text:'\uFFFC',kind:'protected'});return}
+      if(node.tagName==='BR'){stream.push({node,text:'\n',kind:'break'});return}
+      for(const child of node.childNodes)walk(child)
+    }
+    for(const child of paragraph.childNodes)walk(child)
+    // Markdown's <br>\n is one break, not an empty paragraph.
+    stream.forEach((token,index)=>{if(token.kind==='text'&&index&&stream[index-1].kind==='break')token.text=token.text.replace(/^\r?\n/,'')})
+    const raw=stream.map(token=>token.text).join(''),ocr=!stream.some(token=>token.kind==='protected')&&beautifulTextHasOCRWraps(raw)
+    for(let index=0;index<stream.length;index++){
+      const token=stream[index]
+      if(token.kind==='text')token.node.nodeValue=beautifulTextNormalizeProse(token.text,ocr)
+      else if(token.kind==='break'&&ocr){
+        const before=stream[index-1],after=stream[index+1]
+        let gap=' '
+        if(before?.kind==='text'&&after?.kind==='text'){
+          const left=before.node.nodeValue.match(/([A-Za-zÀ-ÖØ-öø-ÿ]{3,})-[ \t]*$/),right=after.text.match(/^[ \t]*([a-zà-öø-ÿ]+)/)
+          if(left&&right){
+            if(beautifulTextJoinWord(left[1],right[1]))before.node.nodeValue=before.node.nodeValue.replace(/-[ \t]*$/,'')
+            gap=''
+            after.text=after.text.replace(/^[ \t]+/,'')
+          }
+        }
+        token.node.replaceWith(document.createTextNode(gap))
+      }
+    }
+  }
+  return clone
+}
+
+function beautifulTextReadingAnchors(root){
+  const anchors=[],seen=new Set(),view=root.ownerDocument.defaultView
+  for(const source of root.querySelectorAll('.source-copy')){
+    let body=source.parentElement
+    while(body&&body!==root.ownerDocument.documentElement){
+      const overflow=view?.getComputedStyle?.(body)?.overflowY||''
+      if(/auto|scroll/.test(overflow)&&body.scrollHeight>body.clientHeight)break
+      body=body.parentElement
+    }
+    body=body&&body!==root.ownerDocument.documentElement?body:source.closest('.window-body')
+    if(!body||seen.has(body))continue
+    seen.add(body)
+    const bounds=body.getBoundingClientRect(),passages=[...source.querySelectorAll('.passage')]
+    const anchor=passages.find(node=>{const rect=node.getBoundingClientRect();return rect.bottom>bounds.top+2&&rect.top<bounds.bottom})
+    if(anchor)anchors.push({body,anchor,offset:anchor.getBoundingClientRect().top-bounds.top,scale:body.offsetHeight?bounds.height/body.offsetHeight:1})
+  }
+  return()=>{for(const {body,anchor,offset,scale} of anchors){if(!root.contains(anchor))continue;const delta=anchor.getBoundingClientRect().top-body.getBoundingClientRect().top-offset;if(Math.abs(delta)>.5)body.scrollTop+=delta/(scale||1)}}
+}
+
+function setupBeautifulText(runtime){
+  runtime.cleanupBeautifulText?.()
+  const root=runtime.root,view=root?.ownerDocument?.defaultView
+  if(!root||!view)return()=>{}
+  const originals=new Map(),details=new Map(),revealed=new Set()
+  let disposed=false,observer=null,frame=null,updating=false
+  const read=()=>{try{const value=view.localStorage?.getItem(BEAUTIFUL_TEXT_KEY);if(value!==null&&value!==undefined)return value==='true'}catch(_){}return beautifulTextSessions.get(view)??runtime.beautifulText??false}
+  let enabled=read()
+  const watch=()=>observer?.observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:['class','aria-pressed','data-beautiful-compact']})
+  const mutate=callback=>{observer?.disconnect();updating=true;try{return callback()}finally{updating=false;if(!disposed)watch()}}
+  const routeContext=()=>!!(runtime.data?.reference||runtime.data?.connection?.reference)
+  const protectedPassage=article=>routeContext()||article.matches('.selected,.axiom-selected,.route-related,.route-feeder,.dialogue-speaking,[aria-pressed="true"]')||!!article.closest('.route-pane,.route-source-copy,.inspector-pane,.inspect-card')||article.matches(':focus-within')
+  const unfold=(article,record,open)=>{
+    record.text.hidden=open?record.wasHidden:true
+    article.dataset.beautifulFolded=String(!open)
+    record.button.setAttribute('aria-expanded',String(open))
+    record.button.textContent=open?'Source detail · Hide':'Source detail · Show'
+    record.button.disabled=open&&protectedPassage(article)
+    if(record.button.disabled)record.button.textContent='Source detail · In view'
+  }
+  const restoreDetail=(article,record)=>{
+    record.text.hidden=record.wasHidden
+    if(!record.hadHidden)record.text.removeAttribute('hidden')
+    if(record.generatedId)record.text.removeAttribute('id')
+    delete article.dataset.beautifulFolded
+    record.row.classList.remove('beautiful-detail-row')
+    record.button.remove()
+  }
+  const paint=()=>{
+    root.dataset.beautifulText=String(enabled)
+    root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed',String(enabled)))
+  }
+  const refresh=()=>mutate(()=>{
+    for(const [container,nodes] of originals){if(!root.contains(container)){originals.delete(container);continue}if(!enabled){container.replaceChildren(...nodes);originals.delete(container)}}
+    for(const [article,record] of details){if(!root.contains(article)){details.delete(article);revealed.delete(article);continue}if(!enabled||article.dataset.beautifulCompact!=='true'||routeContext()){restoreDetail(article,record);details.delete(article)}}
+    paint()
+    if(!enabled)return
+    for(const container of root.querySelectorAll('.source-copy .passage>.passage-text')){
+      if(container.closest('.route-pane,.route-source-card,.inspector-pane,.inspect-card')||originals.has(container))continue
+      const clone=beautifulTextProseClone(container)
+      if(clone.innerHTML!==container.innerHTML){originals.set(container,[...container.childNodes]);container.replaceChildren(...clone.childNodes)}
+    }
+    for(const article of root.querySelectorAll('.source-copy .passage[data-beautiful-compact="true"]')){
+      if(routeContext()||article.closest('.route-pane,.route-source-card,.inspector-pane,.inspect-card'))continue
+      let record=details.get(article)
+      if(!record){
+        const text=article.querySelector(':scope>.passage-text'),row=article.parentElement
+        if(!text||!row?.classList.contains('passage-row'))continue
+        const button=root.ownerDocument.createElement('button'),generatedId=!text.id
+        if(generatedId)text.id='beautiful-source-detail-'+(++beautifulTextIdentity)
+        button.type='button';button.className='beautiful-detail-toggle';button.dataset.beautifulDetail='';button.setAttribute('aria-controls',text.id)
+        button.setAttribute('aria-label','Show or hide source detail for '+(article.dataset.refId||'this passage'))
+        record={text,row,button,generatedId,wasHidden:text.hidden,hadHidden:text.hasAttribute('hidden')}
+        row.classList.add('beautiful-detail-row');article.insertAdjacentElement('afterend',button);details.set(article,record)
+      }
+      const protect=protectedPassage(article)
+      if(protect)revealed.add(article)
+      unfold(article,record,protect||revealed.has(article))
+    }
+  })
+  const apply=(value,persist=false)=>{
+    const next=value===true,restore=beautifulTextReadingAnchors(root)
+    enabled=next;runtime.beautifulText=next;beautifulTextSessions.set(view,next)
+    refresh();restore();runtime.queueThreads?.();runtime.queueTrackZoom?.()
+    if(persist){
+      try{view.localStorage?.setItem(BEAUTIFUL_TEXT_KEY,String(next))}catch(_){}
+      if(view.CustomEvent)view.dispatchEvent(new view.CustomEvent(BEAUTIFUL_TEXT_EVENT,{detail:{enabled:next}}))
+    }
+  }
+  const click=event=>{
+    const control=event.target?.closest?.('[data-beautiful-text-toggle],[data-beautiful-detail]')
+    if(!control||!root.contains(control))return
+    event.preventDefault();event.stopImmediatePropagation()
+    if(control.hasAttribute('data-beautiful-text-toggle')){apply(!enabled,true);return}
+    for(const [article,record] of details){if(record.button!==control)continue;const restore=beautifulTextReadingAnchors(root);if(revealed.has(article)&&!protectedPassage(article))revealed.delete(article);else revealed.add(article);mutate(()=>unfold(article,record,protectedPassage(article)||revealed.has(article)));restore();runtime.queueThreads?.();break}
+  }
+  const key=event=>{if(event.target?.closest?.('[data-beautiful-text-toggle],[data-beautiful-detail]')&&[' ','Enter','ArrowUp','ArrowDown','Home','End'].includes(event.key))event.stopImmediatePropagation()}
+  const focus=event=>{
+    const article=event.target?.closest?.('.passage[data-beautiful-compact="true"]'),record=details.get(article)
+    if(record&&enabled){revealed.add(article);mutate(()=>unfold(article,record,true));runtime.queueThreads?.()}
+  }
+  const change=event=>{if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
+  const storage=event=>{if(event.key===BEAUTIFUL_TEXT_KEY||event.key===null)apply(read())}
+  const queueRefresh=()=>{
+    if(disposed||updating||frame!==null)return
+    frame=view.requestAnimationFrame(()=>{frame=null;if(!disposed){refresh();runtime.queueThreads?.()}})
+  }
+  if(view.MutationObserver)observer=new view.MutationObserver(records=>{
+    // Route drawings also replace SVG children. Only source changes can affect
+    // this presentation, otherwise redraw -> mutation -> redraw never settles.
+    const relevant=records.some(record=>{
+      const target=record.target.nodeType===1?record.target:record.target.parentElement
+      if(record.type==='attributes')return !!target?.matches?.('.source-copy .passage')
+      if(target?.closest?.('.source-copy'))return true
+      return [...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1&&(node.matches('.source-copy,[data-beautiful-text-toggle]')||node.querySelector('.source-copy,[data-beautiful-text-toggle]')))
+    })
+    if(relevant)queueRefresh()
+  })
+  root.addEventListener('click',click,true);root.addEventListener('keydown',key,true);root.addEventListener('focusin',focus,true)
+  view.addEventListener(BEAUTIFUL_TEXT_EVENT,change);view.addEventListener('storage',storage)
+  runtime.paintBeautifulText=refresh
+  const cleanup=()=>{
+    if(disposed)return
+    disposed=true;observer?.disconnect();if(frame!==null)view.cancelAnimationFrame(frame)
+    root.removeEventListener('click',click,true);root.removeEventListener('keydown',key,true);root.removeEventListener('focusin',focus,true)
+    view.removeEventListener(BEAUTIFUL_TEXT_EVENT,change);view.removeEventListener('storage',storage)
+    for(const [container,nodes] of originals)if(root.contains(container))container.replaceChildren(...nodes)
+    for(const [article,record] of details)if(root.contains(article))restoreDetail(article,record)
+    root.removeAttribute('data-beautiful-text')
+    root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed','false'))
+    if(runtime.cleanupBeautifulText===cleanup){runtime.cleanupBeautifulText=null;runtime.paintBeautifulText=null}
+  }
+  runtime.cleanupBeautifulText=cleanup
+  refresh()
+  return cleanup
+}
+
 export default function(component){
   const {parentElement,setStateValue,setTriggerValue}=component
   let data=component.data
@@ -3853,6 +4111,7 @@ export default function(component){
     runtime.pendingSlider=null
     runtime.applySkin()
     runtime.applyTextScale()
+    setupBeautifulText(runtime)
     runtime.paintConnectionView?.()
     runtime.restoreReaderMenu?.()
     if(sameWork)runtime.restoreVersionMenus(versionMenus)
@@ -3914,7 +4173,7 @@ export default function(component){
     // The reader data and DOM are ready; do not add a timed input-blocking delay.
     loader?.remove()
     runtime.applyOutline?.()
-    return finishRender(()=>{runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
+    return finishRender(()=>{runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`

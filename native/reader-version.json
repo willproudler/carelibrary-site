@@ -3,12 +3,14 @@
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
-    "Add the shared Through feeders / All connections display without changing saved routes"
+    "Add the shared Through feeders / All connections display without changing saved routes",
+    "Optional Beautiful text in View with reversible source cleanup and complete trace protection"
   ],
   "assets": {
-    "study-desk.css": "2c8c441f9eaa3ba06908ee894fc738270dd6dbd6aa675a3b486e073877bd7fa1",
-    "study-desk.mjs": "09bfc207f004bc18dd0a582a05de876db97bf5ddea23a0597801affcfc8ddfd0",
+    "study-desk.css": "7536ca4b90933deaa0d1043fe884e87ff42df3b5191198d648512bf880ff72b6",
+    "study-desk.mjs": "c907219bfb522f4a7ca7e11e738ad9ff6996b55412e837a3fcc004b5dd780d86",
     "reading-views.mjs": "dd05ea4b1e9de8243de23917c87ef3b9951c1e3dcd0717c6db4cd6b293201739"
   },
-  "reading_presentation": "care-item-presentation/7"
+  "reading_presentation": "care-item-presentation/7",
+  "presentation": "beautiful-text/1"
 }
