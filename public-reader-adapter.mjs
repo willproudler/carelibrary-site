@@ -2,9 +2,9 @@
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=c7ad5fdb32c4fa44';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=9cc86f99fc737162';
 import {publicReadingText} from './native/reading-views.mjs?v=cb943c40614490fe';
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=c7ad5fdb32c4fa44';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=ca3e1b6f1abb15e7';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
@@ -87,8 +87,7 @@ export function createPublicReaderAdapter(data) {
           items:array(displayed.items).map((item, position) => nativeItem(item, displayed, position, original))};
       }),
       identity:{kicker:original.layer === 'CH' ? `CHAPTER ${original.order}` : ({CL:'CLUSTER',MC:'META-CLUSTER',WB:'WHOLE BOOK',XR:'LATERAL'}[original.layer] || original.layer),
-        context:original.work?.title || `${lateralWorks.map(work => work.title).join(' × ')} · Saved diagnostic reading`,...original.identity,title,
-        ...(showOriginalLabels && original.identity?.original_context?{context:original.identity.original_context}:{})},
+        context:original.work ? bookTitle(original.work,state) : `${lateralWorks.map(work => bookTitle(work,state)).join(' × ')} · Saved diagnostic reading`,...paneIdentity(original,original.work,state),title},
     };
     projected.item_count = projected.sections.reduce((sum, section) => sum + section.items.length, 0);
     unitCache.set(cacheKey, projected);
@@ -107,14 +106,16 @@ export function createPublicReaderAdapter(data) {
       sequence_number:source.order, title:paneTitle(source,source.work,state), label:paneTitle(source,source.work,state),
       source_rendition_type:variant?.rendition_type || (variant ? 'machine' : 'original'),
       passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
-      passages:rows.map((passage, position) => ({
-        id:passage.id, text:passage.text, reading_text:passage.text,
-        reading_html:inline(passage.text), reading_block_html:block(passage.text),
+      passages:rows.map((passage, position) => {
+        const display = sourceReadingText(passage.text,source,source.work,state);
+        return {
+        id:passage.id, text:passage.text, reading_text:display,
+        reading_html:inline(display), reading_block_html:block(display),
         address:passage.kind === 'display' ? `Reading paragraph ${position + 1}` : passage.id,
         sequence:position + 1, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',
         axioms:usesFor(passage.id, source.work).map(link => link.id),
         source_kind:passage.kind || 'passage', route_available:canonicalIds.has(passage.id),
-      })),
+      };}),
     };
     chapterCache.set(cacheKey, result);
     return result;
@@ -127,7 +128,7 @@ export function createPublicReaderAdapter(data) {
     if (selectedId && !inScope(index.nodes.get(selectedId), work)) throw new Error('The selected reading does not belong to this book.');
     const selected = selectionFor(work, selectedId);
     const result = {
-      work:{id:work.id, title:work.title, author:work.author, cover_url:work.cover_url},
+      work:{id:work.id, title:bookTitle(work,state), author:work.author, cover_url:work.cover_url},
       edition_label:work.edition,
       chapters:work.sources.map(source => ({id:source.id, raw_unit_id:source.id, care_unit_id:source.chapter_id,
         chapter_number:source.order, sequence_number:source.order, title:paneTitle(source,work,state), readable:true})),
@@ -160,8 +161,8 @@ export function createPublicReaderAdapter(data) {
       layer:isPassage ? 'SOURCE' : node.unit.layer,
       unit_id:node.unit.id, local_id:node.id.split(':').slice(1).join(':'),
       sheet_title:displayUnit.title, chapter_title:displayUnit.title,
-      work_id:node.work?.id || '', work_title:node.work?.title || lateral.title, author:node.work?.author || '',
-      metadata:[node.work?.title || lateral.title, node.work?.author, node.unit.revision,language.is_translation?`${language.language_name} · ${language.rendition_type === 'supplied' ? 'supplied translation' : 'saved machine translation'}`:''].filter(Boolean).join(' · '),
+      work_id:node.work?.id || '', work_title:node.work ? bookTitle(node.work,readingState) : lateral.title, author:node.work?.author || '',
+      metadata:[node.work ? bookTitle(node.work,readingState) : lateral.title, node.work?.author, node.unit.revision,language.is_translation?`${language.language_name} · ${language.rendition_type === 'supplied' ? 'supplied translation' : 'saved machine translation'}`:''].filter(Boolean).join(' · '),
       mc_level:mcLevel(node.unit),
       ...(connection ? {source_pane:paneId(node.unit)} : {}),
     };

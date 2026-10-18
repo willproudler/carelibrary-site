@@ -4,8 +4,8 @@ import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedSt
 import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField} from './public-fields.mjs?v=20261018';
 import mountReader from './native/study-desk.mjs?v=09bfc207f004bc18';
 
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=c7ad5fdb32c4fa44';
-import {searchLibrary} from './library-core.mjs?v=c7ad5fdb32c4fa44';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=e42759f6cd7691f3';
+import {searchLibrary} from './library-core.mjs?v=9cc86f99fc737162';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
 const $ = selector => document.querySelector(selector);
