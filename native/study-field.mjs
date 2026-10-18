@@ -164,12 +164,41 @@ function readerMenu(id,label,content){
   return `<div class="desk-menu"><button type="button" class="desk-menu-trigger" data-reader-menu="${id}" aria-haspopup="dialog" aria-expanded="false">${label}<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button><section class="desk-menu-panel" data-reader-menu-panel="${id}" role="dialog" aria-label="${label}" hidden>${content}</section></div>`
 }
 function readerMenuLabel(markup,label){return markup.replace('</button>',`<span class="desk-menu-label">${esc(label)}</span></button>`)}
+function connectionViewControl(){
+  return '<span class="desk-menu-heading">Connection lines</span><div role="group" aria-label="Connection lines"><button type="button" class="desk-tab" data-connection-view="flow" aria-pressed="true" title="Follow visible feeders and hide repeated direct lines">Through feeders</button><button type="button" class="desk-tab" data-connection-view="all" aria-pressed="false" title="Show every recorded connection, including direct links">All connections</button></div>'
+}
+function setupConnectionView(runtime,redraw){
+  runtime.cleanupConnectionView?.()
+  const root=runtime.root,view=root.ownerDocument.defaultView,key='care-connection-view-v1',eventName='care-connection-view-change'
+  const read=()=>{try{const storage=view?.localStorage;return storage?storage.getItem(key)==='all'?'all':'flow':runtime.connectionView||'flow'}catch(_){return runtime.connectionView||'flow'}}
+  const draw=()=>{if(runtime.queueThreads)runtime.queueThreads();else redraw?.()}
+  runtime.connectionView=read()
+  runtime.paintConnectionView=()=>{
+    root.querySelectorAll('[data-connection-view]').forEach(button=>{const active=button.dataset.connectionView===runtime.connectionView;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))})
+  }
+  const apply=mode=>{const next=mode==='all'?'all':'flow',changed=next!==runtime.connectionView;runtime.connectionView=next;runtime.paintConnectionView();if(changed)draw()}
+  const change=event=>{if(event.detail?.mode==='all'||event.detail?.mode==='flow')apply(event.detail.mode)}
+  const storage=event=>{if(event.key===key||event.key===null)apply(read())}
+  const click=runtime.onClick
+  runtime.onClick=event=>{
+    const control=event.target?.closest?.('[data-connection-view]')
+    if(!control)return click?.(event)
+    event.preventDefault()
+    const mode=control.dataset.connectionView
+    if(mode!=='all'&&mode!=='flow')return
+    apply(mode)
+    try{view?.localStorage?.setItem(key,mode)}catch(_){}
+    if(view?.CustomEvent)view.dispatchEvent(new view.CustomEvent(eventName,{detail:{mode}}))
+  }
+  runtime.attachConnectionView=()=>{view?.addEventListener(eventName,change);view?.addEventListener('storage',storage);apply(read())}
+  runtime.cleanupConnectionView=()=>{view?.removeEventListener(eventName,change);view?.removeEventListener('storage',storage)}
+}
 function readerViewOptions({showZoom=true,showAppearance=true,shortcuts='book'}={}){
   const text='<span class="desk-menu-heading">Text size</span><div class="desk-text-size" aria-label="Reading text size"><button type="button" data-text-size="-1" aria-label="Make text smaller">A−</button><button type="button" data-text-size="1" aria-label="Make text larger">A+</button></div>'
   const zoom=showZoom?'<span class="desk-menu-heading">Pane zoom</span>'+trackZoomControls():''
   const appearance=showAppearance?'<span class="desk-menu-heading">Appearance</span><div class="desk-skin" aria-label="Visual skin"><button type="button" data-skin-value="care">CARE</button><button type="button" data-skin-value="library">BOOK</button><button type="button" data-skin-value="classic">CLASSIC</button></div>':''
   const rows=shortcuts==='lateral'?[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane'],['− / + on a pane','Fold or unfold'],['Tab · Enter','Move to and use controls']]:[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane']]
-  return text+zoom+appearance+`<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
+  return connectionViewControl()+text+zoom+appearance+`<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
 }
 function readerMenuBar(data,tabs,options={}){
   const book=options.file??(data?.corpus_sheet?'<span class="desk-menu-heading">Saved reading</span><span class="desk-sheet-version-slot" data-sheet-version-slot></span>':`<span class="desk-menu-heading">Book versions</span>${buildVersionControl(data)||'<span class="desk-menu-empty">Current reading</span>'}<div class="desk-menu-rule"></div>${readerMenuLabel(originalFormatControl(data),'Original reading format')}${readerMenuLabel(originalDownloadControl(data),'Download original')}<span class="desk-sheet-version-slot" data-sheet-version-slot></span>`)
@@ -825,6 +854,40 @@ function readingRank(unit){
   return rank+(level?level/(level+1)*.5:0)
 }
 function exactRouteEdges(reference){return arr(reference?.route_edges).filter(edge=>edge.source_id&&edge.target_id)}
+const ROUTE_DISPLAY_CACHE=new Map()
+function displayRouteEdges(edges,mode='flow',endpoint=(edge,side)=>String(edge[side+'_id'])){
+  if(mode==='all'||edges.length<3)return edges
+  // Only pass drawable edges here. Simplify the picture, never the recorded
+  // evidence: an absent or hidden feeder cannot stand in for a direct trace.
+  const rows=edges.map(edge=>({edge,from:endpoint(edge,'source'),to:endpoint(edge,'target')}))
+  // Scroll and hover change coordinates far more often than visible topology.
+  // Cache only index membership; current edge objects keep their own metadata.
+  const key=JSON.stringify(rows.map(row=>[row.from,row.to])),cached=ROUTE_DISPLAY_CACHE.get(key)
+  if(cached){ROUTE_DISPLAY_CACHE.delete(key);ROUTE_DISPLAY_CACHE.set(key,cached);return cached.map(index=>edges[index])}
+  const outgoing=new Map(),kept=new Set(rows)
+  for(const row of rows){if(!outgoing.has(row.from))outgoing.set(row.from,[]);outgoing.get(row.from).push(row)}
+  for(const row of rows){
+    if(row.from===row.to)continue
+    const seen=new Set([row.from]),pending=[]
+    // Parallel direct traces do not constitute a route through a feeder.
+    for(const next of outgoing.get(row.from)||[])if(kept.has(next)&&next.to!==row.to&&!seen.has(next.to)){seen.add(next.to);pending.push(next.to)}
+    let alternate=false
+    while(pending.length&&!alternate){
+      const current=pending.pop()
+      for(const next of outgoing.get(current)||[]){
+        if(!kept.has(next))continue
+        if(next.to===row.to){alternate=true;break}
+        if(!seen.has(next.to)){seen.add(next.to);pending.push(next.to)}
+      }
+    }
+    // Reduce sequentially so cycles cannot remove mutually supporting routes.
+    if(alternate)kept.delete(row)
+  }
+  const indices=rows.flatMap((row,index)=>kept.has(row)?[index]:[])
+  ROUTE_DISPLAY_CACHE.set(key,indices)
+  if(ROUTE_DISPLAY_CACHE.size>8)ROUTE_DISPLAY_CACHE.delete(ROUTE_DISPLAY_CACHE.keys().next().value)
+  return indices.map(index=>edges[index])
+}
 function routeNodeIndex(reference){
   const nodes=new Map([[String(reference?.id||""),reference]])
   Object.values(reference?.route_layers||{}).forEach(items=>arr(items).forEach(item=>nodes.set(String(item.id),item)))
@@ -1467,7 +1530,13 @@ function drawRouteThreads(runtime){
     if(offscreen){const key=`${body.left}|${offscreen}`,slot=edgeSlots.get(key)||0;edgeSlots.set(key,slot+1);const spread=Math.min(slot*6,Math.max(0,(body.bottom-body.top-20)/3));y=offscreen==="above"?body.top+8+spread:body.bottom-8-spread}
     geometry.set(id,{rect,body,y,offscreen,pane:card.closest("[data-pane]")})
   })
-  const paths=exactRouteEdges(reference).map((edge,index)=>{
+  const drawable=exactRouteEdges(reference).filter(edge=>{
+    const from=geometry.get(String(edge.source_id)),to=geometry.get(String(edge.target_id))
+    return from&&to&&!(from.offscreen&&to.offscreen)
+  })
+  const fullyVisible=edge=>!geometry.get(String(edge.source_id)).offscreen&&!geometry.get(String(edge.target_id)).offscreen
+  const retained=new Set(displayRouteEdges(drawable.filter(fullyVisible),runtime.connectionView))
+  const paths=drawable.filter(edge=>!fullyVisible(edge)||retained.has(edge)).map((edge,index)=>{
     const from=geometry.get(String(edge.source_id)),to=geometry.get(String(edge.target_id))
     if(!from||!to||(from.offscreen&&to.offscreen))return ""
     const samePane=from.pane===to.pane,a=from.rect,b=to.rect,forward=a.left<b.left
@@ -1497,12 +1566,17 @@ function drawConnectionThreads(runtime){
   const paths=groups.flatMap(group=>{
     const cards=new Map()
     root.querySelectorAll("[data-connection-field] [data-ref-id],[data-connection-book] [data-ref-id]").forEach(card=>{const pane=card.closest("[data-connection-field],[data-connection-book]");if(group.kind==="book"&&pane.dataset.connectionBook!==group.workId||group.kind==="field"&&!pane.dataset.connectionField)return;cards.set(`${group.kind==="field"?(card.closest("[data-connection-source-pane]")?.dataset.connectionSourcePane||pane.dataset.connectionField):""}|${card.dataset.refId}`,card)})
-    return exactRouteEdges(group.reference).map(edge=>{
+    const drawable=exactRouteEdges(group.reference).map(edge=>{
       const source=cards.get(`${group.kind==="field"?edge.source_pane||"":""}|${edge.source_id}`),target=cards.get(`${group.kind==="field"?edge.target_pane||"":""}|${edge.target_id}`)
-      if(!source||!target)return ""
-      const endpoint=card=>{const pane=card.closest("[data-pane]"),folded=pane?.classList.contains("care-pane-minimized");return {rect:folded?pane.getBoundingClientRect():card.getBoundingClientRect(),body:folded?pane.getBoundingClientRect():card.closest(".window-body")?.getBoundingClientRect()}}
+      if(!source||!target)return null
+      const endpoint=card=>{const pane=card.closest("[data-pane]"),folded=pane?.classList.contains("care-pane-minimized");return {folded,rect:folded?pane.getBoundingClientRect():card.getBoundingClientRect(),body:folded?pane.getBoundingClientRect():card.closest(".window-body")?.getBoundingClientRect()}}
       const from=endpoint(source),to=endpoint(target),a=from.rect,b=to.rect,ab=from.body,bb=to.body
-      const geometry=connectionThreadGeometry(a,b,ab,bb,bounds,clip);if(!geometry)return ""
+      const geometry=connectionThreadGeometry(a,b,ab,bb,bounds,clip)
+      return geometry?{edge,geometry,reducible:geometry.sourceVisible&&geometry.targetVisible&&!from.folded&&!to.folded&&a.bottom>ab.top+8&&a.top<ab.bottom-8&&b.bottom>bb.top+8&&b.top<bb.bottom-8}:null
+    }).filter(Boolean)
+    const endpoint=(row,side)=>JSON.stringify([group.kind==="field"?row.edge[side+'_pane']||"":"",String(row.edge[side+'_id'])])
+    const retained=new Set(displayRouteEdges(drawable.filter(row=>row.reducible),runtime.connectionView,endpoint))
+    return drawable.filter(row=>!row.reducible||retained.has(row)).map(({edge,geometry})=>{
       const {x1,x2,y1,y2,bend,sourceVisible,targetVisible}=geometry,color=layerColor(edge.source_layer,edge.source_id)
       const port=(x,y,visible,layer,identity)=>visible?`<circle class="route-port" cx="${x}" cy="${y}" r="2.3" stroke="${layerColor(layer,identity)}"/>`:`<path class="route-thread" stroke="${layerColor(layer,identity)}" d="M ${x+(x<bounds.width/2?5:-5)} ${y-4} L ${x} ${y} L ${x+(x<bounds.width/2?5:-5)} ${y+4}"/>`
       return `<g><title>${esc(edge.source_id)} → ${esc(edge.target_id)}${!sourceVisible||!targetVisible?" · continue along the panes":""}</title><path class="route-thread" ${edge.collapsed||arr(edge.via).length?'stroke-dasharray="5 4"':""} stroke="${color}" d="M ${x1} ${y1} C ${x1+bend} ${y1},${x2-bend} ${y2},${x2} ${y2}"/>${port(x1,y1,sourceVisible,edge.source_layer,edge.source_id)}${port(x2,y2,targetVisible,edge.target_layer,edge.target_id)}</g>`
@@ -1988,6 +2062,7 @@ function setup(root){
   setupOriginalDownloads(runtime)
   setupOriginalFormats(runtime)
   setupReaderMenus(runtime)
+  setupConnectionView(runtime)
   return runtime
 }
 
@@ -2380,7 +2455,8 @@ function drawOutlineThreads(runtime){
     const y=Math.max(Math.max(body.top,clip.top)+7,Math.min(Math.min(body.bottom,clip.bottom)-7,rect.top+rect.height/2))
     geometry.set(id,{rect,y,pane:card.closest('[data-pane]')})
   })
-  const active=runtime.outlineHoverIds||new Set(),paths=exactRouteEdges(reference).map((edge,index)=>{
+  const drawable=exactRouteEdges(reference).filter(edge=>geometry.has(String(edge.source_id))&&geometry.has(String(edge.target_id)))
+  const active=runtime.outlineHoverIds||new Set(),paths=displayRouteEdges(drawable,runtime.connectionView).map((edge,index)=>{
     const from=geometry.get(String(edge.source_id)),to=geometry.get(String(edge.target_id));if(!from||!to)return ''
     const same=from.pane===to.pane,forward=from.rect.left<to.rect.left
     const x1=((same?from.rect.left+2:forward?from.rect.right-2:from.rect.left+2)-bounds.left)/scale,x2=((same?to.rect.left+2:forward?to.rect.left+2:to.rect.right-2)-bounds.left)/scale,y1=(from.y-bounds.top)/scale,y2=(to.y-bounds.top)/scale,bend=Math.max(20,Math.abs(x2-x1)*.48),sign=forward?1:-1
@@ -3726,6 +3802,7 @@ function mount(component){
     runtime.attachPaneBookmarks?.()
     runtime.attachSliderJumpMenu?.()
     runtime.attachReaderMenus?.()
+    runtime.attachConnectionView?.()
     const bookmarkMenuWork=runtime.bookmarkMenu?.workId||runtime.bookmarkMenuRestore
     runtime.bookmarkMenuRestore=null
     const stopWorkspaceFit=workspaceFitReader(runtime)
@@ -3775,6 +3852,7 @@ function mount(component){
     runtime.pendingSlider=null
     runtime.applySkin()
     runtime.applyTextScale()
+    runtime.paintConnectionView?.()
     runtime.restoreReaderMenu?.()
     if(sameWork)runtime.restoreVersionMenus(versionMenus)
     runtime.refreshSliders?.()
@@ -3835,7 +3913,7 @@ function mount(component){
     // The reader data and DOM are ready; do not add a timed input-blocking delay.
     loader?.remove()
     runtime.applyOutline?.()
-    return finishRender(()=>{runtime.cleanupReaderMenus?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
+    return finishRender(()=>{runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`
@@ -3857,6 +3935,9 @@ return {
   readerMenuBar,
   setupReaderMenus,
   readerViewOptions,
+  connectionViewControl,
+  setupConnectionView,
+  displayRouteEdges,
   readerMenu,
   etchedRouteIcon,
   bookmarkIcon,
@@ -4215,7 +4296,7 @@ function drawCorpusRouteThreads(runtime){
   let svg=runtime.root.querySelector('[data-corpus-route-threads]')
   if(!runtime.data.reference){svg?.remove();return}
   const viewport=runtime.root.querySelector('[data-corpus-viewport]');if(!viewport)return
-  const rootBox=runtime.root.getBoundingClientRect(),clip=viewport.getBoundingClientRect(),cards=corpusRouteCards(runtime),paths=[],seen=new Set()
+  const rootBox=runtime.root.getBoundingClientRect(),clip=viewport.getBoundingClientRect(),cards=corpusRouteCards(runtime),paths=[],seen=new Set(),drawable=[]
   const anchor=(entry,right)=>{
     const pane=entry.pane.getBoundingClientRect(),folded=entry.pane.classList.contains('corpus-pane-title-folded')||entry.pane.classList.contains('care-pane-minimized'),rect=folded?pane:entry.card.getBoundingClientRect(),body=folded?pane:entry.card.closest('.window-body')?.getBoundingClientRect()||pane,host=entry.host.getBoundingClientRect()
     const low=Math.max(clip.top+5,Math.min(clip.bottom-5,body.top+5)),high=Math.max(low,Math.min(clip.bottom-5,body.bottom-5))
@@ -4229,6 +4310,20 @@ function drawCorpusRouteThreads(runtime){
     const a=cards.get(from),b=cards.get(to)
     if(a.pane.hidden||b.pane.hidden||!a.pane.getBoundingClientRect().width||!b.pane.getBoundingClientRect().width)continue
     const forward=a.host.getBoundingClientRect().left<=b.host.getBoundingClientRect().left,p=anchor(a,forward),q=anchor(b,!forward),same=a.host===b.host,bend=same?22:Math.max(12,Math.abs(q.x-p.x)*.4)
+    const expanded=entry=>{
+      if(entry.pane.classList.contains('corpus-pane-title-folded')||entry.pane.classList.contains('care-pane-minimized')||entry.card.closest('details:not([open])'))return false
+      const rect=entry.card.getBoundingClientRect(),host=entry.host.getBoundingClientRect(),body=entry.card.closest('.window-body')?.getBoundingClientRect()||entry.pane.getBoundingClientRect()
+      // Continuation anchors keep offscreen evidence visible, but cannot
+      // replace a direct trace with a chain through an offscreen feeder.
+      return rect.width>0&&rect.height>0&&rect.right>Math.max(clip.left,host.left)&&rect.left<Math.min(clip.right,host.right)&&rect.bottom>Math.max(clip.top,body.top)+8&&rect.top<Math.min(clip.bottom,body.bottom)-8
+    }
+    const identity=(entry,key)=>JSON.stringify([entry.native.data.workspace_context,entry.pane.dataset.pane,key])
+    drawable.push({source_id:identity(a,from),target_id:identity(b,to),p,q,same,bend,forward,expanded:expanded(a)&&expanded(b)})
+  }
+  // Folded sheets retain their existing title anchors, but those anchors do
+  // not stand in for a visible chain through an exact feeder axiom.
+  const reduced=new Set(CORPUS_BOOK_READER.displayRouteEdges(drawable.filter(edge=>edge.expanded),runtime.connectionView))
+  for(const {p,q,same,bend,forward} of drawable.filter(edge=>!edge.expanded||reduced.has(edge))){
     paths.push(`<path d="M${p.x},${p.y} C${same?p.x+bend:p.x+(forward?bend:-bend)},${p.y} ${same?q.x+bend:q.x-(forward?bend:-bend)},${q.y} ${q.x},${q.y}"/><circle cx="${p.x}" cy="${p.y}" r="2.5"/><circle cx="${q.x}" cy="${q.y}" r="2.5"/>`)
   }
   if(!svg){svg=runtime.root.ownerDocument.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('data-corpus-route-threads','');svg.setAttribute('aria-hidden','true');runtime.root.append(svg)}
@@ -5284,10 +5379,43 @@ function openNumoChamber(runtime,d,emit){
   if(chamber)emit({type:'open_numo_chamber',mesh_id:chamber.mesh_id,run_id:chamber.run_ref})
   return true
 }
-function render(runtime){rememberLateralReaderMenu(runtime);const {data,state:s,root}=runtime,field=data.field,members=arr(field.members);root.style.setProperty('--scale',s.scale);if(isCorpusTracks(runtime)){renderCorpus(runtime);return}cleanupCorpusReaders(runtime);const nav=workspaceEntries(runtime);root.innerHTML=`${field.field==='lateral'?lateralReaderHeader(runtime,nav):`<header class="field-head"><button type="button" class="control" ${field.field==='corpus'?'data-close-route':'data-library'}>← <span class="back-copy">${field.field==='corpus'?'Corpus':'Library'}</span></button><div class="field-heading"><h2>${esc(field.title)}</h2><p>${esc(field.description||field.author||'Read through to the source books')}</p></div><div class="field-actions">${connectionResolutionControl({connection:data.reference?{reference:data.reference,resolution:data.reference.resolution}:null})}${data.reference?'<button type="button" class="control active" data-close-route>× Close route</button>':`<button type="button" class="control ${s.lineage?'active':''}" data-lineage aria-pressed="${s.lineage}">Lineage</button>`}<button type="button" class="control ${s.manager?'active':''}" data-manage aria-expanded="${s.manager}">Books & layers${members.length?` · ${members.length}`:''}</button><button type="button" class="control text-size" data-scale="-.1" aria-label="Make reading text smaller">A−</button><button type="button" class="control text-size" data-scale=".1" aria-label="Make reading text larger">A+</button></div></header><nav class="field-nav" aria-label="Reading panes"><span class="nav-label">OPEN PANES</span>${nav.map((item,index)=>`${index?'<span class="nav-arrow">→</span>':''}<button type="button" class="control" style="--color:${color(item.layer)}" data-jump="${esc(item.id)}" title="${esc(item.title)}">${esc(item.title)}</button>`).join('')}</nav>`}${numoChambersHTML(field)}${field.field==='lateral'?'':managerHTML(runtime)}${arr(field.warnings).length?`<p class="field-warning">${esc(field.warnings.join(' '))}</p>`:''}<div class="field-strip" data-strip>${data.reference?routeWorkspace(runtime):fieldWorkspace(runtime,nav)}${!arr(field.panes).length&&!members.length?'<div class="field-empty"><h3>No saved reading yet</h3>This shelf opens completed texts when they are available.</div>':''}</div>${field.field==='lateral'?lateralReaderFooter(runtime):`<footer class="field-status"><span>${arr(field.panes).length} readings · ${members.length} source books</span><span>Drag a pane edge to resize · − folds a pane · Shift + scroll moves across</span></footer>`}`;const strip=root.querySelector('[data-strip]');strip.scrollLeft=s.left||0;root.querySelectorAll('.field-pane').forEach(pane=>{const key=pane.dataset.pane,reading=pane.dataset.reading,body=pane.querySelector('.pane-body'),memory=s.positions[key];if(body&&memory?.reading===reading)body.scrollTop=memory.top||0;pane.querySelectorAll('[data-section]').forEach(section=>{const val=s.sections[`${key}|${reading}|${section.dataset.section}`];if(typeof val==='boolean')section.open=val})});installPaneControls(root,runtime.paneControlState||(runtime.paneControlState={}),()=>drawThreads(runtime),field.id);updateLateralReaderChrome(runtime,true);applyFieldSelection(runtime);applyFieldBookmarks(runtime);restoreLateralReaderMenu(runtime)}
+function render(runtime){rememberLateralReaderMenu(runtime);const {data,state:s,root}=runtime,field=data.field,members=arr(field.members);root.style.setProperty('--scale',s.scale);if(isCorpusTracks(runtime)){renderCorpus(runtime);return}cleanupCorpusReaders(runtime);const nav=workspaceEntries(runtime);root.innerHTML=`${field.field==='lateral'?lateralReaderHeader(runtime,nav):`<header class="field-head"><button type="button" class="control" ${field.field==='corpus'?'data-close-route':'data-library'}>← <span class="back-copy">${field.field==='corpus'?'Corpus':'Library'}</span></button><div class="field-heading"><h2>${esc(field.title)}</h2><p>${esc(field.description||field.author||'Read through to the source books')}</p></div><div class="field-actions">${CORPUS_BOOK_READER.readerMenu('view','View',CORPUS_BOOK_READER.connectionViewControl())}${connectionResolutionControl({connection:data.reference?{reference:data.reference,resolution:data.reference.resolution}:null})}${data.reference?'<button type="button" class="control active" data-close-route>× Close route</button>':`<button type="button" class="control ${s.lineage?'active':''}" data-lineage aria-pressed="${s.lineage}">Lineage</button>`}<button type="button" class="control ${s.manager?'active':''}" data-manage aria-expanded="${s.manager}">Books & layers${members.length?` · ${members.length}`:''}</button><button type="button" class="control text-size" data-scale="-.1" aria-label="Make reading text smaller">A−</button><button type="button" class="control text-size" data-scale=".1" aria-label="Make reading text larger">A+</button></div></header><nav class="field-nav" aria-label="Reading panes"><span class="nav-label">OPEN PANES</span>${nav.map((item,index)=>`${index?'<span class="nav-arrow">→</span>':''}<button type="button" class="control" style="--color:${color(item.layer)}" data-jump="${esc(item.id)}" title="${esc(item.title)}">${esc(item.title)}</button>`).join('')}</nav>`}${numoChambersHTML(field)}${field.field==='lateral'?'':managerHTML(runtime)}${arr(field.warnings).length?`<p class="field-warning">${esc(field.warnings.join(' '))}</p>`:''}<div class="field-strip" data-strip>${data.reference?routeWorkspace(runtime):fieldWorkspace(runtime,nav)}${!arr(field.panes).length&&!members.length?'<div class="field-empty"><h3>No saved reading yet</h3>This shelf opens completed texts when they are available.</div>':''}</div>${field.field==='lateral'?lateralReaderFooter(runtime):`<footer class="field-status"><span>${arr(field.panes).length} readings · ${members.length} source books</span><span>Drag a pane edge to resize · − folds a pane · Shift + scroll moves across</span></footer>`}`;const strip=root.querySelector('[data-strip]');strip.scrollLeft=s.left||0;root.querySelectorAll('.field-pane').forEach(pane=>{const key=pane.dataset.pane,reading=pane.dataset.reading,body=pane.querySelector('.pane-body'),memory=s.positions[key];if(body&&memory?.reading===reading)body.scrollTop=memory.top||0;pane.querySelectorAll('[data-section]').forEach(section=>{const val=s.sections[`${key}|${reading}|${section.dataset.section}`];if(typeof val==='boolean')section.open=val})});installPaneControls(root,runtime.paneControlState||(runtime.paneControlState={}),()=>drawThreads(runtime),field.id);updateLateralReaderChrome(runtime,true);applyFieldSelection(runtime);applyFieldBookmarks(runtime);runtime.paintConnectionView?.();restoreLateralReaderMenu(runtime)}
 function save(runtime){const {root,state:s}=runtime;if(!root.isConnected||(runtime.data.reference&&!isCorpusTracks(runtime)))return;const strip=root.querySelector('[data-strip]');if(strip){s.left=strip.scrollLeft;if(isCorpusTracks(runtime)&&s.corpusFocus){s.trackLeft=s.trackLeft||{};s.trackLeft[s.corpusFocus]=strip.scrollLeft}}const corpusViewport=root.querySelector('[data-corpus-viewport]');if(corpusViewport)s.corpusScroll=corpusViewport.scrollTop;root.querySelectorAll('.field-pane').forEach(pane=>{const key=pane.dataset.pane,reading=pane.dataset.reading,body=pane.querySelector('.pane-body');if(body&&!pane.classList.contains('folded'))s.positions[key]={reading,top:body.scrollTop};pane.querySelectorAll('[data-section]').forEach(section=>s.sections[`${key}|${reading}|${section.dataset.section}`]=section.open)});try{runtime.view.localStorage.setItem('care-field-layout-v3:'+runtime.data.field.id,JSON.stringify(s))}catch(_){}}
 function focusPane(runtime,id){const root=runtime.root;let pane=[...root.querySelectorAll('[data-pane]')].find(p=>p.dataset.pane===id);if(!pane&&id.startsWith('member:'))pane=[...root.querySelectorAll('[data-book]')].find(p=>p.dataset.book===id.slice(7));const strip=root.querySelector('[data-strip]');if(pane&&strip){const a=pane.getBoundingClientRect(),b=strip.getBoundingClientRect();strip.scrollTo({left:Math.max(0,strip.scrollLeft+a.left-b.left-(runtime.data.reference?(strip.clientWidth-a.width)/2:12)),behavior:runtime.data.reference||runtime.view.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})}}
-function drawThreads(runtime){if(isCorpusTracks(runtime)){fitCorpusTracks(runtime);drawCorpusRouteThreads(runtime);return}const {root,data,state}=runtime,strip=root.querySelector('[data-strip]');let svg=root.querySelector('[data-field-threads]');if(!strip||!data.reference){svg?.remove();return}const bounds=root.getBoundingClientRect(),clip=strip.getBoundingClientRect(),cards=new Map();root.querySelectorAll('[data-item-id]').forEach(card=>{const pane=card.closest('.field-pane'),body=card.closest('.pane-body'),rect=card.getBoundingClientRect(),bodyRect=body?.getBoundingClientRect();if(!bodyRect||card.closest('details:not([open])')||pane.classList.contains('folded')||rect.right<=clip.left||rect.left>=clip.right)return;const y=Math.max(bodyRect.top+8,Math.min(bodyRect.bottom-8,rect.top+rect.height/2));const id=card.dataset.itemId;if(id){const key=(card.dataset.sourcePane||'')+'|'+id;if(!cards.has(key))cards.set(key,{rect,y,pane,id,scope:card.dataset.sourcePane||''})}});const edges=arr(data.reference?.route_edges).map(edge=>({from:edge.source_id||edge.from,to:edge.target_id||edge.to,fromScope:edge.source_pane||edge.from_pane||'',toScope:edge.target_pane||edge.to_pane||''}));const refId=data.reference?.id;if(refId){arr(data.reference?.built_from).forEach(item=>edges.push({from:item.id,to:refId,fromScope:item.source_pane||'',toScope:data.reference.source_pane||''}));arr(data.field.routes).filter(edge=>edge.kind==='axiom_trace'&&(edge.to===refId||edge.from===refId)).forEach(edge=>edges.push(edge))}const seen=new Set();const paths=[];for(const edge of edges){const endpoint=(id,scope)=>{if(scope)return cards.get(scope+'|'+id);const matches=[...cards.values()].filter(card=>card.id===id);return matches.length===1?matches[0]:null},a=endpoint(edge.from,edge.fromScope),b=endpoint(edge.to,edge.toScope),key=`${edge.fromScope}|${edge.from}|${edge.toScope}|${edge.to}`;if(!a||!b||seen.has(key)||(edge.from===edge.to&&edge.fromScope===edge.toScope))continue;seen.add(key);const forward=a.rect.left<b.rect.left,same=a.pane===b.pane,x1=(same?a.rect.left+3:forward?a.rect.right-3:a.rect.left+3)-bounds.left,x2=(same?b.rect.left+3:forward?b.rect.left+3:b.rect.right-3)-bounds.left,y1=a.y-bounds.top,y2=b.y-bounds.top,bend=Math.max(25,Math.abs(x2-x1)*.48),sign=forward?1:-1;paths.push(`<path d="M${x1},${y1} C${same?x1-18:x1+bend*sign},${y1} ${same?x2-18:x2-bend*sign},${y2} ${x2},${y2}"/><circle cx="${x1}" cy="${y1}" r="2.5"/><circle cx="${x2}" cy="${y2}" r="2.5"/>`)}if(!svg){svg=root.ownerDocument.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('data-field-threads','');svg.setAttribute('aria-hidden','true');root.append(svg)}svg.setAttribute('viewBox',`0 0 ${bounds.width} ${bounds.height}`);svg.innerHTML=`<defs><clipPath id="field-thread-clip"><rect x="${clip.left-bounds.left}" y="${clip.top-bounds.top}" width="${clip.width}" height="${clip.height}"/></clipPath></defs><g clip-path="url(#field-thread-clip)">${paths.join('')}</g>`}
+function drawThreads(runtime){
+  if(isCorpusTracks(runtime)){fitCorpusTracks(runtime);drawCorpusRouteThreads(runtime);return}
+  const {root,data}=runtime,strip=root.querySelector('[data-strip]');let svg=root.querySelector('[data-field-threads]')
+  if(!strip||!data.reference){svg?.remove();return}
+  const bounds=root.getBoundingClientRect(),clip=strip.getBoundingClientRect(),cards=new Map()
+  root.querySelectorAll('[data-item-id]').forEach(card=>{
+    const pane=card.closest('.field-pane'),body=card.closest('.pane-body'),rect=card.getBoundingClientRect(),bodyRect=body?.getBoundingClientRect()
+    if(!pane||!bodyRect||!rect.width||!rect.height||card.closest('details:not([open])')||pane.hidden||pane.classList.contains('folded')||pane.classList.contains('care-pane-minimized')||rect.right<=clip.left||rect.left>=clip.right)return
+    const y=Math.max(bodyRect.top+8,Math.min(bodyRect.bottom-8,rect.top+rect.height/2)),id=card.dataset.itemId,scope=card.dataset.sourcePane||''
+    if(id){const key=scope+'|'+id;if(!cards.has(key))cards.set(key,{rect,y,pane,id,scope,visible:rect.bottom>bodyRect.top+8&&rect.top<bodyRect.bottom-8,key:JSON.stringify([pane.dataset.pane,pane.dataset.reading,scope,id])})}
+  })
+  const endpoint=(id,scope)=>{if(scope)return cards.get(scope+'|'+id);const matches=[...cards.values()].filter(card=>card.id===id);return matches.length===1?matches[0]:null}
+  const edges=arr(data.reference.route_edges).map(edge=>({from:edge.source_id||edge.from,to:edge.target_id||edge.to,fromScope:edge.source_pane||edge.from_pane||'',toScope:edge.target_pane||edge.to_pane||''}))
+  const refId=data.reference.id
+  if(refId){
+    arr(data.reference.built_from).forEach(item=>edges.push({from:item.id,to:refId,fromScope:item.source_pane||'',toScope:data.reference.source_pane||''}))
+    arr(data.field.routes).filter(edge=>edge.kind==='axiom_trace'&&(edge.to===refId||edge.from===refId)).forEach(edge=>edges.push({...edge,fromScope:edge.source_pane||edge.from_pane||edge.fromScope||'',toScope:edge.target_pane||edge.to_pane||edge.toScope||''}))
+  }
+  const seen=new Set(),drawable=[]
+  for(const edge of edges){
+    const a=endpoint(edge.from,edge.fromScope),b=endpoint(edge.to,edge.toScope)
+    if(!a||!b||a.key===b.key)continue
+    const key=JSON.stringify([a.key,b.key]);if(seen.has(key))continue;seen.add(key)
+    drawable.push({a,b,source_id:a.key,target_id:b.key,fullyVisible:a.visible&&b.visible})
+  }
+  // Keep margin continuations, but reduce only fully visible feeder paths.
+  const retained=new Set(CORPUS_BOOK_READER.displayRouteEdges(drawable.filter(edge=>edge.fullyVisible),runtime.connectionView))
+  const paths=drawable.filter(edge=>!edge.fullyVisible||retained.has(edge)).map(({a,b})=>{
+    const forward=a.rect.left<b.rect.left,same=a.pane===b.pane,x1=(same?a.rect.left+3:forward?a.rect.right-3:a.rect.left+3)-bounds.left,x2=(same?b.rect.left+3:forward?b.rect.left+3:b.rect.right-3)-bounds.left,y1=a.y-bounds.top,y2=b.y-bounds.top,bend=Math.max(25,Math.abs(x2-x1)*.48),sign=forward?1:-1
+    return `<path d="M${x1},${y1} C${same?x1-18:x1+bend*sign},${y1} ${same?x2-18:x2-bend*sign},${y2} ${x2},${y2}"/><circle cx="${x1}" cy="${y1}" r="2.5"/><circle cx="${x2}" cy="${y2}" r="2.5"/>`
+  })
+  if(!svg){svg=root.ownerDocument.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('data-field-threads','');svg.setAttribute('aria-hidden','true');root.append(svg)}
+  svg.setAttribute('viewBox',`0 0 ${bounds.width} ${bounds.height}`);svg.innerHTML=`<defs><clipPath id="field-thread-clip"><rect x="${clip.left-bounds.left}" y="${clip.top-bounds.top}" width="${clip.width}" height="${clip.height}"/></clipPath></defs><g clip-path="url(#field-thread-clip)">${paths.join('')}</g>`
+}
 export default function(component){const root=component.parentElement.querySelector('[data-field-desk]');if(!root||!component.data?.field)return;const view=root.ownerDocument.defaultView;let runtime=INSTANCES.get(root);if(!runtime||runtime.data.field.id!==component.data.field.id){runtime?.renderCleanup?.();runtime={root,view,data:component.data,state:readLayout(view,component.data.field.id)};INSTANCES.set(root,runtime)}else save(runtime);const finishRender=beginFieldRender(runtime);runtime.data=component.data;let threadFrame=null;const queueThreads=()=>{if(!view.requestAnimationFrame||threadFrame!==null)return;threadFrame=view.requestAnimationFrame(()=>{threadFrame=null;drawThreads(runtime)})};const fresh=!runtime.state.started;if(fresh)initializeLayout(runtime);const nextRef=runtime.data.reference?.id||'',refKey=nextRef+'|'+(runtime.data.reference?.source_pane||'')+'|'+JSON.stringify(runtime.data.reference?.resolution||{}),newRef=nextRef&&runtime.lastRef!==refKey;runtime.lastRef=refKey;const emit=action=>{save(runtime);component.setTriggerValue('action',{...action,nonce:`${Date.now()}-${Math.random()}`})};const repaint=()=>{const active=root.querySelector(':focus'),identity=active?{...active.dataset}:null;save(runtime);render(runtime);if(identity){const target=[...root.querySelectorAll('button,select,input,[data-resize]')].find(el=>!el.closest('[hidden]')&&el.getClientRects().length&&Object.entries(identity).every(([key,value])=>el.dataset[key]===value));target?.focus({preventScroll:true})}queueThreads()};const load=id=>{const member=arr(runtime.data.field.members).find(m=>memberId(m)===id);if(!member)return;runtime.state.books[id]=false;restoreLateralLayers(runtime,id,LAYERS);const keys=[...LAYERS.map(layer=>`book:${id}:${layer}`),...memberOrigins(runtime,member).map(pane=>'field:'+pane.id)];keys.forEach(key=>{runtime.state.folded[key]=false;const control=runtime.paneControlState?.[runtime.data.field.id+'|'+key];if(control)control.minimized=false});if(!selectedLayers(runtime.state,member,runtime.data.stacks?.[id]).length)delete runtime.state.layers[id];if(!runtime.data.stacks?.[id]&&!memberOrigin(runtime,member))emit({type:'load_member',work_id:id});else{repaint();focusPane(runtime,'member:'+id)}};runtime.emit=emit;
 // Local layout state already lives in the mounted DOM. Equal server payloads
 // refresh callbacks without reconstructing the field or its reading panes.
@@ -5310,7 +5438,7 @@ const input=event=>{if(!event.target.matches('[data-member-search]'))return;cons
 let dragging=null;const down=event=>{const handle=event.target.closest('[data-resize]');if(!handle||event.button!==0)return;event.preventDefault();dragging={handle,key:handle.dataset.resize,pane:handle.closest('.field-pane'),x:event.clientX,width:handle.closest('.field-pane').offsetWidth||handle.closest('.field-pane').getBoundingClientRect().width,zoom:handle.closest('.field-pane').getBoundingClientRect().width/(handle.closest('.field-pane').offsetWidth||handle.closest('.field-pane').getBoundingClientRect().width)};handle.setPointerCapture(event.pointerId)};const move=event=>{if(!dragging)return;const width=Math.max(300,Math.min(1400,dragging.width+(event.clientX-dragging.x)/(dragging.zoom||1)));runtime.state.widths[dragging.key]=width;dragging.pane.style.setProperty('--pane-width',width+'px');dragging.handle.setAttribute('aria-valuenow',Math.round(width));fitCorpusTracks(runtime)};const up=()=>{if(dragging){dragging=null;save(runtime)}};
 const key=event=>{if(event.target.closest?.('.connection-resolution-panel')){resolutionUI.onKey(event);return}if(fieldSelectionKey(runtime,event))return;if(runtime.data.field.field==='lateral'&&['[',']'].includes(event.key)&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target.closest?.('input,select,textarea,[contenteditable="true"]')){event.preventDefault();stepLateralReader(runtime,event.key===']'?1:-1);return}const handle=event.target.closest('[data-resize]');if(handle&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const width=event.key==='Home'?300:event.key==='End'?1400:Math.max(300,Math.min(1400,(handle.closest('.field-pane').offsetWidth||handle.closest('.field-pane').getBoundingClientRect().width)+(event.key==='ArrowRight'?40:-40)));runtime.state.widths[handle.dataset.resize]=width;handle.closest('.field-pane').style.setProperty('--pane-width',width+'px');handle.setAttribute('aria-valuenow',Math.round(width));fitCorpusTracks(runtime);save(runtime)}};const resetWidth=event=>{const handle=event.target.closest('[data-resize]');if(handle){delete runtime.state.widths[handle.dataset.resize];if(paintFieldPane(runtime,handle.dataset.resize)){save(runtime);queueThreads()}else repaint()}};const wheel=event=>{if((event.shiftKey||Math.abs(event.deltaX)>Math.abs(event.deltaY))&&root.querySelector('[data-strip]')?.contains(event.target)){event.preventDefault();const strip=root.querySelector('[data-strip]'),unit=event.deltaMode===1?16:event.deltaMode===2?strip.clientWidth:1;strip.scrollLeft+=(event.shiftKey?event.deltaY||event.deltaX:event.deltaX)*unit}};
 let timer;const queue=()=>{if(!isCorpusTracks(runtime)){applyFieldSelection(runtime);applyFieldBookmarks(runtime)}if(isCorpusTracks(runtime))updateCorpusToolbar(runtime);else updateLateralReaderChrome(runtime);queueThreads();view.clearTimeout(timer);timer=view.setTimeout(()=>save(runtime),150)};const fit=()=>{const host=root.getRootNode().host;if(host?.clientHeight>0)root.style.height=host.clientHeight+'px';fitCorpusTracks(runtime);queueThreads()};fit();const observer=view.ResizeObserver?new view.ResizeObserver(fit):null;if(observer&&root.getRootNode().host)observer.observe(root.getRootNode().host);
-runtime.closeConnectionResolution=()=>resolutionUI.closeConnectionResolution?.();runtime.onKey=key;CORPUS_BOOK_READER.setupReaderMenus(runtime);runtime.attachReaderMenus();runtime.restoreReaderMenu();
+runtime.onClick=click;CORPUS_BOOK_READER.setupConnectionView(runtime,queueThreads);runtime.attachConnectionView();runtime.closeConnectionResolution=()=>resolutionUI.closeConnectionResolution?.();runtime.onKey=key;CORPUS_BOOK_READER.setupReaderMenus(runtime);runtime.attachReaderMenus();runtime.restoreReaderMenu();
 const menuClick=event=>{if(event.target.closest?.('.desk-menu-panel')&&event.target.closest?.('[data-jump],[data-manage],[data-lineage],[data-library],[data-close-route],[data-field-bookmark-open]'))runtime.closeReaderMenu({restoreFocus:true})};root.addEventListener('click',menuClick,true);
-const events={click,change,input,pointerdown:down,pointermove:move,pointerup:up,pointercancel:up,keydown:runtime.onKey,dblclick:resetWidth};for(const [name,fn]of Object.entries(events))root.addEventListener(name,fn);root.addEventListener('scroll',queue,true);root.addEventListener('toggle',queue,true);root.addEventListener('wheel',wheel,{passive:false});const flush=()=>save(runtime);view.addEventListener('pagehide',flush);return finishRender(()=>{runtime.cleanupReaderMenus?.();root.removeEventListener('click',menuClick,true);save(runtime);view.clearTimeout(timer);observer?.disconnect();if(threadFrame!==null)view.cancelAnimationFrame?.(threadFrame);for(const [name,fn]of Object.entries(events))root.removeEventListener(name,fn);root.removeEventListener('scroll',queue,true);root.removeEventListener('toggle',queue,true);root.removeEventListener('wheel',wheel);view.removeEventListener('pagehide',flush)})
+const events={click:runtime.onClick,change,input,pointerdown:down,pointermove:move,pointerup:up,pointercancel:up,keydown:runtime.onKey,dblclick:resetWidth};for(const [name,fn]of Object.entries(events))root.addEventListener(name,fn);root.addEventListener('scroll',queue,true);root.addEventListener('toggle',queue,true);root.addEventListener('wheel',wheel,{passive:false});const flush=()=>save(runtime);view.addEventListener('pagehide',flush);return finishRender(()=>{runtime.cleanupConnectionView?.();runtime.cleanupReaderMenus?.();root.removeEventListener('click',menuClick,true);save(runtime);view.clearTimeout(timer);observer?.disconnect();if(threadFrame!==null)view.cancelAnimationFrame?.(threadFrame);for(const [name,fn]of Object.entries(events))root.removeEventListener(name,fn);root.removeEventListener('scroll',queue,true);root.removeEventListener('toggle',queue,true);root.removeEventListener('wheel',wheel);view.removeEventListener('pagehide',flush)})
 }
