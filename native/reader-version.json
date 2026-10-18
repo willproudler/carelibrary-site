@@ -5,7 +5,7 @@
     "Keep unaligned source translations readable without inventing passage routes"
   ],
   "assets": {
-    "study-desk.css": "66d908741f804efefb1357fb4cd21e2892de6f451c4b869e0b80cf637385fe67",
+    "study-desk.css": "2c8c441f9eaa3ba06908ee894fc738270dd6dbd6aa675a3b486e073877bd7fa1",
     "study-desk.mjs": "71264cd2c3c806936d8a92934cac69a8a7422e6a97915773db2cd683a28b1333",
     "reading-views.mjs": "dd05ea4b1e9de8243de23917c87ef3b9951c1e3dcd0717c6db4cd6b293201739"
   },

@@ -16,7 +16,7 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=225b9b9a34331c20'),loadText('./native/public-scope.css?v=225b9b9a34331c20')]);
+ const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=2c8c441f9eaa3ba0'),loadText('./native/public-scope.css?v=225b9b9a34331c20')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
@@ -36,7 +36,7 @@ async function start(){
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=225b9b9a34331c20'),loadText('./native/study-field.css?v=225b9b9a34331c20')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=ea7258b59c390092'),loadText('./native/study-field.css?v=225b9b9a34331c20')]).then(([module,fieldCSS])=>{
    mountField=module.default;const style=document.createElement('style');
    // Keep the bottom save control still when pointer entry reveals trace links.
    style.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;

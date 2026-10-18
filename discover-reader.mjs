@@ -171,7 +171,7 @@ export async function mountDiscoverReader(host,options={}) {
     };
     const [library,css,scope]=await Promise.all([
       options.library||loadLibrary(options.fetch?{fetch:options.fetch}:{}),
-      readText('./native/study-desk.css?v=225b9b9a34331c20'),
+      readText('./native/study-desk.css?v=2c8c441f9eaa3ba0'),
       readText('./native/public-scope.css?v=225b9b9a34331c20'),
     ]);
     const data=await prepareDiscoverReading(library);
@@ -220,7 +220,7 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=225b9b9a34331c20')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=d655cf0d2ccf06de')]);
           if(destroyed||version!==requestVersion)return;
           const members=(field.bundle?.members||[]).map(member=>data.works.find(work=>work.id===(member.work_id||member.id)||work.version_work_id===(member.work_id||member.id))?.id).filter(Boolean);
           await library.ensureWorks(members);
