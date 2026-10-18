@@ -2450,10 +2450,14 @@ function drawOutlineThreads(runtime){
     const rect=card.getBoundingClientRect(),body=card.closest('.window-body')?.getBoundingClientRect()
     if(!body||!rect.width||!rect.height||rect.right<=clip.left||rect.left>=clip.right)return
     const y=Math.max(Math.max(body.top,clip.top)+7,Math.min(Math.min(body.bottom,clip.bottom)-7,rect.top+rect.height/2))
-    geometry.set(id,{rect,y,pane:card.closest('[data-pane]')})
+    geometry.set(id,{rect,y,pane:card.closest('[data-pane]'),fullyVisible:card.dataset?.refId===String(id)&&rect.bottom>Math.max(body.top,clip.top)+8&&rect.top<Math.min(body.bottom,clip.bottom)-8})
   })
   const drawable=exactRouteEdges(reference).filter(edge=>geometry.has(String(edge.source_id))&&geometry.has(String(edge.target_id)))
-  const active=runtime.outlineHoverIds||new Set(),paths=displayRouteEdges(drawable,runtime.connectionView).map((edge,index)=>{
+  // Folded/loading strips and margin continuations retain their lines, but
+  // cannot substitute for an exact visible feeder path.
+  const fullyVisible=edge=>geometry.get(String(edge.source_id)).fullyVisible&&geometry.get(String(edge.target_id)).fullyVisible
+  const retained=new Set(displayRouteEdges(drawable.filter(fullyVisible),runtime.connectionView))
+  const active=runtime.outlineHoverIds||new Set(),paths=drawable.filter(edge=>!fullyVisible(edge)||retained.has(edge)).map((edge,index)=>{
     const from=geometry.get(String(edge.source_id)),to=geometry.get(String(edge.target_id));if(!from||!to)return ''
     const same=from.pane===to.pane,forward=from.rect.left<to.rect.left
     const x1=((same?from.rect.left+2:forward?from.rect.right-2:from.rect.left+2)-bounds.left)/scale,x2=((same?to.rect.left+2:forward?to.rect.left+2:to.rect.right-2)-bounds.left)/scale,y1=(from.y-bounds.top)/scale,y2=(to.y-bounds.top)/scale,bend=Math.max(20,Math.abs(x2-x1)*.48),sign=forward?1:-1
