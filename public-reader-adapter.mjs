@@ -282,6 +282,7 @@ export function createPublicReaderAdapter(data) {
       reference:referenceId ? reference(referenceId,state.routeMode,{workId:work.id,state}) : null,
       route_mode:state.routeMode || 'incoming',route_history:state.routeHistory || {can_back:false,can_forward:false},
       selected_reference_id:referenceId,selected_axiom:state.selectedAxiom || null,
+      saved_focus:state.savedFocus || null,
       outline_available:true,outline_context:context,outline_response:state.outlineResponse || {},
       outline_units:array(state.outlineUnits).filter(row => row.work_id === work.id).map(row=>outline(work.id,row,state)),
       build_versions:[],selected_build_id:work.id,version_action_result:'',

@@ -1,5 +1,5 @@
 /* Discover uses the shipped field reader for published comparisons. */
-import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=225b9b9a34331c20';
+import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=20261018';
 
 const copy = value => structuredClone(value);
 

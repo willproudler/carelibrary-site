@@ -1,4 +1,5 @@
 import { indexLibrary, incoming, LABELS } from './library-core.mjs';
+import { loadLibrary } from './library-loader.mjs';
 
 const NS = 'http://www.w3.org/2000/svg';
 const LEVELS = ['SOURCE', 'CH', 'CL', 'MC', 'WB'];
@@ -22,6 +23,13 @@ export function buildAtlasModel(data) {
     }
   }
   return { index, nodes, edges };
+}
+
+export async function loadDiscoverAtlasData(library) {
+  const selected=library.data.works.find(work=>work.slug==='hume')||library.data.works[0];
+  if(!selected)throw Error('No books have been published yet.');
+  const work=await library.ensureWork(selected.id);
+  return {...library.data,works:[work],lateral:null};
 }
 
 function svgElement(name, attributes = {}, content = '') {
@@ -324,7 +332,7 @@ const host = typeof document === 'undefined' ? null : document.getElementById('d
 if (host) {
   host.setAttribute('aria-busy', 'true');
   Promise.all([
-    fetch(new URL('./data/library.json', import.meta.url), {cache:'no-cache'}).then(response => { if (!response.ok) throw new Error('The collection could not load.'); return response.json(); }),
+    loadLibrary().then(loadDiscoverAtlasData),
     fetch(new URL('./data/showcase.json?v=20261005', import.meta.url)).then(response => { if (!response.ok) throw new Error('The reading route could not load.'); return response.json(); }),
   ]).then(([data, showcase]) => mountDiscoverAtlas(host, data, showcase)).catch(error => {
     host.innerHTML = `<p class="discover-atlas__error">The collection map could not load. <a href="./library.html">Open the public library</a>.</p>`;

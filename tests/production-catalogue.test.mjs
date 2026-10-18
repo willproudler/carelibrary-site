@@ -64,7 +64,7 @@ test('every release source and CARE sheet projects its original text and declare
    const selected=selectionFor(work,unit.id);assert.equal(selected[unit.layer].id,unit.id);
    const displayed=adapter.unit(unit.id,state);
    assert.deepEqual(displayed.sections.flatMap(section=>section.items.map(item=>[item.id,item.text])),unit.sections.flatMap(section=>section.items.map(item=>[item.id,item.text])));
-   if(unit.identity)assert.deepEqual(displayed.identity,unit.identity);
+   if(unit.identity)assert.deepEqual(displayed.identity,{...unit.identity,title:unit.original_title||unit.title,...(unit.identity.original_context?{context:unit.identity.original_context}:{})});
    const outline=adapter.outline(work.id,{id:unit.id,layer:unit.layer,request_id:'release-sheet'},state);
    assert.equal(outline.unit.id,unit.id);assert.equal(outline.error,undefined);
   }
