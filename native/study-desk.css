@@ -694,7 +694,7 @@ button{border-radius:999px}
 
 /* Reading selection is independent of the established Routes .selected state. */
 .axiom-row,.passage-row{position:relative;min-width:0}
-.passage.selected .passage-address{padding-right:4.6rem}
+.passage .passage-address{padding-inline-end:4.6rem}
 .study-desk .axiom-row+.axiom-row{border-top:1px solid color-mix(in srgb,var(--desk-ink) 14%,transparent)}
 .study-desk .axiom-row .axiom-id{padding-right:4.6rem;min-height:1.4rem}
 .study-desk .axiom-button.axiom-selected{background:color-mix(in srgb,var(--pane-accent) 9%,var(--desk-paper));box-shadow:inset 3px 0 var(--pane-accent)}
@@ -1853,6 +1853,10 @@ button{border-radius:999px}
 .study-desk [data-copy-axiom-code],.field-desk [data-copy-axiom-code]{cursor:copy;-webkit-user-select:text;user-select:text}
 .reader-axiom-copy-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 
+/* Borrow the source margin for the selection rail, preserving the reading
+   measure and heading alignment. Keep this after Beautiful text's mobile reset
+   and apply it before selection so neither prose nor passage labels jump. */
+.study-desk[data-beautiful-text="true"] .source-copy .passage{width:calc(100% + 1.7rem);margin-inline:-.85rem;padding-inline:.85rem}
 /* A quiet menu bar; the reading surface keeps all of its existing controls. */
 .study-desk:has(>.desk-menu-toolbar){grid-template-rows:auto minmax(0,1fr)}
 .study-desk:has(>.desk-menu-toolbar)>.desk-status{display:none}
