@@ -1,10 +1,32 @@
+function publicSourceDetailHint(canonical, passage) {
+  const kind = canonical?.beautiful_source_detail;
+  if (!['page-number','running-header','source-locator'].includes(kind)
+      || typeof canonical?.text !== 'string' || typeof passage?.text !== 'string') return '';
+  const original = canonical.text, translated = passage.text;
+  const normalized = value => value.trim().replace(/\s+/g, ' ');
+  if (normalized(original) && normalized(original) === normalized(translated)) return kind;
+  if (kind !== 'running-header') return '';
+  const boundary = value => {
+    const line = value.trim();
+    if (/[\r\n]/.test(value) || line.length > 140 || line.split(/\s+/).length > 16) return null;
+    const leading = line.match(/^(\d{1,6})\s+(.+)$/), trailing = line.match(/^(.+?)\s+(\d{1,6})$/);
+    const match = leading || trailing;
+    if (!match) return null;
+    const title = leading ? match[2] : match[1];
+    if (!/\p{L}/u.test(title) || !/^[\p{L}\s'’\-–—]+$/u.test(title)) return null;
+    return [leading ? 'leading' : 'trailing', leading ? match[1] : match[2]];
+  };
+  const left = boundary(original), right = boundary(translated);
+  return left && right && left[0] === right[0] && left[1] === right[1] ? kind : '';
+}
+
 /* Project the fixed public collection into CARE's shipped study-desk contract.
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=db86d9d3f2f62fea';
-import {publicReadingText} from './native/reading-views.mjs?v=dd05ea4b1e9de824';
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=db86d9d3f2f62fea';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=1e50154261bce21c';
+import {publicReadingText} from './native/reading-views.mjs?v=088394b06090c343';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=1e50154261bce21c';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
@@ -109,6 +131,7 @@ export function createPublicReaderAdapter(data) {
       passages:rows.map((passage, position) => {
         const display = sourceReadingText(passage.text,source,source.work,state);
         const canonical = canonicalPassages.get(passage.id), prefix = canonical?.beautiful_omit_prefix;
+        const sourceDetail = publicSourceDetailHint(canonical, passage);
         // Only an attested canonical fragment can accompany the identical
         // opening in a saved rendition; never infer one from translated text.
         const omitPrefix = typeof prefix === 'string' && /^[A-Za-z]{1,4}$/.test(prefix)
@@ -117,6 +140,7 @@ export function createPublicReaderAdapter(data) {
         return {
         id:passage.id, text:passage.text, reading_text:display,
         ...(omitPrefix ? {beautiful_omit_prefix:omitPrefix} : {}),
+        ...(sourceDetail ? {beautiful_source_detail:sourceDetail} : {}),
         reading_html:inline(display), reading_block_html:block(display),
         address:passage.kind === 'display' ? `Reading paragraph ${position + 1}` : passage.id,
         sequence:position + 1, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',

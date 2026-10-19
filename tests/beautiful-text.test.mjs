@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createPublicReaderAdapter} from '../public-reader-adapter.mjs';
 
+function emittedClassifier(name) {
+  const source = fs.readFileSync(new URL(`../native/${name}.mjs`,import.meta.url),'utf8');
+  const start = source.indexOf("const BEAUTIFUL_TEXT_KEY='care-beautiful-text-v1'");
+  const end = source.indexOf('\nfunction beautifulTextHasOCRWraps(',start);
+  assert.ok(start >= 0 && end > start, `${name} ships the shared Beautiful text classifier`);
+  return new Function(`${source.slice(start,end)};return beautifulSourceDetail;`)();
+}
+
 // Entirely invented text: these tests do not load the published collection.
 function fixture() {
   const source = {
@@ -50,16 +58,61 @@ test('emitted Beautiful text helpers keep cross-book and lateral evidence fully 
   const data = fixture(), before = structuredClone(data);
   const passages = createPublicReaderAdapter(data).chapter('RAW_GARDEN').passages;
   for (const name of ['study-desk','study-field']) {
-    const source = fs.readFileSync(new URL(`../native/${name}.mjs`,import.meta.url),'utf8');
-    const start = source.indexOf('function beautifulSourceDetail(');
-    const end = source.indexOf('\nfunction beautifulTextHasOCRWraps(',start);
-    assert.ok(start >= 0 && end > start, `${name} ships the shared Beautiful text classifier`);
-    const classify = new Function(`${source.slice(start,end)};return beautifulSourceDetail;`)();
+    const classify = emittedClassifier(name);
     assert.deepEqual(passages.map(classify), [false,false,true,false,false,false]);
     assert.equal(classify({...passages[2],route_available:false}), false);
     assert.equal(classify({...passages[2],trace_count:undefined}), false);
   }
   assert.deepEqual(data,before);
+});
+
+test('page labels and standalone scholarly locators fold while authored text stays readable', () => {
+  const clear = {trace_count:0,axioms:[],route_available:true};
+  const details = ['Page 48', '> Page 48', 'Page iv',
+    '[I q. 10 pr.](https://example.invalid/q10)',
+    '[I q. 10 a. 2 ad arg.](https://example.invalid/q10a2)',
+    '[I q. 10 a. 2 s. c. 1](https://example.invalid/q10a2)',
+    '[I q. 10 a. 1 arg. 2](https://example.invalid/q10a1)'];
+  const authored = ['48', 'IV', '34 Flowers beside the wall', 'Prologue', 'Chapter IV',
+    'Page 48 describes the argument.', '> Page 48\n> The argument continues.',
+    '[I q. 10 a. 1 arg. 2](https://example.invalid/q10a1) The argument continues.',
+    '[The original argument](https://example.invalid/argument)',
+    '[I q. 10 pr.](javascript:alert(1))', 'I q. 10 pr.'];
+  for (const name of ['study-desk','study-field']) {
+    const classify = emittedClassifier(name);
+    for (const text of details) assert.equal(classify({...clear,text}), true, `${name}: ${text}`);
+    for (const text of authored) assert.equal(classify({...clear,text}), false, `${name}: ${text}`);
+  }
+});
+
+test('verified page furniture respects every trace guard and never mutates source rows', () => {
+  const examples = [
+    {text:'3',beautiful_source_detail:'page-number'},
+    {text:'34 A garden notebook',beautiful_source_detail:'running-header'},
+    {text:'I q. 10 pr.',beautiful_source_detail:'source-locator'},
+  ];
+  for (const name of ['study-desk','study-field']) {
+    const classify = emittedClassifier(name);
+    for (const example of examples) {
+      const clear = {...example,trace_count:0,axioms:[],route_available:true};
+      const before = structuredClone(clear);
+      assert.equal(classify(clear), true);
+      for (const trace_count of [undefined,null,'0',false,-1,1,NaN,Infinity]) {
+        assert.equal(classify({...clear,trace_count}), false);
+      }
+      for (const axioms of [undefined,null,{},'',['CH_GARDEN:A1']]) {
+        assert.equal(classify({...clear,axioms}), false);
+      }
+      for (const field of ['source_trace','deep_source_trace','matrix_trace','passage_trace_ids','linked_axioms','route_edges']) {
+        assert.equal(classify({...clear,[field]:['RECORDED_REFERENCE']}), false, field);
+      }
+      assert.equal(classify({...clear,route_available:false}), false);
+      assert.deepEqual(clear,before);
+    }
+    for (const hint of [undefined,null,true,[],{},'', 'paragraph', 'page-number ']) {
+      assert.equal(classify({text:'34 A garden notebook',trace_count:0,axioms:[],beautiful_source_detail:hint}), false);
+    }
+  }
 });
 
 test('untraced source details, headings and prose have zero traces without losing their addresses', () => {
@@ -221,4 +274,83 @@ test('verified fragments accept only the bounded ASCII fragment protocol', () =>
     assert.equal(adapter.chapter(source.id).passages[0].beautiful_omit_prefix, prefix);
     assert.equal(adapter.chapter(source.id,{paneVersions:{[source.id]:'original'}}).passages[3].beautiful_omit_prefix, prefix);
   }
+});
+
+function sourceDetailFixture(kind = 'running-header', original = '34 Notes by the gate', translated = '34 Notes près du portail') {
+  const data = fixture(), source = data.works[0].sources[0], passage = source.paragraphs[3];
+  source.language_code = 'en';
+  passage.text = original;
+  passage.beautiful_source_detail = kind;
+  source.translations = [{
+    id:'GARDEN_DETAILS_FR',language_code:'fr',language_name:'French',rendition_type:'machine',
+    paragraphs:[{id:passage.id,kind:'passage',text:translated}],
+  }];
+  return {data,source,passage,translation:source.translations[0].paragraphs[0],
+    state:{workId:'WORK_GARDEN',paneVersions:{[source.id]:'GARDEN_DETAILS_FR'}}};
+}
+
+test('attested page furniture reaches original, workspace and aligned translated views without changing references', () => {
+  const {data,source,passage,translation,state} = sourceDetailFixture(), before = structuredClone(data);
+  const adapter = createPublicReaderAdapter(data);
+  const original = adapter.chapter(source.id,{paneVersions:{[source.id]:'original'}}).passages[3];
+  const translated = adapter.chapter(source.id,state).passages[0];
+  assert.equal(original.beautiful_source_detail,'running-header');
+  for (const projected of [translated,adapter.workspace(state).stack.active_chapter.passages[0],adapter.outline('WORK_GARDEN',{id:source.id,layer:'SOURCE'},state).chapter.passages[0]]) {
+    assert.equal(projected.beautiful_source_detail,'running-header');
+    assert.equal(projected.text,translation.text);
+    assert.equal(projected.reading_text,translation.text);
+    assert.equal(projected.id,passage.id);
+    assert.equal(projected.route_available,true);
+    assert.equal(projected.trace_count,1);
+    assert.deepEqual(projected.axioms,['CH_GARDEN:A1']);
+  }
+  const route = adapter.reference(passage.id,'outgoing',{state});
+  assert.equal(route.text,translation.text);
+  assert.deepEqual(route.route_edges.map(edge=>[edge.source_id,edge.target_id]),[[passage.id,'CH_GARDEN:A1']]);
+  assert.deepEqual(data,before);
+});
+
+test('translated furniture hints require matching canonical text or the same bounded running folio', () => {
+  for (const [kind,original,translated] of [
+    ['page-number','> Page 48','  > Page   48 '],
+    ['page-number','3','3'],
+    ['source-locator','[I q. 10 pr.](https://example.invalid/q10)','[I q. 10 pr.](https://example.invalid/q10)'],
+    ['running-header','Notes by the gate 34','Notes près du portail 34'],
+    ['running-header','34 Notes by the gate','34 Notes près du portail'],
+  ]) {
+    const {data,source,state} = sourceDetailFixture(kind,original,translated);
+    assert.equal(createPublicReaderAdapter(data).chapter(source.id,state).passages[0].beautiful_source_detail,kind);
+  }
+  for (const [kind,original,translated] of [
+    ['page-number','3','4'],
+    ['page-number','Page 48','Page 49'],
+    ['source-locator','I q. 10 pr.','I q. 11 pr.'],
+    ['running-header','34 Notes by the gate','35 Notes près du portail'],
+    ['running-header','34 Notes by the gate','Notes près du portail 34'],
+    ['running-header','34 Notes by the gate','34 A complete sentence.'],
+    ['running-header','34 Notes by the gate','34 Notes\nprès du portail'],
+    ['running-header','34 Notes by the gate','34 [Notes](https://example.invalid)'],
+    ['running-header','34 Notes by the gate','34 Chapter 2'],
+    ['running-header','34 Notes by the gate',`34 ${'long '.repeat(17)}`],
+    ['running-header','34 Notes by the gate',`34 ${'A'.repeat(141)}`],
+  ]) {
+    const {data,source,state} = sourceDetailFixture(kind,original,translated);
+    assert.equal(Object.hasOwn(createPublicReaderAdapter(data).chapter(source.id,state).passages[0],'beautiful_source_detail'),false,translated);
+  }
+});
+
+test('saved and supplied translations cannot invent page furniture hints', () => {
+  for (const hint of [undefined,null,0,true,[],{},'', 'page-number ']) {
+    const {data,source,passage,translation,state} = sourceDetailFixture();
+    passage.beautiful_source_detail = hint;
+    translation.beautiful_source_detail = 'running-header';
+    assert.equal(Object.hasOwn(createPublicReaderAdapter(data).chapter(source.id,state).passages[0],'beautiful_source_detail'),false);
+  }
+  const {data,source,translation,state} = sourceDetailFixture();
+  translation.id = 'GARDEN_DETAILS_FR:DISPLAY-0001';
+  translation.kind = 'display';
+  translation.beautiful_source_detail = 'running-header';
+  const projected = createPublicReaderAdapter(data).chapter(source.id,state).passages[0];
+  assert.equal(projected.route_available,false);
+  assert.equal(Object.hasOwn(projected,'beautiful_source_detail'),false);
 });

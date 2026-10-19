@@ -43,7 +43,11 @@ test('real released catalogue sorts oldest to newest across BCE and CE using nat
  const data=JSON.parse(fs.readFileSync(new URL('../data/catalogue.json',import.meta.url),'utf8'));
  const projected=data.works.map(work=>({...work,...librarySortMetadata(work)}));
  const ascending=shelf.shelfSelection({books:projected},{...shelf.shelfDefaults(),sort:'oldest'}).items;
- assert.deepEqual(ascending.map(book=>book.title),['Timaeus','Metaphysics','On the Nature of Things','Confessions','Monas Hieroglyphica','Ethics','A Treatise of Human Nature','The Critique of Pure Reason','Thus Spoke Zarathustra','Matter and Memory','Civilization and its Discontents']);
+ const anchors=['Timaeus','Metaphysics','On the Nature of Things','Confessions','Monas Hieroglyphica','Ethics','A Treatise of Human Nature','The Critique of Pure Reason','Thus Spoke Zarathustra','Matter and Memory','Civilization and its Discontents'];
+ assert.deepEqual(ascending.filter(book=>anchors.includes(book.title)).map(book=>book.title),anchors);
+ assert.deepEqual(new Set(ascending.map(book=>book.id)),new Set(data.works.map(book=>book.id)),'Newly published books must remain in the sorted catalogue');
+ const dated=ascending.filter(book=>Number.isFinite(book.original_year));
+ assert.ok(dated.every((book,index)=>index===0||dated[index-1].original_year<=book.original_year),'All released books must remain in chronological order');
  assert.ok(ascending.every((book,index)=>!index||ascending[index-1].original_year<=book.original_year));
  assert.deepEqual(sorted(projected,'newest'),ascending.map(book=>book.id).reverse());
 });

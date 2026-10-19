@@ -3812,7 +3812,7 @@ const BEAUTIFUL_TEXT_EVENT='care-beautiful-text-change'
 const beautifulTextSessions=new WeakMap()
 
 function beautifulTextControl(){
-  return '<button type="button" class="beautiful-text-toggle" data-beautiful-text-toggle aria-pressed="true" title="Gentle reading typography; source details remain available"><span class="beautiful-text-label">Beautiful text</span><span class="beautiful-text-switch" aria-hidden="true"></span></button>'
+  return '<button type="button" class="beautiful-text-toggle" data-beautiful-text-toggle aria-pressed="true" title="Clear reading typography; turn off to show original page details"><span class="beautiful-text-label">Beautiful text</span><span class="beautiful-text-switch" aria-hidden="true"></span></button>'
 }
 
 function beautifulTextPreference(value,fallback=true){
@@ -3852,12 +3852,19 @@ function beautifulTextOpeningKind(container,verifiedTitles=null){
 function beautifulSourceDetail(passage){
   if(!beautifulHeadingDetail(passage)||passage.route_available===false)return false
   const text=String(passage.text??passage.reading_text??'').trim()
+  // Context-dependent folios and running heads are classified against the
+  // canonical source upstream. Never infer them from a short translated line.
+  if(['page-number','running-header','source-locator'].includes(passage.beautiful_source_detail))return !!text
   if(!text||/[\r\n]/.test(text))return false
+  // A complete, explicitly labelled page marker is metadata even when its
+  // importer wrapped it in a Markdown quote. Bare numbers remain ambiguous.
+  if(/^(?:>\s*)?(?:page|p\.)\s+(?:\d{1,5}|[ivxlcdm]{1,12})\.?$/i.test(text))return true
   const isURL=value=>{try{const url=new URL(value);return /^https?:$/.test(url.protocol)&&!!url.hostname&&!/\s|[<>]/.test(value)}catch(_){return false}}
   if(isURL(text))return true
   const link=text.match(/^\[([^\]\n]+)\]\((https?:\/\/[^\s<>]+)\)$/)
   if(!link||!isURL(link[2]))return false
-  return link[1]===link[2]||/^Source scan \d+(?:\s*·\s*printed page (?:\d+|[ivxlcdm]+))?$/i.test(link[1])
+  const locator=/^(?:I|II|III|I-II|II-II)\s+q\.\s*\d+\s+(?:pr\.|a\.\s*\d+\s+(?:arg\.\s*\d+|s\.\s*c\.(?:\s*\d+)?|co\.|ad\s*(?:\d+|arg\.)))$/i
+  return link[1]===link[2]||/^Source scan \d+(?:\s*·\s*printed page (?:\d+|[ivxlcdm]+))?$/i.test(link[1])||locator.test(link[1])
 }
 
 function beautifulHeadingDetail(passage){

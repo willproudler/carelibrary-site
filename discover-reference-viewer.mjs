@@ -1,7 +1,7 @@
 /* The same saved-reference viewer used by the Mac reader, owned by this embed. */
 export async function createDiscoverReferenceViewer({document:doc,fetcher,onAction}) {
   const read=async path=>{const response=await fetcher(new URL(path,import.meta.url));if(!response.ok)throw Error('The axiom viewer could not load. Please try again.');return response.text();};
-  const [{default:mount},css,html]=await Promise.all([import('./native/reference-viewer.mjs?v=db86d9d3f2f62fea'),read('./native/reference-viewer.css?v=db86d9d3f2f62fea'),read('./native/reference-viewer.html?v=db86d9d3f2f62fea')]);
+  const [{default:mount},css,html]=await Promise.all([import('./native/reference-viewer.mjs?v=1e50154261bce21c'),read('./native/reference-viewer.css?v=1e50154261bce21c'),read('./native/reference-viewer.html?v=1e50154261bce21c')]);
   const host=doc.createElement('div');host.setAttribute('data-discover-book-viewer','');
   host.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${css}\n[data-discover-book-viewer] .crv-tool-rate,[data-discover-book-viewer] .crv-tool-quality,[data-discover-book-viewer] .crv-tool-collect,[data-discover-book-viewer] .crv-tool-sheet,[data-discover-book-viewer] .crv-tool-reveal-sheet{display:none!important}[data-discover-book-viewer] .crv-launcher{bottom:40px}[data-discover-book-viewer] .crv-panel{bottom:100px}[data-discover-book-viewer][hidden]{display:none!important}</style>${html}`;
   doc.body.append(host);let cleanup;
