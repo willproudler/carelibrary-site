@@ -33,9 +33,111 @@ function translatedTitle(value, unit, variant) {
   const number = variant?.language_code === 'en' && theoremNumber(unit.original_title || unit.title) && theoremNumber(value);
   return number ? `Theorem ${number}.` : value;
 }
-export function paneTitle(unit, work, state = {}) {
+function savedPaneTitle(unit, work, state = {}) {
   const variant = selectedVariant(unit,work,state);
   return translatedTitle(variant?.title || (originalLabels(unit,work,state) ? unit.original_title || unit.title : unit.title),unit,variant);
+}
+const titleLabel = value => typeof value === 'string' ? value.trim() : '';
+const titleKey = value => titleLabel(value).replace(/\.$/,'').trim();
+function sectionNumber(value) {
+  const label = titleKey(value);
+  if (/^\d+$/.test(label)) return Number(label);
+  if (!/^(?=[IVXLCDM]+$)M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/.test(label)) return null;
+  const values = {I:1,V:5,X:10,L:50,C:100,D:500,M:1000};
+  return [...label].reduce((sum,letter,index) => sum + (values[letter] < (values[label[index + 1]] || 0) ? -values[letter] : values[letter]),0);
+}
+function openingHeadings(reading, represented = []) {
+  const result = [], rows = array(reading?.paragraphs);
+  for (const row of (rows.length ? rows : [{text:reading?.text}])) {
+    let lineIndex = 0;
+    for (const line of String(row?.text || '').split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const heading = line.match(/^ {0,3}#{1,6}\s+(.+?)(?:\s+#+)?\s*$/)
+        || (represented.some(value=>titleKey(value) === titleKey(line)) ? [line,line.trim()] : null);
+      if (!heading) return result;
+      result.push({id:row.id || '',line:lineIndex++,title:heading[1].trim()});
+    }
+  }
+  return result;
+}
+function sourceInLanguage(source, work, language) {
+  return originalLanguage(source,work).code === language ? source : savedVariants(source).find(row=>row.language_code === language) || null;
+}
+function savedHeadingLabel(label, work, language) {
+  const key = titleKey(label), matches = new Set();
+  const add = (original,translated) => {if (titleKey(original) === key && titleLabel(translated)) matches.add(titleLabel(translated));};
+  for (const pane of panes(work)) {
+    if (pane.title_language_code === language) add(pane.original_title,pane.title);
+    const translated = sourceInLanguage(pane,work,language);
+    if (!translated || translated === pane) continue;
+    add(pane.original_title || pane.title,translated.title);
+    if (!translated.source_section_label || sectionNumber(translated.source_section_label) === sectionNumber(pane.source_section_label))
+      add(pane.source_title_context,translated.source_title_context);
+    const originals = openingHeadings(pane), saved = openingHeadings(translated);
+    for (const heading of originals) {
+      const aligned = heading.id && saved.find(row=>row.id === heading.id && row.line === heading.line);
+      if (aligned) add(heading.title,aligned.title);
+    }
+  }
+  return matches.size === 1 ? [...matches][0] : '';
+}
+function sourceTitleProfile(source, work, language, reading, label) {
+  const number = sectionNumber(label);
+  const readingLanguage = reading === source ? originalLanguage(source,work).code : reading?.language_code;
+  let parent = '', hierarchy = [];
+  const canonicalParent = titleLabel(source.source_title_context);
+  const canonicalNumber = sectionNumber(source.source_section_label);
+  if (number !== null && canonicalParent && canonicalNumber === number) {
+    if (reading === source && readingLanguage === language) {
+      parent = canonicalParent;
+      hierarchy = array(source.source_title_hierarchy).map(titleLabel).filter(Boolean);
+    } else {
+      const translated = reading !== source && (!reading?.source_section_label || sectionNumber(reading.source_section_label) === number) ? reading : null;
+      // The verified original parent is preferable to an ambiguous bare number
+      // when this heading has no saved translation. Never invent a translation.
+      parent = titleLabel(translated?.source_title_context) || savedHeadingLabel(canonicalParent,work,language) || canonicalParent;
+      hierarchy = Array.isArray(translated?.source_title_hierarchy)
+        ? translated.source_title_hierarchy.map(titleLabel).filter(Boolean)
+        : array(source.source_title_hierarchy).map(value=>savedHeadingLabel(value,work,language)).filter(Boolean);
+    }
+  }
+  // Older public exports may lack verified hierarchy metadata. Only explicit
+  // opening headings, carried through an uninterrupted numbered run, qualify.
+  if (number !== null && !parent && reading && readingLanguage === language) {
+    let cursor = array(work?.sources).findIndex(row=>row.id === source.id), expected = number, candidate = reading;
+    while (cursor >= 0 && candidate) {
+      const titles = openingHeadings(candidate).map(row=>row.title).filter(value=>sectionNumber(value) === null);
+      if (titles.length) {parent=titles.at(-1);hierarchy=titles.slice(0,-1);break;}
+      if (expected <= 1) break;
+      const previous = work.sources[--cursor];
+      if (!previous) break;
+      if (canonicalParent) {
+        const previousParent = titleLabel(previous.source_title_context) || openingHeadings(previous).map(row=>row.title).filter(value=>sectionNumber(value) === null).at(-1);
+        if (titleKey(previousParent) !== titleKey(canonicalParent)) break;
+      }
+      candidate = sourceInLanguage(previous,work,language);
+      if (!candidate || sectionNumber(candidate.title || previous.title) !== expected - 1) break;
+      expected--;
+    }
+  }
+  const composed = parent ? `${titleKey(parent)} · ${titleKey(label)}` : label;
+  const context = parent ? hierarchy.map(titleKey).filter(Boolean).join(' · ') : '';
+  const represented = [label, ...(parent ? [parent,...hierarchy] : [])];
+  return {title:composed,reading_title:composed,reading_title_context:context,
+    reading_heading_titles:[...new Set(openingHeadings(reading,represented).filter(row=>represented.some(value=>titleKey(value) === titleKey(row.title))).map(row=>row.title))]};
+}
+export function paneReadingTitle(unit, work, state = {}) {
+  const label = savedPaneTitle(unit,work,state);
+  const source = Array.isArray(unit?.paragraphs) || unit?.layer === 'SOURCE' ? unit
+    : unit?.layer === 'CH' ? array(work?.sources).find(row=>row.chapter_id === unit.id) : null;
+  if (!source) return {title:label};
+  const variant = selectedVariant(unit,work,state), isOriginal = !variant && originalLabels(unit,work,state);
+  const language = variant?.language_code || (isOriginal ? originalLanguage(unit,work).code : unit.title_language_code || originalLanguage(unit,work).code);
+  const reading = source.id === unit.id ? variant || source : sourceInLanguage(source,work,language);
+  return sourceTitleProfile(source,work,language,reading,label);
+}
+export function paneTitle(unit, work, state = {}) {
+  return paneReadingTitle(unit,work,state).title;
 }
 export function bookTitle(work, state = {}) {
   if(readingLanguage(work,state) === ORIGINAL)return work.original_title || work.title;
@@ -50,16 +152,20 @@ export function bookTitle(work, state = {}) {
 }
 export function paneIdentity(unit, work, state = {}) {
   const variant = selectedVariant(unit,work,state), identity = {...unit.identity,...variant?.identity};
-  if(!variant && originalLabels(unit,work,state))return {...identity,
+  const contextual = value => {
+    const reading = paneReadingTitle(unit,work,state);
+    return {...value,...(reading.reading_title_context ? {context:reading.reading_title_context} : {})};
+  };
+  if(!variant && originalLabels(unit,work,state))return contextual({...identity,
     ...(identity.original_context ? {context:identity.original_context} : {}),
-    ...(identity.original_kicker ? {kicker:identity.original_kicker} : {})};
+    ...(identity.original_kicker ? {kicker:identity.original_kicker} : {})});
   const languageState = variant ? {...state,readingLanguages:{...state.readingLanguages,[work?.id]:variant.language_code}} : state;
   const label = work && bookTitle(work,languageState);
   if(identity.kicker && work?.original_title && label)identity.kicker = identity.kicker.split(work.original_title).join(label);
   if(variant?.language_code === 'en' && work?.original_title === 'Monas Hieroglyphica' && identity.context){
     identity.context = identity.context.split(' · ').map(part=>theoremNumber(part) ? `Theorem ${theoremNumber(part)}.` : part).join(' · ');
   }
-  return identity;
+  return contextual(identity);
 }
 export function sourceReadingText(value, unit, work, state = {}) {
   const variant = selectedVariant(unit,work,state);

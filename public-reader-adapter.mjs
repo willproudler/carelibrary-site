@@ -2,9 +2,9 @@
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=21bcaf6e74c8e3e7';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=5556bfdf9744c7ad';
 import {publicReadingText} from './native/reading-views.mjs?v=dd05ea4b1e9de824';
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=21bcaf6e74c8e3e7';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=5556bfdf9744c7ad';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
@@ -103,7 +103,7 @@ export function createPublicReaderAdapter(data) {
     const rows = array(reading.paragraphs), canonicalPassages = new Map(array(source.paragraphs).map(row=>[row.id,row]));
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
-      sequence_number:source.order, title:paneTitle(source,source.work,state), label:paneTitle(source,source.work,state),
+      sequence_number:source.order, ...paneReadingTitle(source,source.work,state), label:paneTitle(source,source.work,state),
       source_rendition_type:variant?.rendition_type || (variant ? 'machine' : 'original'),
       passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
       passages:rows.map((passage, position) => {

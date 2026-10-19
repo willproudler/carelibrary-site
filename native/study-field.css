@@ -14,6 +14,12 @@
 .pane-intro .kicker{font-size:.52rem;letter-spacing:.13em;color:color-mix(in srgb,var(--color) 72%,#fff)}
 .pane-intro h3{margin:.35rem 0;font-size:calc(1.15rem * var(--scale));line-height:1.25;color:#fafafa}
 .pane-intro p{font-size:.64rem;line-height:1.5}
+.field-desk[data-title-view="true"] .pane-intro{padding:1.5rem 1.35rem 1.3rem}
+.field-desk[data-title-view="true"] .pane-intro>.kicker,.field-desk[data-title-view="true"] .pane-intro>.pane-author{display:none}
+.field-desk[data-title-view="true"] .pane-intro h3{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:calc(1.48rem * var(--scale));font-weight:600;line-height:1.22;letter-spacing:-.018em;text-align:center;text-wrap:balance;overflow-wrap:break-word;word-break:normal}
+.field-desk[data-title-view="true"] .pane-intro>p{display:none}
+.field-desk[data-title-view="true"] .pane-intro::after{content:"";display:block;position:static;width:3rem;height:.35rem;margin:.65rem auto 0;border:0;opacity:.55;color:var(--pane-accent,var(--color,currentColor));background:linear-gradient(currentColor,currentColor) left center/38% 1px no-repeat,radial-gradient(circle,currentColor 1.5px,transparent 2px) center/5px 5px no-repeat,linear-gradient(currentColor,currentColor) right center/38% 1px no-repeat}
+.field-desk .pane-top strong :is(.reader-simple-title,.reader-full-title){margin:0;padding:0;border:0;border-radius:0;background:transparent;color:#fff;font:inherit;letter-spacing:inherit}
 .field-sections{padding:.75rem;background:#0e1117}
 .field-section{margin-bottom:.75rem;border-color:#2b313b;border-radius:7px;background:#0e1117}
 .field-section summary{min-height:2.75rem;padding:.7rem .8rem;border-bottom:1px solid #ffffff17;background:linear-gradient(90deg,var(--color),color-mix(in srgb,var(--color) 82%,#171b22));font-size:.66rem;letter-spacing:.055em}
@@ -59,7 +65,8 @@
 [data-field-threads]{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:hidden}[data-field-threads] path{fill:none;stroke:#8db0b1;stroke-width:1.35;opacity:.67}[data-field-threads] circle{fill:#10141a;stroke:#a8c9c3;stroke-width:1.2}
 @media(max-width:760px){.field-head{padding:10px;gap:8px}.field-heading h2{font-size:17px}.field-heading p{max-width:40vw}.field-actions{gap:4px}.field-actions .text-size{display:none}.field-pane{--pane-width:calc(100vw - 48px);min-width:280px}.field-status span:last-child{display:none}.member-controls{flex-wrap:wrap}.member-name{flex-basis:100%}.field-strip{padding:8px;gap:8px}.field-head .back-copy{display:none}.pane-top{padding-right:9px}.pane-intro{padding:20px}.field-desk .field-nav .control{max-width:150px}}
 @media(prefers-reduced-motion:reduce){.field-strip{scroll-behavior:auto!important}}
-/* Full Library workspaces stacked vertically beside a following corpus pane. */
+/* Corpus builds use one native horizontal reader; source books open on demand. */
+.ct-build-viewport{position:relative;flex:1;min-height:0;min-width:0;overflow:auto}.ct-native-build{display:block;width:100%;height:100%;min-height:400px}.ct-build-viewport>.ct-row{margin:12px;min-height:400px}
 .ct-shell,.ct-main{display:flex;flex:1;min-height:0;min-width:0;overflow:hidden}.ct-main{flex-direction:column}
 .ct-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:9px 16px;border-bottom:1px solid var(--line);flex:none;min-height:48px}.ct-toolbar>strong{font:600 14px/1.4 Georgia,serif;margin-right:auto}.ct-toolbar .ct-hint{font-size:11px;color:#a4aaa4;margin-right:auto}
 .ct-controls{display:flex;align-items:center;gap:4px}.ct-controls .control{padding:6px 9px!important}.ct-controls .active{background:#ece8df!important;color:#171b22!important}
@@ -179,6 +186,45 @@
 .field-desk .lateral-route-toolbar{display:flex;align-items:center;gap:.55rem;flex-shrink:0;padding:.3rem .4rem;border:1px solid #353b46;border-radius:6px;background:#171b22;color:#e1ba91;font:700 .55rem/1.3 ui-monospace,monospace}
 .field-desk .lateral-route-toolbar button{display:flex;align-items:center;gap:.3rem;padding:.4rem .6rem;border:1px solid #eae5da;border-radius:5px;background:#eae5da;color:#252722;font:650 .6rem/1.2 var(--st-font,system-ui);cursor:pointer}
 .lateral-route-toolbar svg{width:.85rem;height:.85rem;fill:none;stroke:currentColor;stroke-width:1.7}
+
+.field-desk .title-view-toggle{display:flex;align-items:center;justify-content:space-between;gap:.55rem;width:100%;margin:.15rem 0 .4rem;padding:.5rem .55rem;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;font:550 .72rem/1.3 var(--st-font,system-ui,sans-serif);letter-spacing:0;cursor:pointer}
+.field-desk .title-view-toggle:hover{background:color-mix(in srgb,currentColor 9%,transparent)}
+.field-desk .title-view-toggle:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+.field-desk .title-view-switch{position:relative;display:block;flex:0 0 1.65rem;width:1.65rem;height:.95rem;border:1px solid currentColor;border-radius:999px;opacity:.75}
+.field-desk .title-view-switch::after{content:"";position:absolute;top:.14rem;left:.14rem;width:.53rem;height:.53rem;border-radius:50%;background:currentColor;transition:transform .16s ease}
+.field-desk .title-view-toggle[aria-pressed="true"] .title-view-switch{background:color-mix(in srgb,currentColor 17%,transparent);opacity:1}
+.field-desk .title-view-toggle[aria-pressed="true"] .title-view-switch::after{transform:translateX(.69rem)}
+.field-desk .reader-simple-title{display:none}
+.field-desk[data-title-view="true"] .reader-full-title{display:none}
+.field-desk[data-title-view="true"] .reader-simple-title{display:inline}
+.field-desk[data-skin] .window-titlebar strong :is(.reader-simple-title,.reader-full-title),
+.field-desk[data-skin] .reader-title-controls .pane-language>span{margin:0;padding:0;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;letter-spacing:inherit}
+.field-desk[data-title-view="true"] :is(.source-head,.care-head):has(.reader-simple-title) .pane-kicker,
+.field-desk[data-title-view="true"] :is(.source-head,.care-head):has(.reader-simple-title)>p{display:none}
+/* Keep the slider edges stable; give headings their own centred title band. */
+.field-desk{--reader-source-inset:1.35rem;--reader-section-inset:.85rem}
+.field-desk[data-skin="care"]{--reader-section-inset:.75rem}
+.field-desk[data-skin="library"]{--reader-section-inset:1rem}
+.field-desk[data-skin="classic"]{--reader-section-inset:.7rem}
+.field-desk[data-title-view="true"] .source-copy{padding:1.5rem var(--reader-source-inset) 3.5rem}
+.field-desk[data-title-view="true"] .source-copy .source-head{margin:0 auto;padding:0 0 1.3rem;border-bottom:0;text-align:center}
+.field-desk[data-title-view="true"] .care-head{padding:1.5rem 1.35rem 1.3rem}
+.field-desk[data-title-view="true"][data-view="outline"] .outline-content .care-head{padding-inline:1.05rem}
+.field-desk[data-title-view="true"] .source-copy .source-head h2,
+.field-desk[data-title-view="true"] .care-head .care-heading h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:calc(1.48rem * var(--desk-text-scale,var(--reader-text-scale,1)));font-weight:600;line-height:1.22;letter-spacing:-.018em;text-align:center;text-wrap:balance;overflow-wrap:break-word;word-break:normal}
+.field-desk[data-title-view="true"] .care-head .care-heading{align-items:center;gap:.65rem}
+/* A purely decorative printer's mark keeps the title band quiet. */
+.field-desk[data-title-view="true"][data-skin] :is(.source-head,.care-head)::after{content:"";display:block;position:static;width:3rem;height:.35rem;margin:.65rem auto 0;border:0;opacity:.55;color:var(--pane-accent,var(--color,currentColor));background:linear-gradient(currentColor,currentColor) left center/38% 1px no-repeat,radial-gradient(circle,currentColor 1.5px,transparent 2px) center/5px 5px no-repeat,linear-gradient(currentColor,currentColor) right center/38% 1px no-repeat}
+.field-desk .reader-title-controls{display:inline-flex;align-items:center;justify-content:flex-end;gap:.35rem;flex:0 0 auto;min-width:0;margin-left:auto;margin-right:.45rem}
+.field-desk .slider-heading:has(.reader-title-controls) output{margin-left:0}
+.field-desk .reader-title-controls .pane-language{float:none;display:inline-flex;align-items:center;gap:.25rem;flex:0 0 auto;min-height:1.5rem;margin:0;padding:.15rem .3rem;border:0;border-radius:4px;background:transparent;color:inherit;font:550 .6rem/1.3 var(--st-font,system-ui,sans-serif);letter-spacing:.035em;white-space:nowrap;opacity:.72;cursor:pointer}
+.field-desk .reader-title-controls .pane-language:hover,.field-desk .reader-title-controls .pane-language:focus-visible{opacity:1;background:color-mix(in srgb,var(--pane-accent) 15%,transparent)}
+.field-desk[data-skin="care"] .reader-title-controls .pane-language{color:#fff;opacity:.62}
+.field-desk .window-titlebar>.reader-title-controls{margin-left:auto;color:inherit;text-transform:none}
+.field-desk .care-pane-minimized>.window-titlebar>.reader-title-controls{display:none}
+.field-desk .reader-title-controls [data-edit-source]{order:-1;margin-right:.35rem}
+@media(max-width:760px){.field-desk{--reader-source-inset:1rem}.field-desk[data-title-view="true"] .source-copy{padding-inline:1rem}.field-desk[data-title-view="true"] .care-head{padding-inline:var(--reader-section-inset)}}
+@media(prefers-reduced-motion:reduce){.field-desk .title-view-switch::after{transition:none}}
 
 [data-corpus-route-threads]{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8;overflow:hidden}
 [data-corpus-route-threads] path{fill:none;stroke:#bea175;stroke-width:1.4;opacity:.8}

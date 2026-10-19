@@ -64,7 +64,14 @@ test('every release source and CARE sheet projects its original text and declare
    const selected=selectionFor(work,unit.id);assert.equal(selected[unit.layer].id,unit.id);
    const displayed=adapter.unit(unit.id,state);
    assert.deepEqual(displayed.sections.flatMap(section=>section.items.map(item=>[item.id,item.text])),unit.sections.flatMap(section=>section.items.map(item=>[item.id,item.text])));
-   if(unit.identity)assert.deepEqual(displayed.identity,{...unit.identity,title:unit.original_title||unit.title,...(unit.identity.original_context?{context:unit.identity.original_context}:{})});
+   if(unit.identity){
+    const {title,context,...identity}=displayed.identity, {title:originalTitle,context:originalContext,...canonicalIdentity}=unit.identity;
+    assert.deepEqual(identity,canonicalIdentity);
+    const chapter=work.sources.find(source=>source.chapter_id===unit.id), reading=chapter&&adapter.chapter(chapter.id,state);
+    const label=unit.original_title || unit.title, contextual=/^[IVXLCDM\d]+\.?$/.test(label) && reading?.reading_title?.includes(' · ');
+    assert.equal(title,contextual ? reading.reading_title : label);
+    assert.equal(context,contextual && reading.reading_title_context || unit.identity.original_context || originalContext);
+   }
    const outline=adapter.outline(work.id,{id:unit.id,layer:unit.layer,request_id:'release-sheet'},state);
    assert.equal(outline.unit.id,unit.id);assert.equal(outline.error,undefined);
   }

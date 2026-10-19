@@ -21,7 +21,8 @@ test('every saved English chapter title is shared by its header, jump menu and l
       assert.equal(stack.chapters.find(row=>row.id === source.id).title,chapter.title,source.id);
       assert.equal(chapter.source_versions.title,chapter.title,source.id);
       assert.equal(adapter.stack(work.id,{...state,rawUnitId:source.id}).active_chapter.title,chapter.title,source.id);
-      assert.equal(adapter.chapter(source.id,original(work)).title,source.original_title || source.title,source.id);
+      const originalTitle = adapter.chapter(source.id,original(work)).title, label = source.original_title || source.title;
+      assert.ok(originalTitle === label || originalTitle.endsWith(' · ' + label.replace(/\.$/,'')),source.id);
     }
     for(const unit of work.units){
       const variant = unit.translations?.find(row=>row.language_code === 'en');
@@ -31,7 +32,8 @@ test('every saved English chapter title is shared by its header, jump menu and l
       assert.equal(projected.identity.title,projected.title,unit.id);
       assert.equal(projected.sheet_versions.title,projected.title,unit.id);
       assert.deepEqual(projected.sections.map(row=>row.name),variant.sections.map(row=>row.name),unit.id);
-      assert.equal(adapter.unit(unit.id,original(work)).title,unit.original_title || unit.title,unit.id);
+      const originalTitle = adapter.unit(unit.id,original(work)).title, label = unit.original_title || unit.title;
+      assert.ok(originalTitle === label || unit.layer === 'CH' && originalTitle.endsWith(' · ' + label.replace(/\.$/,'')),unit.id);
       assert.deepEqual(adapter.unit(unit.id,original(work)).sections.map(row=>row.name),unit.sections.map(row=>row.original_name || row.name),unit.id);
     }
   }
