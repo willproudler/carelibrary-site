@@ -76,26 +76,6 @@
   text-transform: uppercase;
 }
 
-@media (max-width: 700px) {
-  .app-header {
-    flex-wrap: wrap;
-    gap: 3px;
-    min-height: 0;
-    padding: 0;
-  }
-
-  .app-header .brand {
-    height: 50px;
-  }
-
-  .app-header nav {
-    width: 100%;
-    margin: 0;
-    padding: 0 8px 8px;
-    justify-content: flex-end;
-  }
-}
-
 @media (max-width: 580px) {
   .site-header .header-inner {
     flex-wrap: wrap;
@@ -109,11 +89,89 @@
     height: 50px;
   }
 }
-/* Keep every navigation control reachable on narrow phones. */
-@media (max-width: 700px) {
-  .app-header nav {justify-content:flex-start;overflow-x:auto;scrollbar-width:thin;}
-  .app-header nav>a,.app-header nav>button {flex-shrink:0;}
+/* Reader navigation stays in one row; touch targets remain generous. */
+.app-header {
+  position: relative;
+  isolation: isolate;
+  min-height: 48px;
+  gap: 12px;
+  padding: 4px 10px 4px 0;
 }
-@media (max-width: 440px) {
-  .app-header nav>[data-page=search] {font-size:0;gap:0;}
+.app-header .brand {
+  position: relative;
+  z-index: 1;
+  height: 38px;
+  gap: 8px;
+  font-size: 15px;
+}
+.app-header .brand .brand-mark {width: 88px; height: 64px;}
+.app-header .brand small {font-size: 9px; padding: 2px 4px;}
+.app-header nav {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  gap: 5px;
+}
+.app-header nav>a,
+.app-header nav>button {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 6px 10px;
+  gap: 7px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.app-header nav>.discover {margin-left: 0; padding: 6px 10px; font-size: 12px;}
+.app-header nav .nav-label,
+.app-header nav>.discover span {font: inherit;}
+.app-header nav .compact-label {display: none;}
+.app-header::before {
+  content: "";
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: url("/assets/care-header-mark.svg") left center / 142px 96px no-repeat;
+  opacity: .09;
+}
+@media (max-width: 1000px) {
+  .app-header {padding-inline: 8px;}
+  .app-header .brand {display: none;}
+  .app-header::before {display: block;}
+  .app-header nav {margin-left: auto;}
+}
+@media (max-width: 640px) {
+  .app-header {min-height: 53px; flex-wrap: nowrap; padding: 4px 8px;}
+  .app-header nav {
+    display: grid;
+    grid-template-columns: repeat(6,minmax(44px,1fr));
+    width: 100%;
+    margin: 0;
+    gap: 4px;
+    padding: 0;
+    overflow: visible;
+  }
+  .app-header nav>a,
+  .app-header nav>button,
+  .app-header nav>.discover {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px 2px;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 9px;
+    line-height: 1.1;
+    background: #171c23d9;
+  }
+  .app-header nav svg {width: 17px; height: 17px;}
+  .app-header nav .compact-label {display: inline;}
+  .app-header nav .wide-label {display: none;}
+  .app-header nav>.active {background: #2d6c67;}
+  .app-header nav>[data-page=laterals].active {background: #704d99;}
+  .app-header nav>[data-page=saved].active {background: #6c303b;}
+}
+@media (pointer: coarse) {
+  .app-header nav>a,
+  .app-header nav>button {min-width: 44px; min-height: 44px;}
 }

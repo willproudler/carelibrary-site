@@ -2,9 +2,9 @@
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=8b3326937679480e';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=3266556b4e90ca30';
 import {publicReadingText} from './native/reading-views.mjs?v=dd05ea4b1e9de824';
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=8b3326937679480e';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=3266556b4e90ca30';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];

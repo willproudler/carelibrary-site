@@ -1901,17 +1901,24 @@ button{border-radius:999px}
 .desk-menu-empty{display:block;padding:.6rem;font-size:.7rem;opacity:.6}
 @media(max-width:760px){.study-desk .desk-toolbar.desk-menu-toolbar{gap:.2rem;flex-wrap:wrap;padding:.35rem .5rem}.study-desk .desk-menu-toolbar>.desk-title{order:-1;flex-basis:100%;text-align:right;padding:.05rem .35rem .15rem}.study-desk .desk-menu-toolbar>.desk-title strong{font-size:.9rem}.study-desk .desk-menu-toolbar>.desk-title span{display:none}.study-desk .desk-menu-toolbar>.desk-reader-controls{flex:1;justify-content:space-between}.study-desk .desk-menu-trigger{font-size:.65rem;padding:.4rem .35rem;gap:.25rem}}
 
-/* Keep reading menus together when the title needs its own row. */
+/* Remove surplus chrome, retaining the full menus and a distinct book title. */
+.study-desk .desk-toolbar.desk-menu-toolbar{min-height:2.5rem;gap:.5rem;padding:.1rem .65rem}
+.study-desk .desk-menu-trigger{min-height:36px}
 @media(max-width:760px){
-  .study-desk .desk-toolbar.desk-menu-toolbar{gap:.25rem .5rem;padding:.35rem .55rem}
+  .study-desk .desk-toolbar.desk-menu-toolbar{gap:.1rem .4rem;flex-wrap:nowrap;padding:.1rem .45rem}
   .study-desk .desk-menu-toolbar>.desk-reader-controls{flex:0 1 auto;max-width:100%;justify-content:flex-start;flex-wrap:wrap;gap:.15rem;margin:0;padding:0}
-  .study-desk .desk-menu-toolbar>.desk-title{padding:.1rem .35rem .2rem}
-  .study-desk .desk-menu-trigger{flex:0 0 auto;min-width:36px;min-height:36px;padding:.45rem .6rem;gap:.3rem;border-radius:6px;font-size:.72rem;line-height:1.2}
+  .study-desk .desk-menu-toolbar>.desk-title{order:0;flex:1 1 10rem;padding:0 .2rem}
+  .study-desk .desk-menu-trigger{flex:0 0 auto;min-width:36px;padding:.35rem .5rem;gap:.3rem;border-radius:6px;font-size:.72rem;line-height:1.2}
   .study-desk .desk-menu-trigger svg{opacity:.6}
   .study-desk .desk-menu-trigger:hover,.study-desk .desk-menu-trigger[aria-expanded="true"]{background:color-mix(in srgb,currentColor 9%,transparent)}
   .study-desk .desk-menu-panel .desk-tab,.study-desk .desk-menu-panel .desk-action{min-height:36px}
 }
-@media(max-width:760px) and (pointer:coarse){
+@media(max-width:560px){
+  .study-desk .desk-toolbar.desk-menu-toolbar{flex-wrap:wrap;padding:.2rem .45rem .1rem}
+  .study-desk .desk-menu-toolbar>.desk-title{order:-1;flex-basis:100%;padding:.05rem .25rem 0}
+  .study-desk .desk-menu-toolbar>.desk-title strong{font-size:.84rem;line-height:1.15}
+}
+@media(pointer:coarse){
   .study-desk .desk-menu-trigger{min-width:44px;min-height:44px}
   .study-desk .desk-menu-panel .desk-tab,.study-desk .desk-menu-panel .desk-action{min-height:44px}
 }
