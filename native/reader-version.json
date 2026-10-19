@@ -1,11 +1,11 @@
 {
-  "version": "care-study-desk/2.35",
+  "version": "care-study-desk/2.36",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes"
   ],
   "assets": {
-    "study-desk.css": "e8003513d86ac3e14ecabea599ab44d1fc38a4b4d942f3de60566b19710e5f0e",
+    "study-desk.css": "bc218dbe48a1f9234546cf08c7ea2aeee6411210902249cb025430833f6208d3",
     "study-desk.mjs": "1ab66001fb302315bb5277cfed10e4e2694e9d21720833a4dcc0758417dda219",
     "reading-views.mjs": "dd05ea4b1e9de8243de23917c87ef3b9951c1e3dcd0717c6db4cd6b293201739"
   },

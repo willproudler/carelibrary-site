@@ -559,7 +559,7 @@ button{border-radius:999px}
 .study-desk .window-titlebar{flex:0 0 auto}
 .study-desk .desk-window .window-body{height:auto;min-height:0;flex:1 1 0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:auto;overscroll-behavior-y:contain;touch-action:pan-x pan-y}
 .study-desk .source-layout{display:block;min-height:100%}
-.study-desk .source-pane{flex-basis:min(33rem,calc(100vw - 7rem));min-width:28rem}
+.study-desk .source-pane{flex-basis:min(35rem,calc(100vw - 7rem));min-width:28rem}
 .study-desk .desk-strip{scroll-snap-type:none;scrollbar-width:auto}
 .study-desk .desk-strip::-webkit-scrollbar{height:.85rem}
 .pane-slider{flex:0 0 auto;min-width:0;padding:.85rem var(--reader-section-inset,.85rem) .65rem;border-bottom:1px solid color-mix(in srgb,var(--pane-accent) 28%,transparent);background:var(--desk-paper);color:var(--desk-ink)}
@@ -678,7 +678,7 @@ button{border-radius:999px}
 .route-arrival-new .confluence-thread{animation:route-arrive .8s ease-out both}
 @keyframes route-arrive{from{opacity:0;stroke-dasharray:2 7;stroke-dashoffset:30}to{opacity:.7;stroke-dasharray:2 0;stroke-dashoffset:0}}
 @media(prefers-reduced-motion:reduce){.route-arrival-new .confluence-thread{animation:none}.route-thread{transition:none}}
-@media(max-width:760px){.study-desk .source-pane{flex-basis:min(33rem,calc(100vw - 3.8rem));min-width:min(28rem,calc(100vw - 3.8rem))}}
+@media(max-width:760px){.study-desk .source-pane,.study-desk .care-pane{flex-basis:min(35rem,calc(100vw - 3.8rem));min-width:min(28rem,calc(100vw - 3.8rem))}}
 
 /* Route direction controls. */
 .route-axiom-row{position:relative;min-width:0}
@@ -1777,9 +1777,10 @@ button{border-radius:999px}
 .study-desk[data-beautiful-text="true"] .source-copy .source-head h2{margin:.3rem 0 .35rem;font-family:var(--beautiful-font);font-size:clamp(1.35rem,2.25vw,1.9rem);font-weight:500;line-height:1.2;letter-spacing:-.018em;text-wrap:balance;color:var(--beautiful-ink)}
 .study-desk[data-beautiful-text="true"] .source-copy .source-head p{font-family:var(--beautiful-font);font-size:.8rem;line-height:1.5;color:var(--beautiful-muted)}
 .study-desk[data-beautiful-text="true"] .source-copy .source-head .source-heading-context{margin:0 0 .35rem;font:550 .62rem/1.5 var(--st-font,system-ui,sans-serif);letter-spacing:.035em;color:var(--beautiful-muted)}
-.study-desk[data-beautiful-text="true"] .source-copy>.passage-row,.study-desk[data-beautiful-text="true"] .source-copy>.passage{max-width:60ch;margin-inline:0 auto}
+.study-desk[data-beautiful-text="true"] .source-copy>.passage-row,.study-desk[data-beautiful-text="true"] .source-copy>.passage{max-width:64ch;margin-inline:0 auto}
 .study-desk[data-beautiful-text="true"] .source-copy .passage{padding:.85rem 0 1rem;border-top-color:var(--beautiful-rule);color:var(--beautiful-ink);scroll-margin-block:1.25rem}
 .study-desk[data-beautiful-text="true"] .source-copy .passage-text,.study-desk[data-beautiful-text="true"] .route-source-card .passage-text,.study-desk[data-beautiful-text="true"] .inspect-text.source{max-width:60ch;font-family:var(--beautiful-font);font-size:calc(1.04rem * var(--desk-text-scale,var(--reader-text-scale,1)));font-weight:400;line-height:1.78;letter-spacing:0;text-align:start;text-wrap:pretty;font-kerning:normal;font-variant-ligatures:common-ligatures;color:var(--beautiful-ink);overflow-wrap:break-word;word-break:normal;hyphens:manual}
+.study-desk[data-beautiful-text="true"] .source-copy .passage-text{max-width:none;font-size:calc(1.08rem * var(--desk-text-scale,var(--reader-text-scale,1)))}
 .study-desk[data-beautiful-text="true"] .source-copy .care-reading-text,.study-desk[data-beautiful-text="true"] .route-source-card .care-reading-text,.study-desk[data-beautiful-text="true"] .inspect-text.source .care-reading-text{max-width:none;margin:0;font-family:inherit;line-height:inherit;color:inherit;overflow-wrap:break-word}
 .study-desk[data-beautiful-text="true"] .source-copy .passage-text p{margin:0 0 1em;line-height:inherit}
 .study-desk[data-beautiful-text="true"] .source-copy .passage-text p:last-child{margin-bottom:0}
@@ -1798,7 +1799,7 @@ button{border-radius:999px}
 .study-desk[data-beautiful-text="true"] .source-copy .passage[data-beautiful-opening="number"] .passage-address{margin:0}
 .study-desk[data-beautiful-text="true"] .source-copy .beautiful-detail-row:has(>.passage[data-beautiful-folded="true"]){display:none}
 .study-desk[data-beautiful-text="true"] .passage[data-beautiful-folded="true"]>.passage-text{display:none}
-@media(max-width:760px){.study-desk[data-beautiful-text="true"] .source-copy{padding:1rem 1.4rem 2.8rem 1rem}.study-desk[data-beautiful-text="true"] .source-copy .passage{padding-inline:0}.study-desk[data-beautiful-text="true"] .source-copy .passage-text{font-size:calc(1.03rem * var(--desk-text-scale,var(--reader-text-scale,1)))}}
+@media(max-width:760px){.study-desk[data-beautiful-text="true"] .source-copy{padding:1rem 1.4rem 2.8rem 1rem}.study-desk[data-beautiful-text="true"] .source-copy .passage{padding-inline:0}.study-desk[data-beautiful-text="true"] .source-copy .passage-text{font-size:calc(1.06rem * var(--desk-text-scale,var(--reader-text-scale,1)))}}
 @media(prefers-reduced-motion:reduce){.study-desk .beautiful-text-switch::after{transition:none}}
 
 .study-desk .title-view-toggle{display:flex;align-items:center;justify-content:space-between;gap:.55rem;width:100%;margin:.15rem 0 .4rem;padding:.5rem .55rem;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;font:550 .72rem/1.3 var(--st-font,system-ui,sans-serif);letter-spacing:0;cursor:pointer}
