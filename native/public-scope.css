@@ -14,3 +14,6 @@ option[value="unprocessed"]{display:none}
 
 /* Portrait browsing belongs to the private Mac library. */
 [data-portrait-open],[data-book-menu-action="book_portrait"],[data-book-menu-action="author_library"]{display:none!important}
+
+/* Source editing belongs to the local library. */
+[data-edit-source]{display:none!important}

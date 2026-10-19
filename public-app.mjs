@@ -1,11 +1,11 @@
 import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
-import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField} from './public-fields.mjs?v=5556bfdf9744c7ad';
-import mountReader from './native/study-desk.mjs?v=5556bfdf9744c7ad';
+import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField} from './public-fields.mjs?v=6c6f23443e7f2eac';
+import mountReader from './native/study-desk.mjs?v=6c6f23443e7f2eac';
 
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=5556bfdf9744c7ad';
-import {searchLibrary} from './library-core.mjs?v=5556bfdf9744c7ad';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6c6f23443e7f2eac';
+import {searchLibrary} from './library-core.mjs?v=6c6f23443e7f2eac';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -16,7 +16,7 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=5556bfdf9744c7ad'),loadText('./native/public-scope.css?v=5556bfdf9744c7ad')]);
+ const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=6c6f23443e7f2eac'),loadText('./native/public-scope.css?v=6c6f23443e7f2eac')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
@@ -29,14 +29,14 @@ async function start(){
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise;
  async function ensureViewer(){
-  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=5556bfdf9744c7ad'),loadText('./native/reference-viewer.css?v=5556bfdf9744c7ad'),loadText('./native/reference-viewer.html?v=5556bfdf9744c7ad')]).then(([module,viewerCSS,viewerHTML])=>{
+  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=6c6f23443e7f2eac'),loadText('./native/reference-viewer.css?v=6c6f23443e7f2eac'),loadText('./native/reference-viewer.html?v=6c6f23443e7f2eac')]).then(([module,viewerCSS,viewerHTML])=>{
    mountViewer=module.default;
    viewerHost.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
   }).catch(error=>{viewerPromise=null;throw error;});
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=5556bfdf9744c7ad'),loadText('./native/study-field.css?v=5556bfdf9744c7ad')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=6c6f23443e7f2eac'),loadText('./native/study-field.css?v=6c6f23443e7f2eac')]).then(([module,fieldCSS])=>{
    mountField=module.default;const style=document.createElement('style');
    // Keep the bottom save control still when pointer entry reveals trace links.
    style.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;

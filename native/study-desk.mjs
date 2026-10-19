@@ -921,7 +921,7 @@ function routeFocusHead(reference,label,direction="incoming"){return `<header cl
 function routeGroups(items,selectedId){
   const groups=new Map()
   arr(items).forEach(item=>{const key=String(item.source_pane||item.unit_id||item.sheet_title||item.layer||"TRACE");if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)})
-  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id">${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></button><button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`).join("");return `<section class="route-sheet"${mc?` style="--pane-accent:${layerColor("MC",first)}"`:""}><h3><span>${esc(mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet")}</span><b>${rows.length}</b></h3><div class="route-list">${cards}</div></section>`}).join("")
+  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id">${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></button>${axiomCopyControl(item.id)}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`).join("");return `<section class="route-sheet"${mc?` style="--pane-accent:${layerColor("MC",first)}"`:""}><h3><span>${esc(mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet")}</span><b>${rows.length}</b></h3><div class="route-list">${cards}</div></section>`}).join("")
 }
 function sameLayerRouteItems(reference,direction){
   if(reference?.kind!=="axiom"||routeMode(reference)===(direction==="incoming"?"outgoing":"incoming"))return []
@@ -954,7 +954,7 @@ function sourcePane(data,selectedId,reference){
     if(passage.route_available===false)return `<div class="passage-row"><article class="passage" data-beautiful-opening-foldable="${beautifulHeadingDetail(passage)}"><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`
     return `<div class="passage-row"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button></div>`
   }).join("")
-  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${arr(chapter.source_versions?.options).length?`<button type="button" class="pane-language" data-edit-source="${esc(chapter.raw_unit_id)}" title="Edit source and passage size">Edit passages</button>`:""}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2><p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
+  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${arr(chapter.source_versions?.options).length?`<button type="button" class="pane-language" data-edit-source="${esc(chapter.raw_unit_id)}" title="Edit source and passage size">Edit passages</button>`:""}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
 }
 function traceLabel(item,layer){
   if(String(layer).toUpperCase()==="SOURCE")return "Saved source passage"
@@ -993,8 +993,8 @@ function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),s
     const contains=visibleItems.some(item=>String(item.id)===selectedId||feederIds.has(String(item.id)))
     const items=visibleItems.map(item=>{
       const content=`<span class="axiom-id">${esc(item.address||item.id)} · ${esc(item.id)}</span><span class="axiom-text">${item.reading_html ?? esc(item.text)}</span><span class="axiom-trace">${esc(traceLabel(item,unit.type))}</span>`
-      if(isRoute){const button=`<button type="button" class="axiom-button ${String(item.id)===selectedId?"selected":feederIds.has(String(item.id))?"route-feeder":""}" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(unit.id)}" aria-pressed="false">${content}</button>`;return `<div class="axiom-row route-axiom-row">${button}${String(item.id)===selectedId?routeArrival(reference):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`}
-      return `<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false" aria-describedby="desk-selection-help">${content}</button><button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`
+      if(isRoute){const button=`<button type="button" class="axiom-button ${String(item.id)===selectedId?"selected":feederIds.has(String(item.id))?"route-feeder":""}" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(unit.id)}" aria-pressed="false">${content}</button>`;return `<div class="axiom-row route-axiom-row">${button}${axiomCopyControl(item.id)}${String(item.id)===selectedId?routeArrival(reference):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`}
+      return `<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false" aria-describedby="desk-selection-help">${content}</button>${axiomCopyControl(item.id)}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`
     }).join("")
     return `<details class="care-section"${section.source_pane?` data-connection-reading="${esc(section.source_pane)}"`:""} ${contains||(!isRoute&&sectionIndex===defaultSectionIndex)?"open":""}><summary><span>${esc(section.number||String(sectionIndex+1))} · ${esc(section.name)}</span><small>${visibleItems.length}</small></summary><div class="axiom-list">${items}</div></details>`
   }).join("")
@@ -1002,7 +1002,7 @@ function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),s
   const sheetItems=new Set(arr(unit.sections).flatMap(section=>arr(section.items)).map(item=>String(item.id))),levelPeers=isRoute&&mcPartition&&isFocus?routedItems.filter(item=>!sheetItems.has(String(item.id))&&String(item.id)!==selectedId):[],levelPeerMarkup=levelPeers.length?`<div class="mc-level-peers">${routeGroups(levelPeers,selectedId)}</div>`:""
   const selectedNote=isRoute&&String(unit.type).toUpperCase()===focusLayer&&(!mcPartition||isFocus)?`<div class="route-recipient"><span>${routeMode(reference)==="incoming"?"Receiving at":routeMode(reference)==="both"?"Flowing through":"Flowing from"} <b>${esc(identity.title||unit.title||unit.id)}</b></span><button type="button" class="route-close route-pane-close" data-clear-reference aria-label="Close route focus" title="Close route"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div>`:""
   const sectionActions=!isRoute&&arr(unit.sections).length?`<div class="sheet-actions" role="group" aria-label="${esc(identity.title||unit.title||unit.id)} sections"><button type="button" data-sheet-sections="collapse" aria-label="Collapse all sections" title="Collapse all sections"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 3 4 4 4-4M4 10h12m-10 7 4-4 4 4"/></svg></button><button type="button" data-sheet-sections="expand" aria-label="Expand all sections" title="Expand all sections"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 4-4 4 4M4 10h12m-10 4 4 4 4-4"/></svg></button></div>`:""
-  return `<section class="desk-window care-pane" data-pane="${esc(unit.id)}" data-layer="${esc(unit.type)}"${levelAttribute}${isRoute?"":" data-reading-sheet"}${unit.reader_slot?` data-reader-slot="${esc(unit.reader_slot)}"`:""} style="--pane-accent:${color}"><div class="window-titlebar"><strong>${isRoute?`${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}`:`<span class="reader-full-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}</span><span class="reader-simple-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(["CL","MC"].includes(unit.type)?paneSimpleTitle(unit,stack):unit.type==="CH"?`Chapter ${unit.chapter_number||unit.sequence_number||arr(stack?.sheet_options?.CH).findIndex(row=>String(row.id)===String(unit.id))+1||index+1}`:unit.type==="WB"?"Whole book":identity.title||unit.title||unit.id)}</span>`}</strong><span>${unit.item_count??arr(unit.items).length} AXIOMS</span>${showVersions&&!isRoute?paneBookmarkButton(unit,bookmarks,fieldBookmarks):""}</div>${isRoute?"":paneSlider(stack,unit.reader_slot||unit.type,unit.reader_option_id||unit.id)}<div class="window-body" data-reading-id="${esc(unit.reader_option_id||unit.id)}"><header class="care-head">${showVersions&&!isRoute?sheetVersionTrigger(unit,{pane:true}):""}<span class="pane-kicker"${isRoute?"":" data-slider-preview-kicker"}>${esc(identity.kicker||unit.type||"CARE SHEET")}</span><div class="care-heading"><h2>${isRoute?esc(identity.title||unit.title||unit.label):`<span class="reader-full-title" data-slider-preview-title>${esc(identity.title||unit.title||unit.label)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(unit,stack))}</span>`}</h2>${sectionActions}</div><p${isRoute?"":` data-slider-preview-context${["CL","MC"].includes(unit.type)?` class="title-chapter-trail" title="${esc(identity.context||unit.id)}"`:""}`}>${esc(identity.context||unit.id)}</p></header>${selectedNote}${levelPeerMarkup}<div class="care-sections">${sections||'<p class="trace-empty">No readable axioms in this sheet.</p>'}</div></div></section>`
+  return `<section class="desk-window care-pane" data-pane="${esc(unit.id)}" data-layer="${esc(unit.type)}"${levelAttribute}${isRoute?"":" data-reading-sheet"}${unit.reader_slot?` data-reader-slot="${esc(unit.reader_slot)}"`:""} style="--pane-accent:${color}"><div class="window-titlebar"><strong>${isRoute?`${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}`:`<span class="reader-full-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}</span><span class="reader-simple-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(["CL","MC"].includes(unit.type)?paneSimpleTitle(unit,stack):unit.type==="CH"?`Chapter ${unit.chapter_number||unit.sequence_number||arr(stack?.sheet_options?.CH).findIndex(row=>String(row.id)===String(unit.id))+1||index+1}`:unit.type==="WB"?"Whole book":identity.title||unit.title||unit.id)}</span>`}</strong><span>${unit.item_count??arr(unit.items).length} AXIOMS</span>${showVersions&&!isRoute?paneBookmarkButton(unit,bookmarks,fieldBookmarks):""}</div>${isRoute?"":paneSlider(stack,unit.reader_slot||unit.type,unit.reader_option_id||unit.id)}<div class="window-body" data-reading-id="${esc(unit.reader_option_id||unit.id)}"><header class="care-head">${showVersions&&!isRoute?sheetVersionTrigger(unit,{pane:true}):""}<span class="pane-kicker"${isRoute?"":" data-slider-preview-kicker"}>${esc(identity.kicker||unit.type||"CARE SHEET")}</span><div class="care-heading"><h2>${isRoute?esc(identity.title||unit.title||unit.label):`<span class="reader-full-title" data-slider-preview-title>${esc(identity.title||unit.title||unit.label)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(unit,stack))}</span>`}</h2>${sectionActions}</div>${readerPaneImprint(unit)}<p${isRoute?"":` data-slider-preview-context${["CL","MC"].includes(unit.type)?` class="title-chapter-trail" title="${esc(identity.context||unit.id)}"`:""}`}>${esc(identity.context||unit.id)}</p></header>${selectedNote}${levelPeerMarkup}<div class="care-sections">${sections||'<p class="trace-empty">No readable axioms in this sheet.</p>'}</div></div></section>`
 }
 function traceGroup(title,items,empty){
   const rows=arr(items).map(item=>`<button type="button" class="trace-card" data-ref-id="${esc(item.id)}" ${item.kind==="unresolved"?"disabled":""}><strong>${esc(item.layer||item.kind)} · ${esc(item.id)}</strong><span>${esc(textClip(item.reading_text ?? item.text ?? item.title,220))}</span></button>`).join("")
@@ -4108,6 +4108,47 @@ function setupBeautifulText(runtime){
 const TITLE_VIEW_KEY='care-title-view-v1'
 const TITLE_VIEW_EVENT='care-title-view-change'
 const titleViewSessions=new WeakMap()
+const readerCopyTimers=new WeakMap()
+
+function readerPaneCode(unit,layer=''){
+  const item=typeof unit==='string'?{id:unit}:unit||{}
+  const source=String(layer||item.type||item.layer||'').toUpperCase()==='SOURCE'
+  const candidates=[source?item.raw_unit_id:null,item.canonical_unit_id,item.care_unit_id,item.unit_id,item.id,item.raw_unit_id]
+  for(const candidate of candidates){
+    const code=String(candidate||'').split(':')[0]
+    if(/^[A-Z][A-Z0-9]{0,15}_[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(code))return code
+  }
+  return ''
+}
+
+function readerPaneImprint(unit,layer=''){
+  const code=readerPaneCode(unit,layer)
+  if(!code)return ''
+  return `<div class="reader-pane-imprint"><i class="reader-imprint-rule" aria-hidden="true"></i><button type="button" class="reader-pane-code" data-copy-pane-code="${esc(code)}" aria-label="Copy reading code ${esc(code)}" title="Copy reading code ${esc(code)}"><span>${esc(code)}</span></button><i class="reader-imprint-rule" aria-hidden="true"></i><span class="reader-copy-status" role="status" aria-live="polite"></span></div>`
+}
+
+async function copyReaderPaneCode(button,root){
+  const code=button?.dataset?.copyPaneCode,doc=root?.ownerDocument,view=doc?.defaultView
+  if(!code||!doc||!root.contains(button))return false
+  let copied=false
+  try{
+    if(!view?.navigator?.clipboard?.writeText)throw Error('Clipboard unavailable')
+    await view.navigator.clipboard.writeText(code);copied=true
+  }catch(_){
+    let helper
+    try{
+      helper=doc.createElement('textarea');helper.value=code;helper.setAttribute('readonly','');helper.style.cssText='position:fixed;left:-9999px;top:0;opacity:0'
+      root.appendChild(helper);helper.select();copied=Boolean(doc.execCommand('copy'))
+    }catch(_){}finally{helper?.remove();if(root.contains(button))button.focus?.({preventScroll:true})}
+  }
+  if(!root.contains(button))return copied
+  const status=button.parentElement?.querySelector('.reader-copy-status')
+  button.dataset.copyState=copied?'copied':'failed'
+  if(status)status.textContent=copied?`Copied ${code}`:'Could not copy. Select the code to copy it.'
+  if(readerCopyTimers.has(button))view?.clearTimeout?.(readerCopyTimers.get(button))
+  if(view?.setTimeout)readerCopyTimers.set(button,view.setTimeout(()=>{delete button.dataset.copyState;if(status)status.textContent='';readerCopyTimers.delete(button)},1800))
+  return copied
+}
 
 function titleViewControl(){
   return '<button type="button" class="title-view-toggle" data-title-view-toggle aria-pressed="true" title="Emphasize titles; switch off to restore full headings"><span>Titles only</span><span class="title-view-switch" aria-hidden="true"></span></button>'
@@ -4208,6 +4249,8 @@ function setupTitleView(runtime){
     }
   }
   const click=event=>{
+    const copy=event.target?.closest?.('[data-copy-pane-code]')
+    if(copy&&root.contains(copy)){event.preventDefault();event.stopImmediatePropagation();void copyReaderPaneCode(copy,root);return}
     const control=event.target?.closest?.('[data-title-view-toggle]')
     if(!control||!root.contains(control))return
     event.preventDefault();event.stopImmediatePropagation();apply(!enabled,true)
@@ -4241,6 +4284,80 @@ function setupTitleView(runtime){
   }
   runtime.cleanupTitleView=cleanup
   refresh()
+  return cleanup
+}
+
+
+function axiomCopyControl(id=''){
+  return `<button type="button" class="reader-axiom-copy" data-copy-axiom="${esc(id)}" aria-label="Copy axiom text${id?` · ${esc(id)}`:''}">Copy</button><span class="reader-axiom-copy-status" role="status" aria-live="polite"></span>`
+}
+function displayedAxiomText(button){
+  const row=button?.closest?.('.axiom-row,.field-item')
+  const prose=row?.querySelector('.axiom-text,.route-card-text,.item-copy,.item-prose')
+  // Read the rendered language and formatting, never the surrounding address,
+  // trace, bookmark, or route metadata and never a hidden original-language value.
+  return prose?String(prose.innerText??prose.textContent??''):''
+}
+async function copyAxiomText(button,root,state={timers:new Map(),pending:new WeakSet(),disposed:false}){
+  const doc=root?.ownerDocument,view=doc?.defaultView
+  if(!button||!doc||!root.contains(button)||state.disposed||state.pending.has(button))return false
+  const text=displayedAxiomText(button)
+  if(!text.trim())return false
+  state.pending.add(button)
+  let copied=false
+  try{
+    if(!view?.navigator?.clipboard?.writeText)throw new Error('Clipboard unavailable')
+    await view.navigator.clipboard.writeText(text)
+    copied=true
+  }catch(_){
+    if(!state.disposed&&root.contains(button)){
+      const tree=root.getRootNode?.(),active=tree?.activeElement||doc.activeElement
+      const selection=tree?.getSelection?.()||view?.getSelection?.(),ranges=[]
+      for(let index=0;index<(selection?.rangeCount||0);index++)ranges.push(selection.getRangeAt(index).cloneRange())
+      let helper
+      try{
+        helper=doc.createElement('textarea');helper.value=text;helper.setAttribute('readonly','')
+        helper.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none'
+        root.appendChild(helper);helper.select();copied=Boolean(doc.execCommand?.('copy'))
+      }catch(_){}finally{
+        helper?.remove()
+        if(active?.isConnected!==false)active?.focus?.({preventScroll:true})
+        if(selection){try{selection.removeAllRanges();for(const range of ranges)selection.addRange(range)}catch(_){}}
+      }
+    }
+  }
+  state.pending.delete(button)
+  if(state.disposed||!root.contains(button))return copied
+  const status=button.parentElement?.querySelector('.reader-axiom-copy-status')
+  const previous=state.timers.get(button);if(previous!==undefined)view?.clearTimeout(previous)
+  button.dataset.copyState=copied?'copied':'failed';button.textContent=copied?'Copied':'Try again'
+  if(status)status.textContent=copied?'Axiom text copied.':'Could not copy. Select the axiom text to copy it.'
+  if(view?.setTimeout)state.timers.set(button,view.setTimeout(()=>{
+    state.timers.delete(button)
+    if(!state.disposed&&root.contains(button)){delete button.dataset.copyState;button.textContent='Copy';if(status)status.textContent=''}
+  },1800))
+  return copied
+}
+function setupAxiomCopy(runtime){
+  runtime.cleanupAxiomCopy?.()
+  const root=runtime.root,view=root.ownerDocument?.defaultView,state={timers:new Map(),pending:new WeakSet(),disposed:false}
+  const click=event=>{
+    const button=event.target?.closest?.('[data-copy-axiom]')
+    if(!button||!root.contains(button))return
+    event.preventDefault();event.stopImmediatePropagation()
+    void copyAxiomText(button,root,state)
+  }
+  // Only the explicit Copy button is intercepted. Text selection and the
+  // original axiom's click, route, and keyboard handlers remain independent.
+  root.addEventListener('click',click,true)
+  const cleanup=()=>{
+    if(state.disposed)return
+    state.disposed=true;root.removeEventListener('click',click,true)
+    for(const [button,timer]of state.timers){view?.clearTimeout(timer);delete button.dataset.copyState;button.textContent='Copy';const status=button.parentElement?.querySelector('.reader-axiom-copy-status');if(status)status.textContent=''}
+    state.timers.clear()
+    if(runtime.cleanupAxiomCopy===cleanup)delete runtime.cleanupAxiomCopy
+  }
+  runtime.cleanupAxiomCopy=cleanup
   return cleanup
 }
 
@@ -4342,6 +4459,7 @@ export default function(component){
     runtime.applyTextScale()
     setupBeautifulText(runtime)
     setupTitleView(runtime)
+    setupAxiomCopy(runtime)
     runtime.paintConnectionView?.()
     runtime.restoreReaderMenu?.()
     if(sameWork)runtime.restoreVersionMenus(versionMenus)
@@ -4403,7 +4521,7 @@ export default function(component){
     // The reader data and DOM are ready; do not add a timed input-blocking delay.
     loader?.remove()
     runtime.applyOutline?.()
-    return finishRender(()=>{runtime.cleanupTitleView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
+    return finishRender(()=>{runtime.cleanupAxiomCopy?.();runtime.cleanupTitleView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`

@@ -1,9 +1,9 @@
 /* The Discover page mounts CARE's shipped reader against the selected public
  * collection. No authoring, generation, account or private-library API is used. */
-import mountReader from './native/study-desk.mjs?v=5556bfdf9744c7ad';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=5556bfdf9744c7ad';
+import mountReader from './native/study-desk.mjs?v=6c6f23443e7f2eac';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6c6f23443e7f2eac';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
-import {loadPublicField} from './public-fields.mjs?v=5556bfdf9744c7ad';
+import {loadPublicField} from './public-fields.mjs?v=6c6f23443e7f2eac';
 import {loadLibrary} from './library-loader.mjs';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
@@ -171,8 +171,8 @@ export async function mountDiscoverReader(host,options={}) {
     };
     const [library,css,scope]=await Promise.all([
       options.library||loadLibrary(options.fetch?{fetch:options.fetch}:{}),
-      readText('./native/study-desk.css?v=5556bfdf9744c7ad'),
-      readText('./native/public-scope.css?v=5556bfdf9744c7ad'),
+      readText('./native/study-desk.css?v=6c6f23443e7f2eac'),
+      readText('./native/public-scope.css?v=6c6f23443e7f2eac'),
     ]);
     const data=await prepareDiscoverReading(library);
     const controller=data.works?.length?createDiscoverController(data):null;
@@ -220,7 +220,7 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=5556bfdf9744c7ad')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=6c6f23443e7f2eac')]);
           if(destroyed||version!==requestVersion)return;
           const members=(field.bundle?.members||[]).map(member=>data.works.find(work=>work.id===(member.work_id||member.id)||work.version_work_id===(member.work_id||member.id))?.id).filter(Boolean);
           await library.ensureWorks(members);
