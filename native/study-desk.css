@@ -1832,8 +1832,7 @@ button{border-radius:999px}
 .study-desk[data-title-view="true"][data-skin] :is(.source-head,.care-head)::after{display:none}
 .study-desk .reader-pane-imprint{display:none}
 .study-desk[data-title-view="true"] .reader-pane-imprint{position:relative;display:flex;align-items:center;gap:.45rem;margin-top:.45rem;min-width:0;color:inherit}
-.study-desk .reader-imprint-rule{flex:0 0 1.25rem;height:1px;background:var(--pane-accent,var(--color,currentColor));opacity:.6}
-.study-desk .reader-pane-code{display:inline-flex;align-items:center;min-width:0;max-width:calc(100% - 4rem);min-height:1.15rem;padding:0;border:0;border-radius:2px;background:transparent;color:color-mix(in srgb,var(--pane-accent,var(--color,currentColor)) 70%,var(--desk-ink,currentColor));font:650 .54rem/1.25 var(--st-code-font,ui-monospace,monospace);letter-spacing:.075em;text-align:start;cursor:copy}
+.study-desk .reader-pane-code{display:inline-flex;align-items:center;min-width:0;max-width:100%;min-height:1.15rem;padding:0;border:0;border-radius:2px;background:transparent;color:color-mix(in srgb,var(--pane-accent,var(--color,currentColor)) 70%,var(--desk-ink,currentColor));font:650 .54rem/1.25 var(--st-code-font,ui-monospace,monospace);letter-spacing:.075em;text-align:start;cursor:copy}
 .study-desk .reader-pane-code>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
 .study-desk .reader-pane-code:hover,.study-desk .reader-pane-code[data-copy-state="copied"]{text-decoration:underline;text-underline-offset:.25em;text-decoration-thickness:1px}
 .study-desk .reader-pane-code:focus-visible{outline:1px solid var(--pane-accent,var(--color,currentColor));outline-offset:4px}
@@ -1849,13 +1848,8 @@ button{border-radius:999px}
 @media(max-width:760px){.study-desk{--reader-source-inset:1rem}.study-desk[data-title-view="true"] .care-head{padding-inline:var(--reader-section-inset)}}
 @media(prefers-reduced-motion:reduce){.study-desk .title-view-switch::after{transition:none}}
 
-.study-desk .reader-axiom-copy,.field-desk .reader-axiom-copy{position:absolute;z-index:2;top:.56rem;right:2.55rem;min-height:1.7rem;padding:.2rem .35rem;border:0;border-radius:3px;background:transparent;color:inherit;font:500 .58rem/1.2 var(--st-font,system-ui,sans-serif);letter-spacing:0;cursor:pointer;opacity:0;pointer-events:none}
-.study-desk .axiom-row:hover>.reader-axiom-copy,.study-desk .axiom-row:focus-within>.reader-axiom-copy,.field-desk .field-item:hover>.reader-axiom-copy,.field-desk .field-item:focus-within>.reader-axiom-copy,.reader-axiom-copy[data-copy-state]{opacity:.65;pointer-events:auto}
-.study-desk .reader-axiom-copy:hover,.study-desk .reader-axiom-copy:focus-visible,.field-desk .reader-axiom-copy:hover,.field-desk .reader-axiom-copy:focus-visible{opacity:1;text-decoration:underline;text-underline-offset:3px}
-.study-desk .reader-axiom-copy:focus-visible,.field-desk .reader-axiom-copy:focus-visible{outline:1px solid currentColor;outline-offset:1px}
-.study-desk .axiom-row:has(>.reader-axiom-copy) :is(.axiom-id,.route-card-id),.field-desk .field-item:has(>.reader-axiom-copy)>.item-address{padding-right:6rem}
+.study-desk [data-copy-axiom-code],.field-desk [data-copy-axiom-code]{cursor:copy;-webkit-user-select:text;user-select:text}
 .reader-axiom-copy-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-@media(hover:none){.study-desk .reader-axiom-copy,.field-desk .reader-axiom-copy{opacity:.65;pointer-events:auto}}
 
 /* A quiet menu bar; the reading surface keeps all of its existing controls. */
 .study-desk:has(>.desk-menu-toolbar){grid-template-rows:auto minmax(0,1fr)}

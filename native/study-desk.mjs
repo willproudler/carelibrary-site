@@ -921,7 +921,7 @@ function routeFocusHead(reference,label,direction="incoming"){return `<header cl
 function routeGroups(items,selectedId){
   const groups=new Map()
   arr(items).forEach(item=>{const key=String(item.source_pane||item.unit_id||item.sheet_title||item.layer||"TRACE");if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)})
-  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id">${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></button>${axiomCopyControl(item.id)}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`).join("");return `<section class="route-sheet"${mc?` style="--pane-accent:${layerColor("MC",first)}"`:""}><h3><span>${esc(mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet")}</span><b>${rows.length}</b></h3><div class="route-list">${cards}</div></section>`}).join("")
+  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id" ${axiomCopyAttributes(item.id)}>${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></button>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`).join("");return `<section class="route-sheet"${mc?` style="--pane-accent:${layerColor("MC",first)}"`:""}><h3><span>${esc(mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet")}</span><b>${rows.length}</b></h3><div class="route-list">${cards}</div></section>`}).join("")
 }
 function sameLayerRouteItems(reference,direction){
   if(reference?.kind!=="axiom"||routeMode(reference)===(direction==="incoming"?"outgoing":"incoming"))return []
@@ -992,9 +992,9 @@ function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),s
     if(!visibleItems.length&&arr(section.items).length)return ""
     const contains=visibleItems.some(item=>String(item.id)===selectedId||feederIds.has(String(item.id)))
     const items=visibleItems.map(item=>{
-      const content=`<span class="axiom-id">${esc(item.address||item.id)} · ${esc(item.id)}</span><span class="axiom-text">${item.reading_html ?? esc(item.text)}</span><span class="axiom-trace">${esc(traceLabel(item,unit.type))}</span>`
-      if(isRoute){const button=`<button type="button" class="axiom-button ${String(item.id)===selectedId?"selected":feederIds.has(String(item.id))?"route-feeder":""}" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(unit.id)}" aria-pressed="false">${content}</button>`;return `<div class="axiom-row route-axiom-row">${button}${axiomCopyControl(item.id)}${String(item.id)===selectedId?routeArrival(reference):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`}
-      return `<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false" aria-describedby="desk-selection-help">${content}</button>${axiomCopyControl(item.id)}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`
+      const content=`<span class="axiom-id" ${axiomCopyAttributes(item.id)}>${esc(item.address||item.id)} · ${esc(item.id)}</span><span class="axiom-text">${item.reading_html ?? esc(item.text)}</span><span class="axiom-trace">${esc(traceLabel(item,unit.type))}</span>`
+      if(isRoute){const button=`<button type="button" class="axiom-button ${String(item.id)===selectedId?"selected":feederIds.has(String(item.id))?"route-feeder":""}" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(unit.id)}" aria-pressed="false">${content}</button>`;return `<div class="axiom-row route-axiom-row">${button}${axiomCopyStatus()}${String(item.id)===selectedId?routeArrival(reference):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`}
+      return `<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false" aria-describedby="desk-selection-help">${content}</button>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`
     }).join("")
     return `<details class="care-section"${section.source_pane?` data-connection-reading="${esc(section.source_pane)}"`:""} ${contains||(!isRoute&&sectionIndex===defaultSectionIndex)?"open":""}><summary><span>${esc(section.number||String(sectionIndex+1))} · ${esc(section.name)}</span><small>${visibleItems.length}</small></summary><div class="axiom-list">${items}</div></details>`
   }).join("")
@@ -4124,7 +4124,7 @@ function readerPaneCode(unit,layer=''){
 function readerPaneImprint(unit,layer=''){
   const code=readerPaneCode(unit,layer)
   if(!code)return ''
-  return `<div class="reader-pane-imprint"><i class="reader-imprint-rule" aria-hidden="true"></i><button type="button" class="reader-pane-code" data-copy-pane-code="${esc(code)}" aria-label="Copy reading code ${esc(code)}" title="Copy reading code ${esc(code)}"><span>${esc(code)}</span></button><i class="reader-imprint-rule" aria-hidden="true"></i><span class="reader-copy-status" role="status" aria-live="polite"></span></div>`
+  return `<div class="reader-pane-imprint"><button type="button" class="reader-pane-code" data-copy-pane-code="${esc(code)}" aria-label="Copy reading code ${esc(code)}" title="Copy reading code ${esc(code)}"><span>${esc(code)}</span></button><span class="reader-copy-status" role="status" aria-live="polite"></span></div>`
 }
 
 async function copyReaderPaneCode(button,root){
@@ -4288,35 +4288,37 @@ function setupTitleView(runtime){
 }
 
 
-function axiomCopyControl(id=''){
-  return `<button type="button" class="reader-axiom-copy" data-copy-axiom="${esc(id)}" aria-label="Copy axiom text${id?` · ${esc(id)}`:''}">Copy</button><span class="reader-axiom-copy-status" role="status" aria-live="polite"></span>`
+function axiomCopyAttributes(id=''){
+  return id?`data-copy-axiom-code="${esc(id)}" title="${esc(id)}"`:''
 }
-function displayedAxiomText(button){
-  const row=button?.closest?.('.axiom-row,.field-item')
-  const prose=row?.querySelector('.axiom-text,.route-card-text,.item-copy,.item-prose')
-  // Read the rendered language and formatting, never the surrounding address,
-  // trace, bookmark, or route metadata and never a hidden original-language value.
-  return prose?String(prose.innerText??prose.textContent??''):''
+function axiomCopyStatus(){
+  return '<span class="reader-axiom-copy-status" role="status" aria-live="polite"></span>'
 }
-async function copyAxiomText(button,root,state={timers:new Map(),pending:new WeakSet(),disposed:false}){
+function axiomCodeSelection(root){
+  return root.getRootNode?.()?.getSelection?.()||root.ownerDocument?.defaultView?.getSelection?.()
+}
+function axiomCopyStatusNode(code){
+  return code?.closest?.('.axiom-row,.field-item')?.querySelector('.reader-axiom-copy-status')
+}
+async function copyAxiomCode(code,root,state={timers:new Map(),pending:new WeakSet(),disposed:false}){
   const doc=root?.ownerDocument,view=doc?.defaultView
-  if(!button||!doc||!root.contains(button)||state.disposed||state.pending.has(button))return false
-  const text=displayedAxiomText(button)
-  if(!text.trim())return false
-  state.pending.add(button)
+  if(!code||!doc||!root.contains(code)||state.disposed||state.pending.has(code))return false
+  const id=String(code.dataset.copyAxiomCode||'')
+  if(!id.trim())return false
+  state.pending.add(code)
   let copied=false
   try{
     if(!view?.navigator?.clipboard?.writeText)throw new Error('Clipboard unavailable')
-    await view.navigator.clipboard.writeText(text)
+    await view.navigator.clipboard.writeText(id)
     copied=true
   }catch(_){
-    if(!state.disposed&&root.contains(button)){
+    if(!state.disposed&&root.contains(code)){
       const tree=root.getRootNode?.(),active=tree?.activeElement||doc.activeElement
-      const selection=tree?.getSelection?.()||view?.getSelection?.(),ranges=[]
+      const selection=axiomCodeSelection(root),ranges=[]
       for(let index=0;index<(selection?.rangeCount||0);index++)ranges.push(selection.getRangeAt(index).cloneRange())
       let helper
       try{
-        helper=doc.createElement('textarea');helper.value=text;helper.setAttribute('readonly','')
+        helper=doc.createElement('textarea');helper.value=id;helper.setAttribute('readonly','')
         helper.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none'
         root.appendChild(helper);helper.select();copied=Boolean(doc.execCommand?.('copy'))
       }catch(_){}finally{
@@ -4326,15 +4328,14 @@ async function copyAxiomText(button,root,state={timers:new Map(),pending:new Wea
       }
     }
   }
-  state.pending.delete(button)
-  if(state.disposed||!root.contains(button))return copied
-  const status=button.parentElement?.querySelector('.reader-axiom-copy-status')
-  const previous=state.timers.get(button);if(previous!==undefined)view?.clearTimeout(previous)
-  button.dataset.copyState=copied?'copied':'failed';button.textContent=copied?'Copied':'Try again'
-  if(status)status.textContent=copied?'Axiom text copied.':'Could not copy. Select the axiom text to copy it.'
-  if(view?.setTimeout)state.timers.set(button,view.setTimeout(()=>{
-    state.timers.delete(button)
-    if(!state.disposed&&root.contains(button)){delete button.dataset.copyState;button.textContent='Copy';if(status)status.textContent=''}
+  state.pending.delete(code)
+  if(state.disposed||!root.contains(code))return copied
+  const status=axiomCopyStatusNode(code),previous=state.timers.get(code)
+  if(previous!==undefined)view?.clearTimeout(previous)
+  if(status)status.textContent=copied?`Copied ${id}`:'Could not copy. Select the axiom code to copy it.'
+  if(view?.setTimeout)state.timers.set(code,view.setTimeout(()=>{
+    state.timers.delete(code)
+    if(!state.disposed&&root.contains(code)&&status)status.textContent=''
   },1800))
   return copied
 }
@@ -4342,18 +4343,22 @@ function setupAxiomCopy(runtime){
   runtime.cleanupAxiomCopy?.()
   const root=runtime.root,view=root.ownerDocument?.defaultView,state={timers:new Map(),pending:new WeakSet(),disposed:false}
   const click=event=>{
-    const button=event.target?.closest?.('[data-copy-axiom]')
-    if(!button||!root.contains(button))return
+    const code=event.target?.closest?.('[data-copy-axiom-code]')
+    if(!code||!root.contains(code))return
     event.preventDefault();event.stopImmediatePropagation()
-    void copyAxiomText(button,root,state)
+    // Selecting a whole code or just part of it must remain normal selection,
+    // without copying or activating the enclosing axiom when the drag ends.
+    const selection=axiomCodeSelection(root)
+    if(selection&&(selection.isCollapsed===false||String(selection)))return
+    void copyAxiomCode(code,root,state)
   }
-  // Only the explicit Copy button is intercepted. Text selection and the
-  // original axiom's click, route, and keyboard handlers remain independent.
+  // Only the existing metadata text is a copy target. Prose, routes, keyboard
+  // selection, and the original axiom's opening behavior remain independent.
   root.addEventListener('click',click,true)
   const cleanup=()=>{
     if(state.disposed)return
     state.disposed=true;root.removeEventListener('click',click,true)
-    for(const [button,timer]of state.timers){view?.clearTimeout(timer);delete button.dataset.copyState;button.textContent='Copy';const status=button.parentElement?.querySelector('.reader-axiom-copy-status');if(status)status.textContent=''}
+    for(const [code,timer]of state.timers){view?.clearTimeout(timer);const status=axiomCopyStatusNode(code);if(status)status.textContent=''}
     state.timers.clear()
     if(runtime.cleanupAxiomCopy===cleanup)delete runtime.cleanupAxiomCopy
   }

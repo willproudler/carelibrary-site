@@ -2,7 +2,7 @@
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
 import {publicReadingText} from './native/reading-views.mjs?v=dd05ea4b1e9de824';
-import {loadPublicField} from './public-fields.mjs?v=6c6f23443e7f2eac';
+import {loadPublicField} from './public-fields.mjs?v=a0dd834277557749';
 import {loadLibrary} from './library-loader.mjs';
 export const LATERAL_SAMPLES = Object.freeze([
   {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},
