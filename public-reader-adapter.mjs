@@ -24,15 +24,26 @@ function publicSourceDetailHint(canonical, passage) {
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=77525b5fe43e3a31';
-import {publicReadingText} from './native/reading-views.mjs?v=db25b61a91d4fca6';
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=77525b5fe43e3a31';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=31ade14841f4ecba';
+import {publicReadingText} from './native/reading-views.mjs?v=ae16e9346d221c44';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=31ade14841f4ecba';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
 const text = value => String(value ?? '');
 const escape = value => text(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const BASE_LAYERS = ['CH','CL','MC','WB'];
+const positiveInteger = value => Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
+function publicSourcePassageNumber(canonical, position) {
+  return positiveInteger(canonical?.sequence) || positiveInteger(canonical?.sequence_number)
+    || positiveInteger(text(canonical?.id).match(/:P(\d+)(?:~[^:]*)?$/)?.[1]) || position + 1;
+}
+function publicSourcePassageAddress(source, passage, canonical, position, sequence) {
+  if (passage.kind === 'display' || !canonical) return `Reading paragraph ${position + 1}`;
+  if (canonical.address) return text(canonical.address);
+  const shelf = positiveInteger(source.work?.shelf_number), chapter = positiveInteger(source.order) || 1;
+  return [shelf, chapter, sequence].filter(value => value !== null).join('.');
+}
 const mcLevel = unit => {
   const matches = [...text(unit?.id || unit).matchAll(/_L([1-9][0-9]*)(?=_)/g)];
   return matches.length ? Number(matches.at(-1)[1]) : null;
@@ -46,11 +57,12 @@ function inline(value) {
     .replace(/\n/g, '<br>');
 }
 function block(value) {
-  return text(value).split(/\n\s*\n/).map(part => {
+  const content = text(value).split(/\n\s*\n/).map(part => {
     const heading = part.match(/^(#{1,6})\s+([^\n]+)$/);
     if (heading) return `<h${Math.min(heading[1].length + 1, 6)}>${inline(heading[2])}</h${Math.min(heading[1].length + 1, 6)}>`;
     return `<p>${inline(part)}</p>`;
   }).join('');
+  return `<article class="care-reading-text">${content}</article>`;
 }
 
 export function createPublicReaderAdapter(data) {
@@ -123,6 +135,7 @@ export function createPublicReaderAdapter(data) {
     const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${originalLabels(source,source.work,state)}`;
     if (chapterCache.has(cacheKey)) return chapterCache.get(cacheKey);
     const rows = array(reading.paragraphs), canonicalPassages = new Map(array(source.paragraphs).map(row=>[row.id,row]));
+    const canonicalPositions = new Map(array(source.paragraphs).map((row, position) => [row.id, position]));
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
       sequence_number:source.order, ...paneReadingTitle(source,source.work,state), label:paneTitle(source,source.work,state),
@@ -131,6 +144,7 @@ export function createPublicReaderAdapter(data) {
       passages:rows.map((passage, position) => {
         const display = sourceReadingText(passage.text,source,source.work,state);
         const canonical = canonicalPassages.get(passage.id), prefix = canonical?.beautiful_omit_prefix;
+        const sequence = publicSourcePassageNumber(canonical, canonicalPositions.get(passage.id) ?? position);
         const sourceDetail = publicSourceDetailHint(canonical, passage);
         // Only an attested canonical fragment can accompany the identical
         // opening in a saved rendition; never infer one from translated text.
@@ -142,8 +156,8 @@ export function createPublicReaderAdapter(data) {
         ...(omitPrefix ? {beautiful_omit_prefix:omitPrefix} : {}),
         ...(sourceDetail ? {beautiful_source_detail:sourceDetail} : {}),
         reading_html:inline(display), reading_block_html:block(display),
-        address:passage.kind === 'display' ? `Reading paragraph ${position + 1}` : passage.id,
-        sequence:position + 1, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',
+        address:publicSourcePassageAddress(source, passage, canonical, position, sequence),
+        sequence, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',
         axioms:usesFor(passage.id, source.work).map(link => link.id),
         trace_count:array(index.outgoing.get(passage.id)).length,
         source_kind:passage.kind || 'passage', route_available:canonicalPassages.has(passage.id),

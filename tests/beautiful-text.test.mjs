@@ -122,7 +122,7 @@ test('untraced source details, headings and prose have zero traces without losin
     const passage = chapter.passages[position];
     assert.equal(passage.trace_count, 0);
     assert.deepEqual(passage.axioms, []);
-    assert.equal(passage.address, passage.id);
+    assert.equal(passage.address, `1.${position + 1}`);
     assert.equal(passage.sequence, position + 1);
     assert.equal(passage.route_available, true);
     assert.equal(adapter.reference(passage.id).id, passage.id);

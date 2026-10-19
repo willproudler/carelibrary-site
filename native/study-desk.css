@@ -1834,11 +1834,8 @@ button{border-radius:999px}
 .study-desk[data-title-view="true"][data-skin] :is(.source-head,.care-head)::after{display:none}
 .study-desk .reader-pane-imprint{display:none}
 .study-desk[data-title-view="true"] .reader-pane-imprint{position:relative;display:flex;align-items:center;gap:.45rem;margin-top:.45rem;min-width:0;color:inherit}
-.study-desk .reader-pane-code{display:inline-flex;align-items:center;min-width:0;max-width:100%;min-height:1.15rem;padding:0;border:0;border-radius:2px;background:transparent;color:color-mix(in srgb,var(--pane-accent,var(--color,currentColor)) 70%,var(--desk-ink,currentColor));font:650 .54rem/1.25 var(--st-code-font,ui-monospace,monospace);letter-spacing:.075em;text-align:start;cursor:copy}
-.study-desk .reader-pane-code>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
-.study-desk .reader-pane-code:hover,.study-desk .reader-pane-code[data-copy-state="copied"]{text-decoration:underline;text-underline-offset:.25em;text-decoration-thickness:1px}
-.study-desk .reader-pane-code:focus-visible{outline:1px solid var(--pane-accent,var(--color,currentColor));outline-offset:4px}
-.study-desk .reader-copy-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.study-desk .reader-pane-code{display:inline-flex;align-items:center;min-width:0;max-width:100%;min-height:1.15rem;padding:0;border:0;border-radius:2px;background:transparent;color:color-mix(in srgb,var(--pane-accent,var(--color,currentColor)) 70%,var(--desk-ink,currentColor));font:650 .54rem/1.25 var(--st-code-font,ui-monospace,monospace);letter-spacing:.075em;text-align:start;cursor:text;-webkit-user-select:text;user-select:text}
+.study-desk .reader-pane-code{overflow-wrap:anywhere;white-space:normal}
 .study-desk .reader-title-controls{display:inline-flex;align-items:center;justify-content:flex-end;gap:.35rem;flex:0 0 auto;min-width:0;margin-left:auto;margin-right:.45rem}
 .study-desk .slider-heading:has(.reader-title-controls) output{margin-left:0}
 .study-desk .reader-title-controls .pane-language{float:none;display:inline-flex;align-items:center;gap:.25rem;flex:0 0 auto;min-height:1.5rem;margin:0;padding:.15rem .3rem;border:0;border-radius:4px;background:transparent;color:inherit;font:550 .6rem/1.3 var(--st-font,system-ui,sans-serif);letter-spacing:.035em;white-space:nowrap;opacity:.72;cursor:pointer}
@@ -1850,13 +1847,13 @@ button{border-radius:999px}
 @media(max-width:760px){.study-desk{--reader-source-inset:1rem}.study-desk[data-title-view="true"] .care-head{padding-inline:var(--reader-section-inset)}}
 @media(prefers-reduced-motion:reduce){.study-desk .title-view-switch::after{transition:none}}
 
-.study-desk [data-copy-axiom-code],.field-desk [data-copy-axiom-code]{cursor:copy;-webkit-user-select:text;user-select:text}
-.reader-axiom-copy-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.study-desk :is([data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id),
+.field-desk :is([data-reader-code],.item-text,.item-address,.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id){cursor:text;-webkit-user-select:text;user-select:text}
 
 /* Borrow the source margin for the selection rail, preserving the reading
    measure and heading alignment. Keep this after Beautiful text's mobile reset
    and apply it before selection so neither prose nor passage labels jump. */
-.study-desk[data-beautiful-text="true"] .source-copy .passage{width:calc(100% + 1.7rem);margin-inline:-.85rem;padding-inline:.85rem}
+.study-desk[data-beautiful-text="true"] .source-copy .passage{width:calc(100% + 1.7rem);max-width:none;margin-inline:-.85rem;padding-inline:.85rem}
 /* A quiet menu bar; the reading surface keeps all of its existing controls. */
 .study-desk:has(>.desk-menu-toolbar){grid-template-rows:auto minmax(0,1fr)}
 .study-desk:has(>.desk-menu-toolbar)>.desk-status{display:none}

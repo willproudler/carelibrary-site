@@ -1,8 +1,8 @@
 /* Small, read-only previews of the existing Lateral and Corpus environments.
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
-import {publicReadingText} from './native/reading-views.mjs?v=db25b61a91d4fca6';
-import {loadPublicField} from './public-fields.mjs?v=77525b5fe43e3a31';
+import {publicReadingText} from './native/reading-views.mjs?v=ae16e9346d221c44';
+import {loadPublicField} from './public-fields.mjs?v=31ade14841f4ecba';
 import {loadLibrary} from './library-loader.mjs';
 export const LATERAL_SAMPLES = Object.freeze([
   {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},
@@ -107,7 +107,7 @@ export async function mountDiscoverExperiments(host,options={}){
       <div class="de-card-foot"><a class="de-show" data-show-lateral href="./#view=laterals">Open comparison <span aria-hidden="true">↗</span></a><a class="de-open" href="./#view=laterals">All laterals <span aria-hidden="true">↗</span></a></div>
     </section>
     <section class="de-card de-corpus" aria-labelledby="de-corpus-title">
-      <div class="de-heading"><p class="de-label">Corpuses</p><h2 id="de-corpus-title">Study a collection.</h2><p class="de-description">A corpus groups books by author, subject, place or time period. CARE analyses them together to find shared ideas, differences and changes across the collection.</p></div>
+      <div class="de-heading"><p class="de-label">Corpora</p><h2 id="de-corpus-title">Study a collection.</h2><p class="de-description">A corpus groups books by author, subject, place or time period. CARE analyses them together to find shared ideas, differences and changes across the collection.</p></div>
       <div class="de-map">${mapMarkup()}</div>
       <div class="de-timeline" role="group" aria-label="Choose a text on the timeline">${CORPUS_SKETCH.map((book,i)=>`<button type="button" data-book="${i}" aria-pressed="${i===0}" aria-label="${escapeHTML(book.title)}, ${escapeHTML(book.date)}"><span class="de-time-dot" aria-hidden="true"></span><span>${escapeHTML(book.date)}</span></button>`).join('')}</div>
       <div class="de-book" aria-live="polite" aria-atomic="true"><div><h3 class="de-book-title"></h3><p class="de-book-meta"></p></div><a class="de-book-source" target="_blank" rel="noopener noreferrer">About this text <span aria-hidden="true">↗</span></a></div>

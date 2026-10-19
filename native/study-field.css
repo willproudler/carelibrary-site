@@ -208,8 +208,8 @@
 .field-desk .lateral-route-toolbar button{display:flex;align-items:center;gap:.3rem;padding:.4rem .6rem;border:1px solid #eae5da;border-radius:5px;background:#eae5da;color:#252722;font:650 .6rem/1.2 var(--st-font,system-ui);cursor:pointer}
 .lateral-route-toolbar svg{width:.85rem;height:.85rem;fill:none;stroke:currentColor;stroke-width:1.7}
 
-.study-desk [data-copy-axiom-code],.field-desk [data-copy-axiom-code]{cursor:copy;-webkit-user-select:text;user-select:text}
-.reader-axiom-copy-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.study-desk :is([data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id),
+.field-desk :is([data-reader-code],.item-text,.item-address,.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id){cursor:text;-webkit-user-select:text;user-select:text}
 
 .field-desk .title-view-toggle{display:flex;align-items:center;justify-content:space-between;gap:.55rem;width:100%;margin:.15rem 0 .4rem;padding:.5rem .55rem;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;font:550 .72rem/1.3 var(--st-font,system-ui,sans-serif);letter-spacing:0;cursor:pointer}
 .field-desk .title-view-toggle:hover{background:color-mix(in srgb,currentColor 9%,transparent)}
@@ -242,11 +242,8 @@
 .field-desk[data-title-view="true"][data-skin] :is(.source-head,.care-head)::after{display:none}
 .field-desk .reader-pane-imprint{display:none}
 .field-desk[data-title-view="true"] .reader-pane-imprint{position:relative;display:flex;align-items:center;gap:.45rem;margin-top:.45rem;min-width:0;color:inherit}
-.field-desk .reader-pane-code{display:inline-flex;align-items:center;min-width:0;max-width:100%;min-height:1.15rem;padding:0;border:0;border-radius:2px;background:transparent;color:color-mix(in srgb,var(--pane-accent,var(--color,currentColor)) 70%,var(--desk-ink,currentColor));font:650 .54rem/1.25 var(--st-code-font,ui-monospace,monospace);letter-spacing:.075em;text-align:start;cursor:copy}
-.field-desk .reader-pane-code>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
-.field-desk .reader-pane-code:hover,.field-desk .reader-pane-code[data-copy-state="copied"]{text-decoration:underline;text-underline-offset:.25em;text-decoration-thickness:1px}
-.field-desk .reader-pane-code:focus-visible{outline:1px solid var(--pane-accent,var(--color,currentColor));outline-offset:4px}
-.field-desk .reader-copy-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.field-desk .reader-pane-code{display:inline-flex;align-items:center;min-width:0;max-width:100%;min-height:1.15rem;padding:0;border:0;border-radius:2px;background:transparent;color:color-mix(in srgb,var(--pane-accent,var(--color,currentColor)) 70%,var(--desk-ink,currentColor));font:650 .54rem/1.25 var(--st-code-font,ui-monospace,monospace);letter-spacing:.075em;text-align:start;cursor:text;-webkit-user-select:text;user-select:text}
+.field-desk .reader-pane-code{overflow-wrap:anywhere;white-space:normal}
 .field-desk .reader-title-controls{display:inline-flex;align-items:center;justify-content:flex-end;gap:.35rem;flex:0 0 auto;min-width:0;margin-left:auto;margin-right:.45rem}
 .field-desk .slider-heading:has(.reader-title-controls) output{margin-left:0}
 .field-desk .reader-title-controls .pane-language{float:none;display:inline-flex;align-items:center;gap:.25rem;flex:0 0 auto;min-height:1.5rem;margin:0;padding:.15rem .3rem;border:0;border-radius:4px;background:transparent;color:inherit;font:550 .6rem/1.3 var(--st-font,system-ui,sans-serif);letter-spacing:.035em;white-space:nowrap;opacity:.72;cursor:pointer}

@@ -824,7 +824,7 @@ function setupSliderJumpMenu(runtime){
     }
     if(!popup.element.contains(event.target))return key(event)
     event.stopPropagation?.()
-    if(event.isComposing||event.metaKey||event.ctrlKey||event.altKey)return
+    if(event.isComposing||event.metaKey||event.ctrlKey||event.altKey||event.shiftKey)return
     if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();runtime.highlightSliderJump(popup.highlight+(event.key==="ArrowDown"?1:-1));return}
     if(event.key==="Enter"){event.preventDefault();const row=popup.matches[popup.highlight];if(row)choose(row.index)}
   }
@@ -1166,8 +1166,8 @@ function workspace(data){
 }
 const SHELF_STATE_KEY="care-studio-shelf/1"
 const SHELF_SORTS=[["title","Title · A–Z"],["title-desc","Title · Z–A"],["author","Author · A–Z"],["newest","Year · newest"],["oldest","Year · oldest"],["added","Recently added"],["visited","Recently visited"],["coverage","Most CARE layers"]]
-const SHELF_FIELDS=[["lateral","Laterals"],["corpus","Corpuses"],["numo","NUMO"],["living","Living books"],["lateral_sea","Lateral sea"],["grimoire","Solomon’s grimoire"]]
-const SHELF_TABS=[["all","All"],["book","Books"],["lecture","Lectures"],["collection","Collections"],["lateral","Laterals"],["corpus","Corpuses"]]
+const SHELF_FIELDS=[["lateral","Laterals"],["corpus","Corpora"],["numo","NUMO"],["living","Living books"],["lateral_sea","Lateral sea"],["grimoire","Solomon’s grimoire"]]
+const SHELF_TABS=[["all","All"],["book","Books"],["lecture","Lectures"],["collection","Collections"],["lateral","Laterals"],["corpus","Corpora"]]
 const shelfFieldLabel=field=>field==="dialogue"?"Dialogues":SHELF_FIELDS.find(([id])=>id===field)?.[1]||"Reading"
 const isShelfField=book=>SHELF_FIELDS.some(([id])=>id===book.field)
 const shelfScope=data=>["lateral","corpus","dialogue"].includes(data?.library_scope)?data.library_scope:""
@@ -1993,7 +1993,7 @@ function setup(root){
     return true
   }
   runtime.onSliderKey=event=>{
-    if(event.metaKey||event.ctrlKey||event.altKey)return false
+    if(event.metaKey||event.ctrlKey||event.altKey||event.shiftKey)return false
     const stop=event.target.closest?.("[data-slider-stop]"),input=event.target.closest?.("[data-sheet-slider]")||stop?.closest("[data-slider-control]")?.querySelector("[data-sheet-slider]")
     if(!input)return false
     const options=sliderOptions(runtime.data?.stack,input.dataset.sheetSlider),moves={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-10,PageUp:10}
@@ -2029,7 +2029,7 @@ function setup(root){
     if(event.target?.closest?.("[data-route-direction]"))return
     if(event.defaultPrevented||event.isComposing||event.metaKey||event.ctrlKey||event.altKey||event.shiftKey||event.target?.isContentEditable||event.target?.closest?.('textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]')||event.target?.matches?.("input:not([data-sheet-slider])"))return
     if(runtime.onSelectionKey(event))return
-    if(runtime.onSliderKey?.(event))return;if(event.metaKey||event.ctrlKey||event.altKey||event.target?.matches?.("input,textarea,select"))return;const reference=event.target?.closest?.("[data-ref-id]");if(reference&&!reference.disabled&&["Enter"," "].includes(event.key)){event.preventDefault();const id=String(reference.dataset.refId||"");if(id&&id===runtime.referenceId)runtime.api?.setTriggerValue("clear_reference",true);else runtime.api?.setTriggerValue("open_reference",id);return}const movement={"[":-1,"]":1}[event.key];if(movement){event.preventDefault();runtime.step(movement)}
+    if(runtime.onSliderKey?.(event))return;if(event.metaKey||event.ctrlKey||event.altKey||event.shiftKey||event.target?.matches?.("input,textarea,select"))return;const reference=event.target?.closest?.("[data-ref-id]");if(reference&&!reference.disabled&&["Enter"," "].includes(event.key)){event.preventDefault();const id=String(reference.dataset.refId||"");if(id&&id===runtime.referenceId)runtime.api?.setTriggerValue("clear_reference",true);else runtime.api?.setTriggerValue("open_reference",id);return}const movement={"[":-1,"]":1}[event.key];if(movement){event.preventDefault();runtime.step(movement)}
   }
   runtime.focus=id=>{
     const strip=root.querySelector("[data-strip]"),target=root.querySelector(`[data-pane="${CSS.escape(id)}"]`)
@@ -4121,7 +4121,6 @@ function setupBeautifulText(runtime){
 const TITLE_VIEW_KEY='care-title-view-v1'
 const TITLE_VIEW_EVENT='care-title-view-change'
 const titleViewSessions=new WeakMap()
-const readerCopyTimers=new WeakMap()
 
 function readerPaneCode(unit,layer=''){
   const item=typeof unit==='string'?{id:unit}:unit||{}
@@ -4137,30 +4136,7 @@ function readerPaneCode(unit,layer=''){
 function readerPaneImprint(unit,layer=''){
   const code=readerPaneCode(unit,layer)
   if(!code)return ''
-  return `<div class="reader-pane-imprint"><button type="button" class="reader-pane-code" data-copy-pane-code="${esc(code)}" aria-label="Copy reading code ${esc(code)}" title="Copy reading code ${esc(code)}"><span>${esc(code)}</span></button><span class="reader-copy-status" role="status" aria-live="polite"></span></div>`
-}
-
-async function copyReaderPaneCode(button,root){
-  const code=button?.dataset?.copyPaneCode,doc=root?.ownerDocument,view=doc?.defaultView
-  if(!code||!doc||!root.contains(button))return false
-  let copied=false
-  try{
-    if(!view?.navigator?.clipboard?.writeText)throw Error('Clipboard unavailable')
-    await view.navigator.clipboard.writeText(code);copied=true
-  }catch(_){
-    let helper
-    try{
-      helper=doc.createElement('textarea');helper.value=code;helper.setAttribute('readonly','');helper.style.cssText='position:fixed;left:-9999px;top:0;opacity:0'
-      root.appendChild(helper);helper.select();copied=Boolean(doc.execCommand('copy'))
-    }catch(_){}finally{helper?.remove();if(root.contains(button))button.focus?.({preventScroll:true})}
-  }
-  if(!root.contains(button))return copied
-  const status=button.parentElement?.querySelector('.reader-copy-status')
-  button.dataset.copyState=copied?'copied':'failed'
-  if(status)status.textContent=copied?`Copied ${code}`:'Could not copy. Select the code to copy it.'
-  if(readerCopyTimers.has(button))view?.clearTimeout?.(readerCopyTimers.get(button))
-  if(view?.setTimeout)readerCopyTimers.set(button,view.setTimeout(()=>{delete button.dataset.copyState;if(status)status.textContent='';readerCopyTimers.delete(button)},1800))
-  return copied
+  return `<div class="reader-pane-imprint"><span class="reader-pane-code" data-reader-code title="${esc(code)}">${esc(code)}</span></div>`
 }
 
 function titleViewControl(){
@@ -4262,8 +4238,6 @@ function setupTitleView(runtime){
     }
   }
   const click=event=>{
-    const copy=event.target?.closest?.('[data-copy-pane-code]')
-    if(copy&&root.contains(copy)){event.preventDefault();event.stopImmediatePropagation();void copyReaderPaneCode(copy,root);return}
     const control=event.target?.closest?.('[data-title-view-toggle]')
     if(!control||!root.contains(control))return
     event.preventDefault();event.stopImmediatePropagation();apply(!enabled,true)
@@ -4302,77 +4276,25 @@ function setupTitleView(runtime){
 
 
 function axiomCopyAttributes(id=''){
-  return id?`data-copy-axiom-code="${esc(id)}" title="${esc(id)}"`:''
+  return id?`data-reader-code title="${esc(id)}"`:''
 }
-function axiomCopyStatus(){
-  return '<span class="reader-axiom-copy-status" role="status" aria-live="polite"></span>'
-}
+function axiomCopyStatus(){return ''}
 function axiomCodeSelection(root){
   return root.getRootNode?.()?.getSelection?.()||root.ownerDocument?.defaultView?.getSelection?.()
 }
-function axiomCopyStatusNode(code){
-  return code?.closest?.('.axiom-row,.field-item')?.querySelector('.reader-axiom-copy-status')
-}
-async function copyAxiomCode(code,root,state={timers:new Map(),pending:new WeakSet(),disposed:false}){
-  const doc=root?.ownerDocument,view=doc?.defaultView
-  if(!code||!doc||!root.contains(code)||state.disposed||state.pending.has(code))return false
-  const id=String(code.dataset.copyAxiomCode||'')
-  if(!id.trim())return false
-  state.pending.add(code)
-  let copied=false
-  try{
-    if(!view?.navigator?.clipboard?.writeText)throw new Error('Clipboard unavailable')
-    await view.navigator.clipboard.writeText(id)
-    copied=true
-  }catch(_){
-    if(!state.disposed&&root.contains(code)){
-      const tree=root.getRootNode?.(),active=tree?.activeElement||doc.activeElement
-      const selection=axiomCodeSelection(root),ranges=[]
-      for(let index=0;index<(selection?.rangeCount||0);index++)ranges.push(selection.getRangeAt(index).cloneRange())
-      let helper
-      try{
-        helper=doc.createElement('textarea');helper.value=id;helper.setAttribute('readonly','')
-        helper.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none'
-        root.appendChild(helper);helper.select();copied=Boolean(doc.execCommand?.('copy'))
-      }catch(_){}finally{
-        helper?.remove()
-        if(active?.isConnected!==false)active?.focus?.({preventScroll:true})
-        if(selection){try{selection.removeAllRanges();for(const range of ranges)selection.addRange(range)}catch(_){}}
-      }
-    }
-  }
-  state.pending.delete(code)
-  if(state.disposed||!root.contains(code))return copied
-  const status=axiomCopyStatusNode(code),previous=state.timers.get(code)
-  if(previous!==undefined)view?.clearTimeout(previous)
-  if(status)status.textContent=copied?`Copied ${id}`:'Could not copy. Select the axiom code to copy it.'
-  if(view?.setTimeout)state.timers.set(code,view.setTimeout(()=>{
-    state.timers.delete(code)
-    if(!state.disposed&&root.contains(code)&&status)status.textContent=''
-  },1800))
-  return copied
-}
 function setupAxiomCopy(runtime){
   runtime.cleanupAxiomCopy?.()
-  const root=runtime.root,view=root.ownerDocument?.defaultView,state={timers:new Map(),pending:new WeakSet(),disposed:false}
+  const root=runtime.root
   const click=event=>{
-    const code=event.target?.closest?.('[data-copy-axiom-code]')
-    if(!code||!root.contains(code))return
-    event.preventDefault();event.stopImmediatePropagation()
-    // Selecting a whole code or just part of it must remain normal selection,
-    // without copying or activating the enclosing axiom when the drag ends.
+    const target=event.target,code=target?.closest?.('[data-reader-code],.passage-address')
     const selection=axiomCodeSelection(root)
-    if(selection&&(selection.isCollapsed===false||String(selection)))return
-    void copyAxiomCode(code,root,state)
+    // Let the browser select/copy text normally. A completed drag or a click
+    // on metadata must not focus a card, redraw it, or start a route.
+    if((code&&root.contains(code))||(selection&&selection.isCollapsed===false&&String(selection)))event.stopImmediatePropagation()
   }
-  // Only the existing metadata text is a copy target. Prose, routes, keyboard
-  // selection, and the original axiom's opening behavior remain independent.
   root.addEventListener('click',click,true)
   const cleanup=()=>{
-    if(state.disposed)return
-    state.disposed=true;root.removeEventListener('click',click,true)
-    for(const [code,timer]of state.timers){view?.clearTimeout(timer);const status=axiomCopyStatusNode(code);if(status)status.textContent=''}
-    state.timers.clear()
+    root.removeEventListener('click',click,true)
     if(runtime.cleanupAxiomCopy===cleanup)delete runtime.cleanupAxiomCopy
   }
   runtime.cleanupAxiomCopy=cleanup

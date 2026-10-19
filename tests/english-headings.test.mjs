@@ -65,7 +65,7 @@ test('the English Monas reader shows theorem headings without OCR spacing or The
     const chapter = adapter.chapter(raw,english(monas));
     assert.equal(chapter.title,title);
     assert.equal(chapter.passages[0].reading_text,title);
-    assert.equal(chapter.passages[0].reading_block_html,`<p>${title}</p>`);
+    assert.equal(chapter.passages[0].reading_block_html,`<article class="care-reading-text"><p>${title}</p></article>`);
     assert.equal(adapter.unit(care,english(monas)).title,title);
     const canonical = monas.sources.find(source=>source.id === raw), variant = canonical.translations.find(row=>row.language_code === 'en');
     assert.equal(chapter.passages[0].text,variant.paragraphs[0].text);

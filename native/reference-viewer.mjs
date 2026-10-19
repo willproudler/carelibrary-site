@@ -348,18 +348,9 @@ function setup(parentElement, root, setTriggerValue) {
     const target=origin instanceof Element?origin:null
     const key=String(event.key||"").toLowerCase()
     const command=event.metaKey||event.ctrlKey
-    if(command&&key==="c"&&!event.altKey){
-      const value=runtime.selectedText()
-      if(value){
-        event.preventDefault()
-        let copied=false
-        try{copied=document.execCommand("copy")}catch(_){}
-        if(copied)runtime.showStatus("Copied selection")
-        else runtime.copy(value,"Copied selection")
-      }
-      return
-    }
-    if (event.defaultPrevented || command || event.altKey) return
+    // Native copy handles the current text selection without a notification.
+    if(command&&key==="c"&&!event.altKey)return
+    if (event.defaultPrevented || command || event.altKey || event.shiftKey) return
     if (key.startsWith("arrow")&&!runtime.selected) return
     if (key==="arrowdown") {event.preventDefault();if(!runtime.moveSpatial("down"))runtime.move(1);return}
     if (key==="arrowup") {event.preventDefault();if(!runtime.moveSpatial("up"))runtime.move(-1);return}

@@ -6,6 +6,7 @@ import io
 import json
 import re
 import sys
+import subprocess
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -27,6 +28,8 @@ def cover_urls(value):
 
 def optimise(root: Path):
     root = root.resolve()
+    # Verify and reconstruct repository parts before preparing public covers.
+    subprocess.run(["node", str(Path(__file__).resolve().with_name("materialize-public-library.mjs")), str(root)], check=True)
     data = json.loads((root / "data/library.json").read_text())
     destination = root / "assets/covers/web"
     destination.mkdir(parents=True, exist_ok=True)

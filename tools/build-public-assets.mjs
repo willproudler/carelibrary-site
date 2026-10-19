@@ -4,6 +4,7 @@ import {readFile,writeFile,mkdir,realpath} from 'node:fs/promises';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
 import {gzipSync} from 'node:zlib';
+import {materializePublicLibrary} from './materialize-public-library.mjs';
 
 const encode=value=>JSON.stringify(value)+'\n';
 const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -89,6 +90,7 @@ export function createPublicAssetPlan(data,{coverVariants={}}={}) {
 }
 
 export async function buildPublicAssets(root=fileURLToPath(new URL('..',import.meta.url))) {
+  await materializePublicLibrary(root);
   const data=JSON.parse(await readFile(resolve(root,'data/library.json'),'utf8'));
   let coverManifest;
   try{coverManifest=JSON.parse(await readFile(resolve(root,'data/cover-variants.json'),'utf8'));}

@@ -17,3 +17,6 @@ option[value="unprocessed"]{display:none}
 
 /* Source editing belongs to the local library. */
 [data-edit-source]{display:none!important}
+
+/* Collections are not part of the public catalogue. */
+[data-shelf-kind="collection"]{display:none!important}
