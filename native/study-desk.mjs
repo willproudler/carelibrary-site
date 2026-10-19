@@ -778,7 +778,7 @@ function setupSliderJumpMenu(runtime){
     popup.list.scrollTop=0
     runtime.highlightSliderJump(popup.search.value?0:Math.max(0,popup.matches.findIndex(row=>row.index===popup.selected)))
   }
-  runtime.openSliderJumpMenu=anchor=>{
+  runtime.openSliderJumpMenu=(anchor,{focusSearch=!view?.matchMedia?.("(max-width: 760px), (pointer: coarse)")?.matches}={})=>{
     const same=runtime.sliderJumpMenu?.anchor===anchor
     runtime.closeSliderJumpMenu();if(same)return
     const input=anchor.closest("[data-slider-control]")?.querySelector("[data-sheet-slider]")
@@ -787,14 +787,17 @@ function setupSliderJumpMenu(runtime){
     if(!options.length)return
     runtime.closeBookMenu?.();runtime.closeBuildVersionMenu?.();runtime.closeSheetVersionMenu?.();runtime.closeBookmarkMenu?.();runtime.closeConnectionDiscovery?.()
     const element=doc.createElement("section"),id=`slider-jump-${++sliderJumpSequence}`,label=input.getAttribute("aria-label")||"Chapter or sheet"
-    element.id=id;element.className="slider-jump-menu";element.setAttribute("role","dialog");element.setAttribute("aria-label",`Choose ${label.toLowerCase()}`)
+    element.id=id;element.className="slider-jump-menu";element.setAttribute("role","dialog");element.setAttribute("tabindex","-1");element.setAttribute("aria-label",`Choose ${label.toLowerCase()}`)
     element.style.setProperty("--pane-accent",view?.getComputedStyle?.(anchor).getPropertyValue("--pane-accent")||"#8ca9bd")
     element.innerHTML=`<div class="slider-jump-search-row"><label for="${id}-search">Choose ${esc(label.toLowerCase())}</label><input id="${id}-search" data-slider-jump-search type="search" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="${id}-list" autocomplete="off" spellcheck="false" placeholder="Search by title or number…"></div><div class="slider-jump-options" id="${id}-list" role="listbox" aria-label="${esc(label)}"></div><p class="slider-jump-status" role="status" aria-live="polite"></p>`
     root.append(element)
     const popup={anchor,input,options,element,id,selected:sliderIndex(input.value,options.length),search:element.querySelector("[data-slider-jump-search]"),list:element.querySelector(".slider-jump-options"),status:element.querySelector(".slider-jump-status"),matches:[],highlight:0}
     runtime.sliderJumpMenu=popup;anchor.setAttribute("aria-expanded","true");anchor.setAttribute("aria-controls",id)
     popup.search.oninput=runtime.filterSliderJump
-    runtime.positionSliderJumpMenu();runtime.filterSliderJump();popup.search.focus({preventScroll:true})
+    runtime.positionSliderJumpMenu();runtime.filterSliderJump()
+    // Touch readers can browse the list without opening the on-screen keyboard.
+    // Search still focuses normally when tapped or explicitly reached by keyboard.
+    ;(focusSearch?popup.search:popup.element).focus({preventScroll:true})
   }
   const choose=index=>{
     const popup=runtime.sliderJumpMenu;if(!popup||!popup.matches.some(row=>row.index===index))return
@@ -804,7 +807,7 @@ function setupSliderJumpMenu(runtime){
   const click=runtime.onClick
   runtime.onClick=event=>{
     const anchor=event.target?.closest?.("[data-slider-jump]")
-    if(anchor){event.preventDefault();runtime.openSliderJumpMenu(anchor);return}
+    if(anchor){event.preventDefault();runtime.openSliderJumpMenu(anchor,{focusSearch:["touch","pen"].includes(event.pointerType)?false:undefined});return}
     const choice=event.target?.closest?.("[data-slider-jump-choice]")
     if(choice&&runtime.sliderJumpMenu?.element.contains(choice)){event.preventDefault();choose(Number(choice.dataset.sliderJumpChoice));return}
     return click(event)
@@ -812,10 +815,13 @@ function setupSliderJumpMenu(runtime){
   const key=runtime.onKey
   runtime.onKey=event=>{
     const popup=runtime.sliderJumpMenu,anchor=event.target?.closest?.("[data-slider-jump]")
-    if(!popup&&anchor&&["ArrowDown","ArrowUp"].includes(event.key)){event.preventDefault();runtime.openSliderJumpMenu(anchor);return}
+    if(!popup&&anchor&&["ArrowDown","ArrowUp"].includes(event.key)){event.preventDefault();runtime.openSliderJumpMenu(anchor,{focusSearch:true});return}
     if(!popup)return key(event)
     if(event.key==="Escape"){event.preventDefault();event.stopPropagation?.();runtime.closeSliderJumpMenu({restoreFocus:true});return}
-    if(event.key==="Tab"){runtime.closeSliderJumpMenu({restoreFocus:true});return}
+    if(event.key==="Tab"){
+      if(event.target===popup.element&&!event.shiftKey){event.preventDefault();popup.search.focus({preventScroll:true});return}
+      runtime.closeSliderJumpMenu({restoreFocus:true});return
+    }
     if(!popup.element.contains(event.target))return key(event)
     event.stopPropagation?.()
     if(event.isComposing||event.metaKey||event.ctrlKey||event.altKey)return
@@ -831,7 +837,7 @@ function setupSliderJumpMenu(runtime){
     const saved=runtime.savedSliderJumpMenu,focus=runtime.sliderJumpFocus
     runtime.savedSliderJumpMenu=null;runtime.sliderJumpFocus=null
     if(saved&&reuseReading&&saved.signature===runtime.renderSignature&&saved.anchor.isConnected!==false){
-      runtime.openSliderJumpMenu(saved.anchor)
+      runtime.openSliderJumpMenu(saved.anchor,{focusSearch:saved.searchFocused})
       const popup=runtime.sliderJumpMenu
       if(popup){popup.search.value=saved.query;runtime.filterSliderJump();runtime.highlightSliderJump(saved.highlight)}
     }
@@ -842,7 +848,7 @@ function setupSliderJumpMenu(runtime){
   }
   runtime.cleanupSliderJumpMenu=()=>{
     const popup=runtime.sliderJumpMenu
-    runtime.savedSliderJumpMenu=popup?{anchor:popup.anchor,signature:runtime.renderSignature,query:popup.search.value,highlight:popup.highlight}:null
+    runtime.savedSliderJumpMenu=popup?{anchor:popup.anchor,signature:runtime.renderSignature,query:popup.search.value,highlight:popup.highlight,searchFocused:popup.search.matches(":focus")}:null
     runtime.closeSliderJumpMenu();doc.removeEventListener("pointerdown",outside,true);root.removeEventListener("focusin",blur);root.removeEventListener("scroll",runtime.positionSliderJumpMenu,true);view?.removeEventListener("resize",runtime.positionSliderJumpMenu)
   }
 }

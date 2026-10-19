@@ -1,11 +1,12 @@
 import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
-import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField} from './public-fields.mjs?v=3266556b4e90ca30';
-import mountReader from './native/study-desk.mjs?v=3266556b4e90ca30';
+import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField} from './public-fields.mjs?v=db86d9d3f2f62fea';
+import mountReader from './native/study-desk.mjs?v=db86d9d3f2f62fea';
 
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=3266556b4e90ca30';
-import {searchLibrary} from './library-core.mjs?v=3266556b4e90ca30';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=db86d9d3f2f62fea';
+import {searchLibrary} from './library-core.mjs?v=db86d9d3f2f62fea';
+import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=db86d9d3f2f62fea';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -16,7 +17,7 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=3266556b4e90ca30'),loadText('./native/public-scope.css?v=3266556b4e90ca30')]);
+ const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=db86d9d3f2f62fea'),loadText('./native/public-scope.css?v=db86d9d3f2f62fea')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
@@ -29,14 +30,14 @@ async function start(){
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise;
  async function ensureViewer(){
-  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=3266556b4e90ca30'),loadText('./native/reference-viewer.css?v=3266556b4e90ca30'),loadText('./native/reference-viewer.html?v=3266556b4e90ca30')]).then(([module,viewerCSS,viewerHTML])=>{
+  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=db86d9d3f2f62fea'),loadText('./native/reference-viewer.css?v=db86d9d3f2f62fea'),loadText('./native/reference-viewer.html?v=db86d9d3f2f62fea')]).then(([module,viewerCSS,viewerHTML])=>{
    mountViewer=module.default;
    viewerHost.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
   }).catch(error=>{viewerPromise=null;throw error;});
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=3266556b4e90ca30'),loadText('./native/study-field.css?v=3266556b4e90ca30')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=db86d9d3f2f62fea'),loadText('./native/study-field.css?v=db86d9d3f2f62fea')]).then(([module,fieldCSS])=>{
    mountField=module.default;const style=document.createElement('style');
    // Keep the bottom save control still when pointer entry reveals trace links.
    style.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
@@ -50,7 +51,8 @@ async function start(){
  const bookStates=new Map();
  let appliedSavedSelection='';
  let readingMenu=null;
- const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,cover_url:work.cover_url,publication_year:Number.parseInt(work.year),content_kind:'book',has_source:work.sources.length>0,has_care:work.units.length>0,layers:[...new Set(work.units.map(unit=>unit.layer))],cloth:work.slug==='kant'?'#303b4c':work.slug==='bergson'?'#50403c':'#3b4531',foil:'#cf9b61',language_code:work.language_code||'en',language_name:work.language_name||'English'}));
+ const books=data.works.map(work=>({id:work.id,title:work.title,author:work.author,year:work.year,cover_url:work.cover_url,...librarySortMetadata(work),content_kind:'book',has_source:work.sources.length>0,has_care:work.units.length>0,layers:[...new Set(work.units.map(unit=>unit.layer))],cloth:work.slug==='kant'?'#303b4c':work.slug==='bergson'?'#50403c':'#3b4531',foil:'#cf9b61',language_code:work.language_code||'en',language_name:work.language_name||'English'}));
+ const librarySort=createLibrarySort(shadow,books);let lastVisitedBook='';
  const fields=publicFields(data,adapter);
  const fieldFor=id=>fields.find(field=>field.id===id&&(field.bundle||field.bundle_url));
  const lateralBooks=data.works.filter(work=>adapter.savedConnection.members.some(member=>member.id===work.id));
@@ -142,6 +144,8 @@ async function start(){
  }
  function paint(){
   closeReadingMenu();
+  const visiting=view==='workspace'&&!state.connectionId?state.workId:'';
+  if(!visiting)lastVisitedBook='';
   tabs();host.hidden=view==='saved';savedHost.hidden=view!=='saved';
   if(view==='saved'){cleanup?.();cleanup=null;viewerCleanup?.();viewerCleanup=null;viewerHost.hidden=true;paintSaved();return;}
   savedCleanup?.();savedCleanup=null;
@@ -152,6 +156,8 @@ async function start(){
   if(activeField){state.fieldSaved=normalizeFieldSavedState(readLocal('care-public-field-saved:'+activeField.id,{}));cleanup?.();cleanup=mountField({parentElement:shadow,data:fieldPayload(activeField,adapter,state),setStateValue:()=>{},setTriggerValue:(kind,value)=>{if(kind==='action')dispatchField(activeField,value);}});paintFieldViewer(activeField);saveState();return;}
   const payload=view==='workspace'?adapter.workspace(state):{mode:'library',books,fields,library_scope:view==='laterals'?'lateral':view==='corpuses'?'corpus':'',shelf_request:view,workspace_managed:true};
   cleanup?.();cleanup=mountReader({parentElement:shadow,data:payload,setStateValue:(kind,value)=>{state=adapter.reduce(state,kind,value);},setTriggerValue:dispatch});
+  if(visiting&&visiting!==lastVisitedBook){librarySort.visit(visiting);lastVisitedBook=visiting;}
+  if(view!=='workspace')librarySort.apply();
   const closeComparison=shadow.querySelector('[data-connection-close]');
   if(closeComparison){closeComparison.textContent='Close comparison ⌄';closeComparison.setAttribute('aria-label','Close comparison options');closeComparison.setAttribute('aria-haspopup','menu');closeComparison.setAttribute('aria-expanded','false');}
   paintViewer();
