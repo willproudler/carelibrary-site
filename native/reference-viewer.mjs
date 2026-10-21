@@ -5,10 +5,29 @@ const keyFor = (kind, id, scope="") => `${String(kind || "").toLowerCase()}\u000
 const HISTORY_KEY = "care-reference-history-v1"
 const TEXT_SIZE_KEY = "care-reference-viewer-text-size-v1"
 const TEXT_SCALES = [.78,.88,1,1.12,1.26]
+const VIEWER_VIBRANT_KEY = "care-vibrant-view-v1"
+const VIEWER_VIBRANT_EVENT = "care-vibrant-view-change"
 const layerColor = layer => ({
   CB:"#a96624",WB:"#9a4327",MC:"#594f88",CL:"#2d6b67",CH:"#3d668b",
   NUMO:"#3d765a",XR:"#6e4f9a",XS:"#8b4f86",SC:"#8f394b",XA:"#51667e",SOURCE:"#8a431d",PASSAGE:"#8a431d"
 }[String(layer || "").toUpperCase()] || "#b56f3b")
+function setupViewerVibrantView(runtime) {
+  const root=runtime.root,doc=root.ownerDocument||document,view=doc.defaultView||window
+  const read=()=>{
+    try{const saved=view.localStorage?.getItem(VIEWER_VIBRANT_KEY);if(saved!==null&&saved!==undefined)return saved==='true'}catch(_){}
+    return doc.body?.dataset?.careVibrantView==='true'
+  }
+  const paint=enabled=>{
+    runtime.vibrantView=enabled===true;root.dataset.vibrantView=String(runtime.vibrantView)
+    if(doc.body)doc.body.dataset.careVibrantView=String(runtime.vibrantView)
+  }
+  const change=event=>{if(typeof event.detail?.enabled==='boolean')paint(event.detail.enabled)}
+  const storage=event=>{if(event.key===VIEWER_VIBRANT_KEY||event.key===null)paint(read())}
+  view.addEventListener(VIEWER_VIBRANT_EVENT,change);view.addEventListener('storage',storage)
+  let disposed=false
+  runtime.cleanupVibrantView=()=>{if(disposed)return;disposed=true;view.removeEventListener(VIEWER_VIBRANT_EVENT,change);view.removeEventListener('storage',storage);delete root.dataset.vibrantView}
+  paint(read())
+}
 function setup(parentElement, root, setTriggerValue) {
   const runtime = {
     root, registry:new Map(), sequence:[], selected:null, spatialElement:null, open:false, surface:"read", toolScreen:"home", statusTimer:null, textScaleIndex:2, setTriggerValue,
@@ -391,6 +410,7 @@ function setup(parentElement, root, setTriggerValue) {
   window.addEventListener("care-reference-dismiss-preview",runtime.onReferenceDismissPreview)
   window.addEventListener("care-reference-select",runtime.onReferenceSelect)
   Object.assign(runtime,SAVED_VIEWERS.get(parentElement)||{})
+  setupViewerVibrantView(runtime)
   INSTANCES.set(parentElement, runtime)
   return runtime
 }
@@ -400,6 +420,7 @@ function teardown(parentElement, runtime) {
   // already live. That cleanup must neither detach new handlers nor save stale state.
   if(runtime.disposed)return
   runtime.disposed=true
+  runtime.cleanupVibrantView?.()
   SAVED_VIEWERS.set(parentElement,{selected:runtime.selected,defaultKey:runtime.defaultKey,open:runtime.open,openRequest:runtime.openRequest,previewSource:runtime.previewSource,surface:runtime.surface,toolScreen:runtime.toolScreen,textScaleIndex:runtime.textScaleIndex,paneAccent:runtime.paneAccent})
   runtime.renderLineageFlow(null)
   runtime.markSpatial(null)
@@ -458,7 +479,11 @@ export default function(component) {
     runtime.selected = defaultRef || null
     if (defaultChanged) {runtime.surface="read";runtime.toolScreen="home"}
     if (defaultRef) runtime.remember(defaultRef)
-  } else runtime.selected = runtime.registry.get(keyFor(runtime.selected.kind, runtime.selected.id, runtime.selected.scope))
+  } else {
+    const next=runtime.registry.get(keyFor(runtime.selected.kind, runtime.selected.id, runtime.selected.scope))
+    if(next.accent!==runtime.selected.accent||next.layer!==runtime.selected.layer)runtime.paneAccent=""
+    runtime.selected=next
+  }
   if (data?.open_default && defaultRef) {
     runtime.selected = defaultRef
     runtime.remember(defaultRef)

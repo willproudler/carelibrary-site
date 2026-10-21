@@ -1,6 +1,6 @@
 {
-  "name": "CARE Library Beta",
-  "short_name": "CARE Beta",
+  "name": "CARE Library",
+  "short_name": "CARE Library",
   "description": "Explore texts, arguments and connections with a way back to the source.",
   "start_url": "/",
   "display": "minimal-ui",

@@ -160,6 +160,55 @@
   .field-desk .desk-menu-panel .desk-tab,.field-desk .desk-menu-panel .desk-action{min-height:44px}
 }
 
+.field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){
+  --vibrant-base:var(--pane-accent,var(--color,#3c6e93));
+  --vibrant-accent:var(--vibrant-base);
+  --vibrant-text:color-mix(in srgb,var(--vibrant-base) 68%,#fff);
+}
+.field-desk[data-vibrant-view="true"][data-skin="library"] :is(.desk-window,.route-sheet,.route-card),
+.field-desk[data-vibrant-view="true"][data-skin="classic"] :is(.desk-window,.route-sheet,.route-card){--vibrant-text:color-mix(in srgb,var(--vibrant-base) 88%,#12151b)}
+@supports(color:oklch(from #38749a l c h)){
+  .field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){
+    --vibrant-accent:oklch(from var(--vibrant-base) clamp(.46,calc(l + .02),.54) calc(c * 1.18) h);
+    --vibrant-text:oklch(from var(--vibrant-base) .72 calc(c * 1.15) h);
+  }
+  .field-desk[data-vibrant-view="true"][data-skin="library"] :is(.desk-window,.route-sheet,.route-card),
+  .field-desk[data-vibrant-view="true"][data-skin="classic"] :is(.desk-window,.route-sheet,.route-card){--vibrant-text:oklch(from var(--vibrant-base) .40 calc(c * 1.15) h)}
+}
+.field-desk[data-vibrant-view="true"] :is(.window-titlebar,.care-section>summary,.route-sheet h3,.pane-top,.field-section>summary){background:linear-gradient(110deg,var(--vibrant-accent),color-mix(in srgb,var(--vibrant-accent) 87%,#07101b));color:#fffaf4}
+.field-desk[data-vibrant-view="true"] :is(.window-titlebar,.care-section>summary,.route-sheet h3,.pane-top,.field-section>summary)>small{color:#fffaf4;opacity:.8}
+.field-desk[data-vibrant-view="true"] :is(.pane-kicker,.axiom-id,.route-card-id,.inspect-id,.trace-card strong,.reader-pane-code,.passage-address,.item-address,.pane-intro .kicker){color:var(--vibrant-text)}
+.field-desk[data-vibrant-view="true"] .source-copy .passage-address{color:var(--vibrant-text)}
+/* Sliders use the lighter label colour; their geometry is unchanged. */
+.field-desk[data-vibrant-view="true"] .pane-slider{--pane-accent:var(--vibrant-text)}
+.field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane){filter:none;opacity:1}
+.field-desk[data-vibrant-view="true"][data-skin="care"]{
+  --desk-paper:#090d15;--desk-ink:#f8f4ec;
+  --beautiful-paper:#090d15;--beautiful-ink:#f8f4ec;--beautiful-muted:#c4bdaf;
+  background:#060910;border-color:#273344;color:#f8f4ec;
+}
+.field-desk[data-vibrant-view="true"][data-skin="care"] .desk-strip{background:#060910}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-toolbar,.desk-status){background:#0c111b;border-color:#273344}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-menu-panel,.slider-jump-menu,.build-version-menu){background:#101724;border-color:#35445a;color:#f8f4ec}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-window,.window-body,.source-copy,.care-head,.care-sections,.axiom-list,.pane-slider,.route-focus,.route-source-copy,.inspector-content){--desk-paper:#090d15;background:#090d15;color:#f8f4ec}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.care-section,.route-sheet,.route-card,.route-source-card,.inspect-text,.trace-card){background-color:#0c121e;border-color:#273344}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.axiom-text,.passage,.route-card-text,.inspect-text,.source-head h2,.care-head h2){color:#f8f4ec}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.axiom-trace,.route-card-via,.inspect-meta){color:#a5b2c3}
+.field-desk[data-vibrant-view="true"][data-skin="care"] .desk-window.pane-focused{border-color:color-mix(in srgb,var(--vibrant-accent) 56%,#273344)}
+/* Light belongs to the lettering, not a glaze across the colour blocks. */
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.pane-kicker,.axiom-id,.route-card-id,.inspect-id,.reader-pane-code,.passage-address,.slider-heading>span,.slider-stop.active .slider-stop-label){text-shadow:0 0 7px color-mix(in srgb,var(--vibrant-text) 20%,transparent)}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.source-head h2,.care-head h2,.desk-title strong){text-shadow:0 0 9px #c5d9ed20}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.window-titlebar strong,.care-section>summary,.route-sheet h3,.desk-menu-trigger){text-shadow:0 0 6px #e4efff28}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-menu-trigger svg,.reader-route-action svg,.reader-axiom-mark svg){filter:drop-shadow(0 0 3px #b8d4e524)}
+/* Standalone field readers share the same dark palette and saved preference. */
+.field-desk[data-vibrant-view="true"]{--bg:#060910;--panel:#090d15;--line:#273344;--text:#f8f4ec;--muted:#a5b2c3;background:#060910;color:#f8f4ec}
+.field-desk[data-vibrant-view="true"] :is(.field-strip,.field-pane,.pane-body,.pane-intro,.field-sections){background:#090d15}
+.field-desk[data-vibrant-view="true"] :is(.field-head,.field-status,.field-nav){background:#0c111b;border-color:#273344}
+.field-desk[data-vibrant-view="true"] :is(.item-copy,.item-prose,.pane-intro h3,.field-prose){color:#f8f4ec}
+.field-desk[data-vibrant-view="true"] .item-trace{color:#a5b2c3}
+.field-desk[data-vibrant-view="true"] :is(.item-address,.pane-intro .kicker,.reader-pane-code){text-shadow:0 0 7px color-mix(in srgb,var(--vibrant-text) 20%,transparent)}
+.field-desk[data-vibrant-view="true"] :is(.pane-intro h3,.lateral-reader-title strong,.pane-top strong,.field-section>summary){text-shadow:0 0 9px #c5d9ed20}
+
 .care-reading-text {font-family:var(--care-reader-font-family,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif);font-size:1.08rem;line-height:1.78;color:inherit;max-width:72ch;margin:0 auto;overflow-wrap:anywhere;}
 .care-reading-text p {margin:0 0 1.05em;line-height:inherit;}
 .care-reading-text h1,.care-reading-text h2,.care-reading-text h3,.care-reading-text h4,.care-reading-text h5,.care-reading-text h6 {font-family:inherit;line-height:1.3;font-weight:600;margin:1.6em 0 .65em;letter-spacing:-.015em;}
@@ -226,7 +275,7 @@
 .field-desk[data-title-view="true"] :is(.source-head,.care-head):has(.reader-simple-title) .pane-kicker,
 .field-desk[data-title-view="true"] :is(.source-head,.care-head):has(.reader-simple-title)>p{display:none}
 /* Keep slider edges stable; compact headings carry a copyable reading imprint. */
-.field-desk{--reader-source-inset:1.35rem;--reader-source-right:calc(var(--reader-source-inset) + .4rem);--reader-section-inset:.85rem}
+.field-desk{--reader-source-inset:1.35rem;--reader-source-right:calc(var(--reader-source-inset) + .4rem);--reader-section-inset:.85rem;--reader-care-title-inset:1.15rem}
 .field-desk[data-skin="care"]{--reader-section-inset:.75rem}
 .field-desk[data-skin="library"]{--reader-section-inset:1rem}
 .field-desk[data-skin="classic"]{--reader-section-inset:.7rem}
@@ -234,7 +283,9 @@
 .field-desk[data-title-view="true"] .source-copy .source-head,
 .field-desk[data-title-view="true"] .source-copy[data-beautiful-opening]>.source-head{max-width:none;margin:0 calc(-1 * var(--reader-source-right)) .75rem calc(-1 * var(--reader-source-inset));padding:.95rem var(--reader-source-right) .85rem var(--reader-source-inset);border-bottom:1px solid color-mix(in srgb,var(--desk-ink) 13%,transparent);text-align:start}
 .field-desk[data-title-view="true"] .source-copy>.passage-row:nth-child(1 of .passage-row:not(.beautiful-detail-row))>.passage{border-top-color:transparent}
-.field-desk[data-title-view="true"] .care-head{padding:.95rem 1.15rem .85rem}
+.field-desk[data-title-view="true"] .care-head{padding:.95rem var(--reader-care-title-inset) .85rem}
+.field-desk[data-title-view="true"] .care-pane>.pane-slider{padding-inline:var(--reader-care-title-inset)}
+.field-desk[data-title-view="true"] .care-pane .slider-heading{padding-inline:0}
 .field-desk[data-title-view="true"][data-view="outline"] .outline-content .care-head{padding-inline:1.05rem}
 .field-desk[data-title-view="true"] .source-copy .source-head h2,
 .field-desk[data-title-view="true"] .care-head .care-heading h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:calc(1.48rem * var(--desk-text-scale,var(--reader-text-scale,1)));font-weight:600;line-height:1.22;letter-spacing:-.018em;text-align:start;text-wrap:pretty;overflow-wrap:break-word;word-break:normal}
@@ -252,8 +303,57 @@
 .field-desk .window-titlebar>.reader-title-controls{margin-left:auto;color:inherit;text-transform:none}
 .field-desk .care-pane-minimized>.window-titlebar>.reader-title-controls{display:none}
 .field-desk .reader-title-controls [data-edit-source]{order:-1;margin-right:.35rem}
-@media(max-width:760px){.field-desk{--reader-source-inset:1rem}.field-desk[data-title-view="true"] .care-head{padding-inline:var(--reader-section-inset)}}
+@media(max-width:760px){.field-desk{--reader-source-inset:1rem;--reader-care-title-inset:var(--reader-section-inset)}}
 @media(prefers-reduced-motion:reduce){.field-desk .title-view-switch::after{transition:none}}
+
+.field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){
+  --vibrant-base:var(--pane-accent,var(--color,#3c6e93));
+  --vibrant-accent:var(--vibrant-base);
+  --vibrant-text:color-mix(in srgb,var(--vibrant-base) 68%,#fff);
+}
+.field-desk[data-vibrant-view="true"][data-skin="library"] :is(.desk-window,.route-sheet,.route-card),
+.field-desk[data-vibrant-view="true"][data-skin="classic"] :is(.desk-window,.route-sheet,.route-card){--vibrant-text:color-mix(in srgb,var(--vibrant-base) 88%,#12151b)}
+@supports(color:oklch(from #38749a l c h)){
+  .field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){
+    --vibrant-accent:oklch(from var(--vibrant-base) clamp(.46,calc(l + .02),.54) calc(c * 1.18) h);
+    --vibrant-text:oklch(from var(--vibrant-base) .72 calc(c * 1.15) h);
+  }
+  .field-desk[data-vibrant-view="true"][data-skin="library"] :is(.desk-window,.route-sheet,.route-card),
+  .field-desk[data-vibrant-view="true"][data-skin="classic"] :is(.desk-window,.route-sheet,.route-card){--vibrant-text:oklch(from var(--vibrant-base) .40 calc(c * 1.15) h)}
+}
+.field-desk[data-vibrant-view="true"] :is(.window-titlebar,.care-section>summary,.route-sheet h3,.pane-top,.field-section>summary){background:linear-gradient(110deg,var(--vibrant-accent),color-mix(in srgb,var(--vibrant-accent) 87%,#07101b));color:#fffaf4}
+.field-desk[data-vibrant-view="true"] :is(.window-titlebar,.care-section>summary,.route-sheet h3,.pane-top,.field-section>summary)>small{color:#fffaf4;opacity:.8}
+.field-desk[data-vibrant-view="true"] :is(.pane-kicker,.axiom-id,.route-card-id,.inspect-id,.trace-card strong,.reader-pane-code,.passage-address,.item-address,.pane-intro .kicker){color:var(--vibrant-text)}
+.field-desk[data-vibrant-view="true"] .source-copy .passage-address{color:var(--vibrant-text)}
+/* Sliders use the lighter label colour; their geometry is unchanged. */
+.field-desk[data-vibrant-view="true"] .pane-slider{--pane-accent:var(--vibrant-text)}
+.field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane){filter:none;opacity:1}
+.field-desk[data-vibrant-view="true"][data-skin="care"]{
+  --desk-paper:#090d15;--desk-ink:#f8f4ec;
+  --beautiful-paper:#090d15;--beautiful-ink:#f8f4ec;--beautiful-muted:#c4bdaf;
+  background:#060910;border-color:#273344;color:#f8f4ec;
+}
+.field-desk[data-vibrant-view="true"][data-skin="care"] .desk-strip{background:#060910}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-toolbar,.desk-status){background:#0c111b;border-color:#273344}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-menu-panel,.slider-jump-menu,.build-version-menu){background:#101724;border-color:#35445a;color:#f8f4ec}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-window,.window-body,.source-copy,.care-head,.care-sections,.axiom-list,.pane-slider,.route-focus,.route-source-copy,.inspector-content){--desk-paper:#090d15;background:#090d15;color:#f8f4ec}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.care-section,.route-sheet,.route-card,.route-source-card,.inspect-text,.trace-card){background-color:#0c121e;border-color:#273344}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.axiom-text,.passage,.route-card-text,.inspect-text,.source-head h2,.care-head h2){color:#f8f4ec}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.axiom-trace,.route-card-via,.inspect-meta){color:#a5b2c3}
+.field-desk[data-vibrant-view="true"][data-skin="care"] .desk-window.pane-focused{border-color:color-mix(in srgb,var(--vibrant-accent) 56%,#273344)}
+/* Light belongs to the lettering, not a glaze across the colour blocks. */
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.pane-kicker,.axiom-id,.route-card-id,.inspect-id,.reader-pane-code,.passage-address,.slider-heading>span,.slider-stop.active .slider-stop-label){text-shadow:0 0 7px color-mix(in srgb,var(--vibrant-text) 20%,transparent)}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.source-head h2,.care-head h2,.desk-title strong){text-shadow:0 0 9px #c5d9ed20}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.window-titlebar strong,.care-section>summary,.route-sheet h3,.desk-menu-trigger){text-shadow:0 0 6px #e4efff28}
+.field-desk[data-vibrant-view="true"][data-skin="care"] :is(.desk-menu-trigger svg,.reader-route-action svg,.reader-axiom-mark svg){filter:drop-shadow(0 0 3px #b8d4e524)}
+/* Standalone field readers share the same dark palette and saved preference. */
+.field-desk[data-vibrant-view="true"]{--bg:#060910;--panel:#090d15;--line:#273344;--text:#f8f4ec;--muted:#a5b2c3;background:#060910;color:#f8f4ec}
+.field-desk[data-vibrant-view="true"] :is(.field-strip,.field-pane,.pane-body,.pane-intro,.field-sections){background:#090d15}
+.field-desk[data-vibrant-view="true"] :is(.field-head,.field-status,.field-nav){background:#0c111b;border-color:#273344}
+.field-desk[data-vibrant-view="true"] :is(.item-copy,.item-prose,.pane-intro h3,.field-prose){color:#f8f4ec}
+.field-desk[data-vibrant-view="true"] .item-trace{color:#a5b2c3}
+.field-desk[data-vibrant-view="true"] :is(.item-address,.pane-intro .kicker,.reader-pane-code){text-shadow:0 0 7px color-mix(in srgb,var(--vibrant-text) 20%,transparent)}
+.field-desk[data-vibrant-view="true"] :is(.pane-intro h3,.lateral-reader-title strong,.pane-top strong,.field-section>summary){text-shadow:0 0 9px #c5d9ed20}
 
 [data-corpus-route-threads]{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8;overflow:hidden}
 [data-corpus-route-threads] path{fill:none;stroke:#bea175;stroke-width:1.4;opacity:.8}

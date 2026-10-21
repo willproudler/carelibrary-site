@@ -24,9 +24,9 @@ function publicSourceDetailHint(canonical, passage) {
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=31ade14841f4ecba';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=8d5242901273a066';
 import {publicReadingText} from './native/reading-views.mjs?v=ae16e9346d221c44';
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=31ade14841f4ecba';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=8d5242901273a066';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
