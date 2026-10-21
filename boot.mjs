@@ -1,5 +1,5 @@
 // Keep a dependency/network failure from leaving the beta loading mark forever.
-import('./public-app.mjs?v=31ade14841f4ecba').catch(()=>{
+import('./public-app.mjs?v=2c891a9ea371af36').catch(()=>{
  const host=document.querySelector('#reader');
  const message=document.createElement('p');message.textContent='CARE Library could not load. Check your connection and try again.';
  const retry=document.createElement('button');retry.textContent='Try again';retry.onclick=()=>location.reload();

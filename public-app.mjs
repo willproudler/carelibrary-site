@@ -1,7 +1,7 @@
 import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
-import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField} from './public-fields.mjs?v=31ade14841f4ecba';
+import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,fieldViewerReferences} from './public-fields.mjs?v=2c891a9ea371af36';
 import mountReader from './native/study-desk.mjs?v=31ade14841f4ecba';
 
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=31ade14841f4ecba';
@@ -175,7 +175,7 @@ async function start(){
   dialog.querySelector('button').onclick=()=>dialog.close();dialog.showModal();
  }
  function paintFieldViewer(field){
-  const references=Object.entries(field.references||{}).map(([key,reference])=>({...reference,scope:reference.source_pane||key.slice(0,key.lastIndexOf('|')),kind:reference.kind||'axiom',resolved:reference.resolved!==false,reading_html:reference.reading_html||esc(reference.text||'')}));
+  const references=fieldViewerReferences(field,state.fieldSelected||state.fieldReference).map(reference=>({...reference,scope:reference.source_pane||'',kind:reference.kind||'axiom',resolved:reference.resolved!==false,reading_html:reference.reading_html||esc(reference.text||'')}));
   const selected=state.fieldSelected||state.fieldReference||{},ids=new Set(selected.id?[selected.id]:[]);
   for(const element of shadow.querySelectorAll('[data-ref-id],[data-item-id],[data-select-axiom],[data-select-passage]')){
    const id=element.dataset.refId||element.dataset.itemId||element.dataset.selectAxiom||element.dataset.selectPassage;if(id)ids.add(id);
