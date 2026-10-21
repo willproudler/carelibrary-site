@@ -180,7 +180,7 @@ export async function mountDiscoverReader(host,options={}) {
     if(!choices.length)throw Error('No books have been published yet.');
     const picker=mountDiscoverBookPicker(selector,choices,book=>open({book}));
     const shadow=host.shadowRoot||host.attachShadow({mode:'open'});
-    shadow.innerHTML=`<style>${css}\n${scope}\n${embedCSS}</style><div data-discover-book style="height:100%;min-height:0"><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div></div>`;
+    shadow.innerHTML=`<style>${css}\n${scope}\n${embedCSS}</style><div data-discover-book style="height:100%;min-height:0"><div class="study-desk" data-study-desk data-skin="care" tabindex="0" style="height:100%;min-height:0"></div></div>`;
     const bookHost=shadow.querySelector('[data-discover-book]');
     let cleanup,fieldApi,fieldHost,destroyed=false,paintQueued=false,requestVersion=0;
     const notify=message=>{if(statusElement)statusElement.textContent=message;};

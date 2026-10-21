@@ -25,7 +25,7 @@ async function start(){
   adapter=createPublicReaderAdapter(data);index=adapter.index;indexedWorks=[...data.works];indexedLateral=data.lateral;
  }
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
- shadow.innerHTML=`<style>${css}\n${scope}</style><div class="study-desk" data-study-desk tabindex="0" style="height:100%;min-height:0"></div><div class="field-desk" data-field-desk hidden style="height:100%;min-height:0"></div>`;
+ shadow.innerHTML=`<style>${css}\n${scope}</style><div class="study-desk" data-study-desk data-skin="care" tabindex="0" style="height:100%;min-height:0"></div><div class="field-desk" data-field-desk hidden style="height:100%;min-height:0"></div>`;
  const savedHost=$('[data-saved-library]');
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise;
