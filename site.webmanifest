@@ -8,7 +8,7 @@
   "theme_color": "#0d1015",
   "icons": [
     {
-      "src": "/assets/app-icon-512.png",
+      "src": "/assets/app-icon-512.png?v=20261021-opened-cube",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
