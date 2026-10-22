@@ -87,3 +87,66 @@ test('inline compact corpus files restore section items before the native reader
   assert.equal(payload.field.panes[0].sections[0].items[0].text,'Corpus wording');
   assert.equal(payload.field.route_panes[0].sections[0].items[0].text,'Whole book wording');
 });
+
+test('compact corpus routes show the complete exact WB to CL to MC to CB graph',()=>{
+  const item=(id,sources=[])=>({id,text:'Saved '+id,source_trace:sources});
+  const pane=(id,layer,items,origins=[])=>({id,layer,unit_id:items[0].id.split(':')[0],items,
+    origin_pane_ids:origins,strict_origin_bindings:true});
+  const field={reference_mode:'preserved-on-demand',bundle:{field:'corpus',preview_depth:'WB',
+    panes:[pane('cb','CB',[item('CB:A1',['MC_LEFT:A1','MC_RIGHT:A1'])],['mc-left','mc-right']),
+      pane('mc-left','MC',[item('MC_LEFT:A1',['CL_SHARED:A1','CL_SHARED:A2'])],['cl-left']),
+      pane('mc-right','MC',[item('MC_RIGHT:A1',['CL_SHARED:A1'])],['cl-right']),
+      pane('cl-left','CL',[item('CL_SHARED:A1',['WB_SHARED:A1']),item('CL_SHARED:A2',['WB_SHARED:A1'])],['wb-old']),
+      pane('cl-right','CL',[item('CL_SHARED:A1',['WB_SHARED:A1'])],['wb-new'])],
+    route_panes:[pane('wb-old','WB',[item('WB_SHARED:A1',['MC_BELOW:A1'])],['below']),
+      pane('wb-new','WB',[{...item('WB_SHARED:A1'),text:'Distinct saved edition'}]),
+      pane('below','MC',[item('MC_BELOW:A1')])],routes:[]}};
+  field.bundle.panes[0].items[0].deep_source_trace=['CH_NOT_IN_PREVIEW:A1'];
+  const before=JSON.stringify(field.bundle),reference=fieldReference(field,'cb','CB:A1');
+  assert.equal(reference.route_mode,'incoming');
+  assert.deepEqual(reference.built_from.map(row=>row.id),['MC_LEFT:A1','MC_RIGHT:A1']);
+  assert.deepEqual(Object.fromEntries(Object.entries(reference.route_layers).map(([key,rows])=>[key,rows.length])),{MC:2,CL:3,WB:2});
+  assert.equal(reference.route_edges.length,8);
+  assert.equal(reference.route_truncated,false);
+  assert.equal(reference.unresolved_reference_count,0);
+  const books=reference.route_layers.WB;
+  assert.deepEqual(books.find(row=>row.source_pane==='wb-old').feeds_ids,['CL_SHARED:A1','CL_SHARED:A2']);
+  assert.deepEqual(books.find(row=>row.source_pane==='wb-new').feeds_ids,['CL_SHARED:A1']);
+  assert.equal(books.find(row=>row.source_pane==='wb-new').text,'Distinct saved edition');
+  assert.equal(books.find(row=>row.source_pane==='wb-old').feeds_id,'CL_SHARED:A1');
+  const scopedNodes=new Set([reference,...Object.values(reference.route_layers).flat()].map(row=>row.source_pane+'|'+row.id));
+  for(const edge of reference.route_edges){
+    assert.ok(edge.source_id&&edge.target_id,'Native exactRouteEdges must accept every connector');
+    assert.ok(scopedNodes.has(edge.source_pane+'|'+edge.source_id));
+    assert.ok(scopedNodes.has(edge.target_pane+'|'+edge.target_id));
+    assert.equal(edge.source_id,edge.from);assert.equal(edge.target_id,edge.to);
+    assert.equal(edge.source_pane,edge.from_pane);assert.equal(edge.target_pane,edge.to_pane);
+    assert.ok(edge.source_layer&&edge.target_layer);
+  }
+  assert.equal(reference.route_edges.some(edge=>edge.source_id==='MC_BELOW:A1'),false);
+  assert.deepEqual(reference.route_edges.filter(edge=>edge.source_id==='WB_SHARED:A1').map(edge=>[edge.source_pane,edge.target_pane]),
+    [['wb-old','cl-left'],['wb-old','cl-left'],['wb-new','cl-right']]);
+  assert.equal(JSON.stringify(field.bundle),before);
+  delete field.bundle.preview_depth;
+  assert.deepEqual(Object.keys(fieldReference(field,'cb','CB:A1').route_layers),['MC'],'Unrestricted fields retain their existing immediate route behavior');
+});
+
+test('compact corpus ancestry remains bounded and terminates cyclic saved traces',()=>{
+  const wbItems=Array.from({length:300},(_,n)=>({id:`WB:A${n}`,text:'Saved whole-book claim'}));
+  const field={reference_mode:'preserved-on-demand',bundle:{field:'corpus',preview_depth:'WB',
+    panes:[{id:'cb',layer:'CB',origin_pane_ids:['wb'],strict_origin_bindings:true,
+      items:[{id:'CB:A1',text:'Corpus',source_trace:wbItems.map(row=>row.id)}]}],
+    route_panes:[{id:'wb',layer:'WB',items:wbItems}]}};
+  const reference=fieldReference(field,'cb','CB:A1');
+  assert.equal(reference.route_layers.WB.length,256);
+  assert.equal(reference.route_edges.length,256);
+  assert.equal(reference.route_truncated,true);
+  const cycle={reference_mode:'preserved-on-demand',bundle:{field:'corpus',preview_depth:'WB',panes:[
+    {id:'cb',layer:'CB',items:[{id:'CB:A1',source_trace:['MC:A1']}]},
+    {id:'mc',layer:'MC',items:[{id:'MC:A1',source_trace:['CL:A1']}]},
+    {id:'cl',layer:'CL',items:[{id:'CL:A1',source_trace:['MC:A1']}]}]}};
+  const cyclic=fieldReference(cycle,'cb','CB:A1');
+  assert.equal(cyclic.route_edges.length,3);
+  assert.equal(Object.values(cyclic.route_layers).flat().length,2);
+  assert.equal(cyclic.route_truncated,false);
+});

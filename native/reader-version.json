@@ -8,10 +8,11 @@
     "Keep single-sheet WB rails visible and reduce phone slider padding",
     "Tighten phone sheet title spacing and retain a smaller sheet code",
     "Keep continuation Routes controls visible for preserved corpus feeders",
-    "Compact corpus route controls and headers only on phone-sized screens"
+    "Compact corpus route controls and headers only on phone-sized screens",
+    "Slim mobile corpus route bars with 44-pixel touch areas"
   ],
   "assets": {
-    "study-desk.css": "38140fcbdfd4ffff9078c6f613569a1ba9ab51cb14f90f80aa5f8e08be759811",
+    "study-desk.css": "5f4af4185526b2ceed63079e37e02994e04306efe5c128935dee6b88898815a7",
     "study-desk.mjs": "e133a3706ceb04df6cd58d075513ec5b7e2e71ee2adeb9cc7b02fdd075a5f598",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },

@@ -2039,18 +2039,23 @@ button{border-radius:999px}
   .study-desk .corpus-build-tools>.desk-reader-controls{grid-column:1;grid-row:1;min-width:0;margin:0;overflow:visible}
   .study-desk .corpus-build-tools>.desk-title{grid-column:2;grid-row:1;min-width:0;max-width:5.5rem;padding:0;text-align:right}
   .study-desk .corpus-build-tools>.desk-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.72rem}
-  .study-desk .corpus-build-tools>.route-toolbar{grid-column:1/-1;grid-row:2;justify-content:space-between;gap:6px;min-width:0;margin:0 0 4px;padding:0 5px;border-radius:6px}
+  .study-desk .corpus-build-tools>.route-toolbar{grid-column:1/-1;grid-row:2;justify-content:space-between;gap:6px;min-width:0;margin:0;padding:0 2px;border:0;border-radius:0;background:transparent;box-shadow:none}
   .study-desk .corpus-build-tools>.route-toolbar>span{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:.58rem}
-  .study-desk .corpus-build-tools .route-history-actions{gap:3px}
-  .study-desk .corpus-build-tools .route-history-actions button{height:44px;min-width:44px;padding:6px 8px;font-size:.65rem}
-  .study-desk .corpus-build-tools .route-history-actions .route-history-arrow{width:44px;padding:10px}
-  .study-desk .corpus-build-tools .route-history-actions svg{width:1rem;height:1rem}
+  .study-desk .corpus-build-tools .route-history-actions{gap:0}
+  .study-desk .corpus-build-tools .route-history-actions :is(button,.route-close,.route-history-arrow){position:relative;height:32px;min-width:32px;margin:0 6px;padding:4px 6px;border:0;border-radius:4px;background:transparent;color:inherit;box-shadow:none;font-size:.58rem}
+  .study-desk .corpus-build-tools .route-history-actions .route-history-arrow{width:32px;padding:8px}
+  /* Hit areas extend into the strip's empty 12px gutter, never into the menu row. */
+  .study-desk .corpus-build-tools .route-history-actions button::after{content:"";position:absolute;top:0;left:-6px;width:calc(100% + 12px);height:44px}
+  .study-desk .corpus-build-tools .route-history-actions :is(button,.route-close,.route-history-arrow):hover:not(:disabled){background:color-mix(in srgb,currentColor 7%,transparent);color:inherit}
+  .study-desk .corpus-build-tools .route-history-actions svg{width:.85rem;height:.85rem}
+  .study-desk:has(>.corpus-build-tools)>.desk-strip{padding-top:12px}
   .study-desk:has(>.corpus-build-tools) .route-focus{padding:8px}
-  .study-desk:has(>.corpus-build-tools) .route-focus-head{align-items:center;gap:6px;margin-bottom:8px;padding:3px 8px;border-radius:6px}
+  .study-desk:has(>.corpus-build-tools) .route-focus-head{align-items:center;gap:6px;min-height:32px;margin-bottom:12px;padding:0 6px;border:0;border-radius:0;background:transparent;box-shadow:none}
   .study-desk:has(>.corpus-build-tools) .route-focus-head>div{flex:1;min-width:0}
   .study-desk:has(>.corpus-build-tools) .route-focus-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;font-size:.76rem;line-height:1.3}
   .study-desk:has(>.corpus-build-tools) .route-focus-head>div>span:last-child{display:none}
-  .study-desk:has(>.corpus-build-tools) .route-focus-head>.route-close{flex:0 0 44px;width:44px;height:44px;padding:0;font-size:1rem}
+  .study-desk:has(>.corpus-build-tools) .route-focus-head>.route-close{position:relative;flex:0 0 32px;width:32px;height:32px;padding:0;border:0;background:transparent;font-size:.9rem}
+  .study-desk:has(>.corpus-build-tools) :is(.route-focus-head>.route-close,.route-recipient .route-pane-close)::after{content:"";position:absolute;top:0;left:-6px;width:44px;height:44px}
   .study-desk:has(>.corpus-build-tools) .route-sheet{margin-bottom:8px;border-radius:6px}
   .study-desk:has(>.corpus-build-tools) .route-sheet h3{min-height:32px;gap:6px;padding:5px 8px;font-size:.58rem;line-height:1.3}
   .study-desk:has(>.corpus-build-tools) .route-sheet h3>span{min-width:0;overflow-wrap:anywhere}
@@ -2060,9 +2065,9 @@ button{border-radius:999px}
   .study-desk:has(>.corpus-build-tools) .route-card-via{margin-top:6px;font-size:.5rem}
   .study-desk:has(>.corpus-build-tools) .route-list .reader-route-action{top:0;right:2px;width:44px;height:44px;padding:12px;opacity:.85}
   .study-desk:has(>.corpus-build-tools) .route-list .reader-route-action svg{width:20px;height:20px;stroke-width:1.5}
-  .study-desk:has(>.corpus-build-tools) .route-recipient{gap:6px;margin:4px 8px 8px;padding:0 8px}
+  .study-desk:has(>.corpus-build-tools) .route-recipient{gap:6px;margin:0 8px 12px;padding:0 8px;border:0;background:transparent}
   .study-desk:has(>.corpus-build-tools) .route-recipient>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .study-desk:has(>.corpus-build-tools) .route-recipient .route-pane-close{flex:0 0 44px;width:44px;height:44px}
+  .study-desk:has(>.corpus-build-tools) .route-recipient .route-pane-close{position:relative;flex:0 0 32px;width:32px;height:32px;border:0;background:transparent}
 }
 
 .study-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){

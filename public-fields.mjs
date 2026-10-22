@@ -161,7 +161,7 @@ function traces(item, immediate) {
   return result;
 }
 
-/** Mirrors the exact preserved-version rules in study_field_routes.py. */
+/** Follow exact preserved versions; compact corpora include their WB ancestry. */
 function preservedReference(bundle, paneId, referenceId) {
   if (!bundle || !referenceId) return null;
   const index = fieldIndex(bundle);
@@ -190,9 +190,10 @@ function preservedReference(bundle, paneId, referenceId) {
     return !context.strict_origin_bindings && candidates.length === 1 ? candidates[0] : null;
   };
   const root = cardFor(selectedPane,selected), layers = {}, direct = [], edges = [];
+  const corpusPreview = bundle.field === 'corpus' && bundle.preview_depth === 'WB';
   // The public corpus deliberately ends at its saved whole books. Its terminal
   // cards remain readable without reporting omitted deep routes as broken links.
-  if (bundle.preview_depth === 'WB' && selectedPane.layer === 'WB') return {
+  if (corpusPreview && selectedPane.layer === 'WB') return {
     ...root,route_layers:{},built_from:[],route_edges:[],route_truncated:false,
     unresolved_reference_count:0,route_mode:'immediate',source_passages:[],
   };
@@ -201,7 +202,9 @@ function preservedReference(bundle, paneId, referenceId) {
   const queue = [{pane:selectedPane,item:selected,depth:0}];
   let truncated = false, unresolved = 0;
   for (let next = 0; next < queue.length; next++) {
-    const {pane:parentPane,item:parentItem,depth} = queue[next], sources = traces(parentItem,index.stepwise);
+    const {pane:parentPane,item:parentItem,depth} = queue[next];
+    if (corpusPreview && parentPane.layer === 'WB') continue;
+    const sources = traces(parentItem,index.stepwise);
     if (depth >= 6) {truncated ||= sources.length > 0; continue;}
     for (const [id,kind] of sources) {
       if (emitted.size >= 256) {truncated = true; break;}
@@ -218,17 +221,31 @@ function preservedReference(bundle, paneId, referenceId) {
           candidates:alternatives.map(({pane}) => ({source_pane:String(pane.id || ''),version:String(pane.version || '')}))};
       }
       const key = nodeKey(card.source_pane,id);
-      edges.push({from:id,to:identity(parentItem),kind,from_pane:card.source_pane,to_pane:String(parentPane.id || '')});
+      edges.push({from:id,to:identity(parentItem),kind,from_pane:card.source_pane,to_pane:String(parentPane.id || ''),
+        source_id:id,target_id:identity(parentItem),source_pane:card.source_pane,target_pane:String(parentPane.id || ''),
+        source_layer:card.layer,target_layer:String(parentPane.layer || parentPane.type || 'CARE')});
       if (depth === 0 && !direct.some(value => value.id === id && value.source_pane === card.source_pane)) direct.push(card);
       if (!emitted.has(key) && key !== rootKey) {
         emitted.add(key); (layers[card.layer] ||= []).push({...card,route_depth:depth+1});
         if (card.unresolved) unresolved++;
       }
-      if (matched && !visited.has(key) && !index.stepwise) {visited.add(key); queue.push({...matched,depth:depth+1});}
+      if (matched && !visited.has(key) && (corpusPreview || !index.stepwise)) {visited.add(key); queue.push({...matched,depth:depth+1});}
     }
   }
+  // Native route cards and curved connectors use the same scoped edge graph.
+  // A shared feeder can feed several recipients without duplicating its prose.
+  const feeds = new Map();
+  for (const edge of edges) {
+    const key = nodeKey(edge.source_pane,edge.source_id);
+    if (!feeds.has(key)) feeds.set(key,new Set());
+    feeds.get(key).add(edge.target_id);
+  }
+  for (const card of [...direct,...Object.values(layers).flat()]) {
+    card.feeds_ids = [...(feeds.get(nodeKey(card.source_pane,card.id)) || [])];
+    card.feeds_id = card.feeds_ids[0] || '';
+  }
   return {...root,route_layers:layers,built_from:direct,route_edges:edges,route_truncated:truncated,
-    unresolved_reference_count:unresolved,route_mode:index.stepwise ? 'immediate' : 'ancestry',
+    unresolved_reference_count:unresolved,route_mode:corpusPreview ? 'incoming' : index.stepwise ? 'immediate' : 'ancestry',
     source_passages:[...(layers.SOURCE || []),...(layers.PASSAGE || [])]};
 }
 

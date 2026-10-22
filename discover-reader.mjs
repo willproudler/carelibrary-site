@@ -3,7 +3,7 @@
 import mountReader from './native/study-desk.mjs?v=c51b749ad7957467';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=d6fb94305f051e89';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
-import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=8256b20bae53e80f';
+import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=aefc8861e610f34d';
 import {loadLibrary} from './library-loader.mjs';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
@@ -171,7 +171,7 @@ export async function mountDiscoverReader(host,options={}) {
     };
     const [library,css,scope]=await Promise.all([
       options.library||loadLibrary(options.fetch?{fetch:options.fetch}:{}),
-      readText('./native/study-desk.css?v=c51b749ad7957467'),
+      readText('./native/study-desk.css?v=aefc8861e610f34d'),
       readText('./native/public-scope.css?v=d6fb94305f051e89'),
     ]);
     const data=await prepareDiscoverReading(library);
@@ -220,7 +220,7 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=c51b749ad7957467')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=aefc8861e610f34d')]);
           if(destroyed||version!==requestVersion)return;
           await loadFieldMembers(field,library);
           if(destroyed||version!==requestVersion)return;
