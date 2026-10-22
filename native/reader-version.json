@@ -5,10 +5,11 @@
     "Keep unaligned source translations readable without inventing passage routes",
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
     "Improve finger-tap selection and compact phone reader controls",
-    "Keep single-sheet WB rails visible and reduce phone slider padding"
+    "Keep single-sheet WB rails visible and reduce phone slider padding",
+    "Tighten phone sheet title spacing and retain a smaller sheet code"
   ],
   "assets": {
-    "study-desk.css": "865c6f0c0f586134211de1fff11ba7049300b0644456dda36e7c5acfdbc991a1",
+    "study-desk.css": "7419a7b92d768c0eef384663ffe85a0fa2a5a146762272eeed5475ccb90e772b",
     "study-desk.mjs": "55b7212343fe6727725c073e01b5c021d41c40579e6c2e9b7382a7df40ccbc8d",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },

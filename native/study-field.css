@@ -227,6 +227,19 @@
   .field-desk .field-pane>.pane-slider .slider-track{margin-top:2px}
 }
 
+/* Phone sheet titles keep their code in a compact, readable second line. */
+@media(max-width:640px){
+  .field-desk[data-skin] .desk-window .care-head,
+  .field-desk .field-pane .pane-body .pane-intro{padding-top:7px;padding-bottom:7px}
+  .field-desk[data-title-view="true"] .desk-window .window-body .source-copy .source-head{padding-top:7px;padding-bottom:7px;margin-bottom:6px}
+  .field-desk:not([data-title-view="true"]) .desk-window .care-head .care-heading h2,
+  .field-desk:not([data-title-view="true"]) .field-pane .pane-body .pane-intro h3{margin-top:2px;margin-bottom:2px}
+  .field-desk[data-title-view="true"] .desk-window .reader-pane-imprint,
+  .field-desk[data-title-view="true"] .field-pane .reader-pane-imprint{margin-top:3px;gap:4px}
+  .field-desk .desk-window .reader-pane-code,
+  .field-desk .field-pane .reader-pane-code{min-height:0;font-size:.5rem;line-height:1.2;letter-spacing:.04em}
+}
+
 .field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){
   --vibrant-base:var(--pane-accent,var(--color,#3c6e93));
   --vibrant-accent:var(--vibrant-base);
