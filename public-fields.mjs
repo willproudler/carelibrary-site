@@ -50,12 +50,26 @@ export function fieldReferenceState(field,adapter,state,{id,scope='',workId='',r
   }
   return next;
 }
+/** A compact corpus uses its preserved whole books until a reader opens a member. */
+export async function loadFieldMembers(field, loader, requestedIds = null) {
+  if (field.bundle?.preview_depth === 'WB' && requestedIds === null) return [];
+  const requested = requestedIds === null ? null : new Set(requestedIds);
+  const members = (field.bundle?.members || field.members || []).flatMap(member => {
+    const id = member.work_id || member.id;
+    const work = loader.data.works.find(work => work.id === id || work.version_work_id === id);
+    return work && (!requested || [id,work.id,work.version_work_id].some(value => requested.has(value))) ? [{id,workId:work.id}] : [];
+  });
+  if (members.length) await loader.ensureWorks([...new Set(members.map(member => member.workId))]);
+  return members.map(member => member.id);
+}
+
 export function fieldPayload(field, adapter, state = {}) {
-  const stacks = {}, member_load_errors = {};
+  const stacks = {}, member_load_errors = {...state.fieldMemberLoadErrors};
   for (const member of field.bundle.members || []) {
     const id = member.work_id || member.id;
     const work = adapter.works.find(work => work.id === id || work.version_work_id === id);
     if (!work) {member_load_errors[id]='This source book has not been published to the beta yet. Its saved reading remains available below.';continue;}
+    if (field.bundle.preview_depth === 'WB' && !(state.fieldLoadedMembers || []).includes(id)) continue;
     const selected = state.fieldBookStates?.[id] || {};
     const stack = adapter.stack(work.id, selected);
     stacks[id] = {...stack, work:{...stack.work,id}, work_id:id};
@@ -176,6 +190,12 @@ function preservedReference(bundle, paneId, referenceId) {
     return !context.strict_origin_bindings && candidates.length === 1 ? candidates[0] : null;
   };
   const root = cardFor(selectedPane,selected), layers = {}, direct = [], edges = [];
+  // The public corpus deliberately ends at its saved whole books. Its terminal
+  // cards remain readable without reporting omitted deep routes as broken links.
+  if (bundle.preview_depth === 'WB' && selectedPane.layer === 'WB') return {
+    ...root,route_layers:{},built_from:[],route_edges:[],route_truncated:false,
+    unresolved_reference_count:0,route_mode:'immediate',source_passages:[],
+  };
   const nodeKey = (pane,id) => JSON.stringify([pane,id]);
   const rootKey = nodeKey(paneId,referenceId), visited = new Set([rootKey]), emitted = new Set();
   const queue = [{pane:selectedPane,item:selected,depth:0}];
@@ -261,8 +281,8 @@ export async function loadPublicField(field, fetcher = globalThis.fetch.bind(glo
       }));
       for (const key of bundleArrays) bundle[key] = [...(bundle[key] || [])];
       for (const part of parts) for (const key of bundleArrays) for (const row of part[key] || []) bundle[key].push(row);
-      restoreSections(bundle);
     }
+    restoreSections(bundle);
     field.bundle = bundle; field.references = payload.references || {};
     field.reference_mode = payload.reference_mode || '';
     return field;

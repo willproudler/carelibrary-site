@@ -3,7 +3,7 @@
 import mountReader from './native/study-desk.mjs?v=ecc3f42e94e19788';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=d6fb94305f051e89';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
-import {loadPublicField} from './public-fields.mjs?v=d6fb94305f051e89';
+import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=8256b20bae53e80f';
 import {loadLibrary} from './library-loader.mjs';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
@@ -220,14 +220,14 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=ecc3f42e94e19788')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=8256b20bae53e80f')]);
           if(destroyed||version!==requestVersion)return;
-          const members=(field.bundle?.members||[]).map(member=>data.works.find(work=>work.id===(member.work_id||member.id)||work.version_work_id===(member.work_id||member.id))?.id).filter(Boolean);
-          await library.ensureWorks(members);
+          await loadFieldMembers(field,library);
           if(destroyed||version!==requestVersion)return;
           const adapter=controller?.refresh()||createPublicReaderAdapter(data);
           const nextHost=doc.createElement('div');nextHost.style.cssText='height:100%;min-height:0';
           const nextApi=await module.mountDiscoverField({host:nextHost,field,adapter,fetcher,
+            loadMembers:async ids=>({memberIds:await loadFieldMembers(field,library,ids),adapter:controller?.refresh()||createPublicReaderAdapter(data)}),
             onStatus:current=>{if(!destroyed&&fieldHost===nextHost)publish(current);},
             onLibrary:href=>{view.location.href=href;}});
           if(destroyed||version!==requestVersion){nextApi.destroy();return;}

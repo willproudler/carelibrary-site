@@ -1,5 +1,5 @@
 /* Discover uses the shipped field reader for published comparisons. */
-import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=d6fb94305f051e89';
+import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=8256b20bae53e80f';
 
 const copy = value => structuredClone(value);
 
@@ -30,6 +30,13 @@ export function createDiscoverFieldController(field,adapter) {
     return getState();
   }
   function clearRoute(){state={...state,fieldReference:null};return getState();}
+  function activateMembers(memberIds,nextAdapter){
+    if(memberIds.some(id=>!members.some(member=>memberId(member)===id)||!nextAdapter.works.some(work=>work.id===id||work.version_work_id===id)))
+      throw Error('This source book has not been published to the beta yet.');
+    adapter=nextAdapter;
+    state={...state,fieldLoadedMembers:[...new Set([...(state.fieldLoadedMembers||[]),...memberIds])]};
+    return getState();
+  }
   function dispatch(action={}) {
     if(action.type==='open_reference')return open({ref:action.reference_id,scope:action.source_pane||''});
     if(action.type==='clear_reference')return clearRoute();
@@ -71,7 +78,7 @@ export function createDiscoverFieldController(field,adapter) {
     referenceId:state.fieldReference?.id||'',scope:state.fieldReference?.source_pane||'',
     book:'field:'+field.id,connectionId:field.id,workId:memberWorkIds[0]||'',memberWorkIds:[...memberWorkIds],
   };}
-  return {open,clearRoute,dispatch,getState,status,
+  return {open,clearRoute,dispatch,activateMembers,getState,status,
     payload:()=>fieldPayload(field,adapter,state),href:()=>'./#field='+encodeURIComponent(field.id)};
 }
 
@@ -82,7 +89,7 @@ const embedCSS=`
 `;
 
 /** Mounts the reading into its own shadow root. */
-export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,onLibrary}) {
+export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,onLibrary,loadMembers}) {
   if(!host)return null;
   const doc=host.ownerDocument,view=doc.defaultView;
   const fetchFile=fetcher||view.fetch.bind(view);
@@ -112,13 +119,18 @@ export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,on
     function paint(){
       if(destroyed)return;
       cleanup?.();
-      cleanup=mountField({parentElement:shadow,data:controller.payload(),setStateValue:()=>{},setTriggerValue:(kind,action)=>{
+      cleanup=mountField({parentElement:shadow,data:controller.payload(),setStateValue:()=>{},setTriggerValue:async(kind,action)=>{
         if(destroyed||kind!=='action')return;
         if(action.type==='library'){
           if(onLibrary)onLibrary(controller.href());else view.location.assign(controller.href());
           return;
         }
         try{
+          if(loadMembers&&['load_member','load_members','open_work','open_chapter','open_sheet'].includes(action.type)){
+            const loaded=await loadMembers(action.work_ids||[action.work_id]);
+            if(destroyed)return;
+            controller.activateMembers(loaded.memberIds,loaded.adapter);
+          }
           controller.dispatch(action);
           if(action.type==='selected_axiom')notify();else paint();
         }catch(error){notice(error.message);}

@@ -1,7 +1,7 @@
 import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
-import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,fieldViewerReferences} from './public-fields.mjs?v=d6fb94305f051e89';
+import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=8256b20bae53e80f';
 import mountReader from './native/study-desk.mjs?v=ecc3f42e94e19788';
 
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=d6fb94305f051e89';
@@ -203,7 +203,7 @@ async function start(){
   if(!next){notice('This route is not included in the published reading.');return;}
   state=next;syncURL();paint();
  }
- function dispatchField(field,action){
+ async function dispatchField(field,action){
   if(action.type==='selected_axiom'){state.fieldSelected={id:action.value?.axiom_id||action.value?.passage_id,source_pane:action.source_pane||'',work_id:action.work_id||action.value?.work_id||'',kind:action.value?.passage_id?'passage':'axiom'};paintFieldViewer(field);return;}
   if(['bookmark_action','axiom_favourite_action'].includes(action.type)){
    if(!action.source_pane){
@@ -229,7 +229,20 @@ async function start(){
    openFieldReference(field,{id:action.reference_id,scope:action.source_pane||'',workId:action.work_id||''});return;
   }
   if(['load_member','load_members'].includes(action.type)){
-   const ids=action.work_ids||[action.work_id];if(ids.some(id=>!data.works.some(work=>work.id===id||work.version_work_id===id)))notice('This source book has not been published to the beta yet.');return;
+   const ids=action.work_ids||[action.work_id];
+   if(ids.some(id=>!data.works.some(work=>work.id===id||work.version_work_id===id))){notice('This source book has not been published to the beta yet.');return;}
+   if(field.bundle.preview_depth!=='WB')return;
+   const request=routeRequest;
+   try{
+    const loaded=await loadFieldMembers(field,loader,ids);
+    if(request!==routeRequest||state.connectionId!==field.id)return;
+    refreshAdapter();state.fieldLoadedMembers=[...new Set([...(state.fieldLoadedMembers||[]),...loaded])];
+    state.fieldMemberLoadErrors={...state.fieldMemberLoadErrors};loaded.forEach(id=>delete state.fieldMemberLoadErrors[id]);paint();
+   }catch(error){
+    if(request!==routeRequest||state.connectionId!==field.id)return;
+    state.fieldMemberLoadErrors={...state.fieldMemberLoadErrors,...Object.fromEntries(ids.map(id=>[id,error.message]))};paint();notice(error.message);
+   }
+   return;
   }
   if(['open_chapter','open_sheet','open_work'].includes(action.type)){
    const work=data.works.find(work=>work.id===action.work_id||work.version_work_id===action.work_id);
@@ -299,8 +312,10 @@ async function start(){
    }
    if(field){
     setLoadStatus('Opening '+field.title+'…');await Promise.all([loadPublicField(field),ensureField(),ensureViewer()]);if(request!==routeRequest)return;
-    await loader.ensureWorks((field.bundle.members||[]).map(member=>data.works.find(work=>work.id===(member.work_id||member.id)||work.version_work_id===(member.work_id||member.id))?.id).filter(Boolean));
-    if(request!==routeRequest)return;refreshAdapter();state={workId:(data.works[0]?.id||''),...bookStates.get(field.id),connectionId:field.id};view='workspace';
+    const memberRequest=field.bundle.preview_depth==='WB'&&p.get('work')&&!p.get('scope')?[p.get('work')]:null;
+    const loadedMembers=await loadFieldMembers(field,loader,memberRequest);
+    if(request!==routeRequest)return;refreshAdapter();state={workId:(data.works[0]?.id||''),...bookStates.get(field.id),connectionId:field.id};
+    state.fieldLoadedMembers=[...new Set([...(state.fieldLoadedMembers||[]),...loadedMembers])];view='workspace';
    }else if(data.lateral.id&&(lateral===data.lateral.id||p.has('compare'))){
     setLoadStatus('Opening the comparison…');await Promise.all([loader.ensureLateral(),ensureViewer()]);if(request!==routeRequest)return;refreshAdapter();
     state={workId:adapter.savedConnection.members[0]?.id||data.works[0]?.id||'',...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';

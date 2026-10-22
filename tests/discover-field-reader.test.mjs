@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDiscoverFieldController} from '../discover-field-reader.mjs';
+import {loadFieldMembers} from '../public-fields.mjs';
 
 function fixture(){
   const field={id:'FIELD:lateral:chosen',field:'lateral',title:'Chosen comparison',bundle:{
@@ -29,6 +30,28 @@ test('Discover field status names the selected publication and only its public m
   const payload=reader.payload();
   assert.deepEqual(Object.keys(payload.stacks),['FIRST','LATEST_SECOND']);
   assert.match(payload.field.member_load_errors.PRIVATE,/not been published/);
+});
+
+test('compact Discover corpus opens only an explicitly requested member and preserves saved routes',async()=>{
+  const {field,adapter}=fixture();
+  field.field=field.bundle.field='corpus';field.bundle.preview_depth='WB';
+  const reader=createDiscoverFieldController(field,adapter),requests=[];
+  const loader={data:{works:adapter.works},ensureWorks:async ids=>requests.push(ids)};
+  await loadFieldMembers(field,loader);
+  assert.deepEqual(requests,[]);assert.deepEqual(reader.payload().stacks,{});
+  reader.open({ref:'REUSED',scope:'second-pane'});
+  reader.dispatch({type:'axiom_favourite_action',care_item_id:'REUSED',source_pane:'second-pane',active:true});
+  const loaded=await loadFieldMembers(field,loader,['LATEST_SECOND']);
+  reader.activateMembers(loaded,adapter);
+  reader.dispatch({type:'open_sheet',work_id:'LATEST_SECOND',unit_id:'CH_SECOND'});
+  assert.deepEqual(requests,[['SECOND']]);
+  assert.deepEqual(Object.keys(reader.payload().stacks),['LATEST_SECOND']);
+  assert.equal(reader.payload().stacks.LATEST_SECOND.active_unit_id,'CH_SECOND');
+  assert.equal(reader.payload().reference.source_pane,'second-pane');
+  assert.equal(reader.payload().field.saved_axioms[0].source_pane,'second-pane');
+  const before=reader.getState();
+  assert.throws(()=>reader.activateMembers(['UNRELATED'],adapter),/not been published/);
+  assert.deepEqual(reader.getState(),before);
 });
 
 test('opening a repeated claim keeps the exact source pane in routes and selection',()=>{
