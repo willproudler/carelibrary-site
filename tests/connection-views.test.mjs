@@ -7,7 +7,9 @@ const desk=readFileSync(new URL('../native/study-desk.mjs',import.meta.url),'utf
 const field=readFileSync(new URL('../native/study-field.mjs',import.meta.url),'utf8');
 const withoutExport=source=>source.replace('export default function(component)','function mount(component)');
 const reduction='const ROUTE_DISPLAY_CACHE'+desk.split('const ROUTE_DISPLAY_CACHE')[1].split('\nfunction routeNodeIndex')[0];
-const outerField='function installPaneControls'+field.split('\n})();\n\nfunction installPaneControls')[1];
+const outerBoundary=field.indexOf('\n})();\n\n');
+assert.ok(outerBoundary>=0,'The embedded reader must have a complete closure');
+const outerField=field.slice(outerBoundary+'\n})();\n\n'.length);
 const embeddedDesk=field.split('const CORPUS_BOOK_READER = (() => {')[1].split('\nreturn {')[0];
 const scripts={desk:withoutExport(desk),embeddedDesk,field:withoutExport(field),corpus:reduction+'\nconst CORPUS_BOOK_CSS="",CORPUS_ROUTES_NATIVE_CSS="",CORPUS_PANE_FOLDS_CSS="";\n'+withoutExport(outerField)};
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;

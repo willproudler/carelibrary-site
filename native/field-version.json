@@ -1,9 +1,9 @@
 {
-  "version": "care-study-field/2.52",
+  "version": "care-study-field/2.55",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "2bc2fc6531161acde9758f827baf01941878bfb22e08d73daf5261c59ce97af0",
-    "study-field.mjs": "debd278c82034576021ad333801d5756a8f1b3016252317789e2c28805883a4b"
+    "study-field.css": "54b4afd112c49ff745ed82bb8179079af2b481a890f3a0daa01bcff794388348",
+    "study-field.mjs": "a33a58fe2417338a9e0ff7e444deb00aadc3266a353f6768dce7662a972801fe"
   }
 }

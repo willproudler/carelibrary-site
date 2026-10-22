@@ -1010,6 +1010,23 @@ button{border-radius:999px}
 .care-pane-minimized>.window-titlebar,.care-pane-minimized>.pane-top{position:relative;height:100%!important;display:flex!important;flex-direction:column;align-items:center;padding:calc(var(--care-controls-top,1rem) + 2rem) .35rem .7rem;gap:1rem;border:0}
 .care-pane-minimized .care-pane-controls{position:absolute;top:var(--care-controls-top,1rem);left:var(--care-controls-left,.75rem)}
 .care-pane-minimized>:not(.window-titlebar):not(.pane-top){display:none!important}.care-pane-minimized .care-pane-controls{margin:0}.care-pane-minimized .care-pane-controls button:not(:first-child){display:none}.care-pane-minimized>.window-titlebar>strong,.care-pane-minimized>.pane-top>strong{writing-mode:vertical-rl;margin:0!important;text-align:left!important;align-self:center;flex:0 1 auto;white-space:nowrap;max-height:calc(100% - 4rem)}
+/* The hit area is generous; only a quiet six-pixel rail is painted. */
+.care-pane-scrollbar{position:absolute;z-index:30;height:24px;opacity:0;pointer-events:none;outline:none;touch-action:none;user-select:none;-webkit-user-select:none;color:var(--desk-ink,#d7e0dc);transition:opacity .2s ease .35s}
+.care-pane-scrollbar[hidden]{display:none!important}
+.care-pane-scrollbar[data-revealed],.care-pane-scrollbar[data-dragging],.care-pane-scrollbar:focus-visible{opacity:1;pointer-events:auto;transition-delay:0s}
+.care-pane-scrollbar::before,.care-pane-scrollbar-thumb::before{content:"";position:absolute;inset:15px 0 3px;border-radius:999px}
+.care-pane-scrollbar::before{background:color-mix(in srgb,currentColor 12%,transparent)}
+.care-pane-scrollbar-thumb{position:absolute;top:0;bottom:0;left:0;cursor:grab}
+.care-pane-scrollbar-thumb::before{background:color-mix(in srgb,currentColor 48%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--desk-bg,#101319) 65%,transparent);transition:background .16s ease}
+.care-pane-scrollbar:hover .care-pane-scrollbar-thumb::before,.care-pane-scrollbar[data-dragging] .care-pane-scrollbar-thumb::before,.care-pane-scrollbar:focus-visible .care-pane-scrollbar-thumb::before{background:color-mix(in srgb,currentColor 72%,transparent)}
+.care-pane-scrollbar[data-dragging],.care-pane-scrollbar[data-dragging] .care-pane-scrollbar-thumb{cursor:grabbing}
+.care-pane-scrollbar:focus-visible::before{outline:2px solid var(--desk-accent,currentColor);outline-offset:3px}
+@media(any-hover:hover) and (any-pointer:fine){
+  :is(.study-desk,.field-desk) [data-strip].care-pane-scrollable{scrollbar-width:none!important}
+  :is(.study-desk,.field-desk) [data-strip].care-pane-scrollable::-webkit-scrollbar{display:none!important}
+}
+@media(prefers-reduced-motion:reduce){.care-pane-scrollbar,.care-pane-scrollbar-thumb::before{transition:none}}
+@media(forced-colors:active){.care-pane-scrollbar::before{background:CanvasText}.care-pane-scrollbar-thumb::before{background:Highlight;box-shadow:0 0 0 1px Canvas}}
 
 .connection-discovery-pane[hidden]{display:none!important}
 .connection-discovery-controls{display:flex;flex-flow:row nowrap;align-items:center;gap:.35rem;flex:0 0 auto;min-width:0}
@@ -1855,8 +1872,12 @@ button{border-radius:999px}
 @media(max-width:760px){.study-desk{--reader-source-inset:1rem;--reader-care-title-inset:var(--reader-section-inset)}}
 @media(prefers-reduced-motion:reduce){.study-desk .title-view-switch::after{transition:none}}
 
-.study-desk :is([data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id),
-.field-desk :is([data-reader-code],.item-text,.item-address,.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id){cursor:text;-webkit-user-select:text;user-select:text}
+:is(.study-desk,.field-desk) :is([data-select-axiom],[data-select-passage],[data-open-item]){cursor:pointer;-webkit-user-select:text;user-select:text}
+:is(.study-desk,.field-desk) :is([data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id,.axiom-trace,.route-card-via,.item-copy,.item-prose,.item-address,.item-trace),
+:is(.study-desk,.field-desk) :is(.axiom-text,.passage-text,.route-card-text,.item-copy,.item-prose) :where(*){cursor:inherit}
+/* Only the rendered letters/lines get a text cursor; block padding stays clickable. */
+:is(.study-desk,.field-desk) [data-reader-text-hit]{cursor:text!important}
+:is(.study-desk,.field-desk) a[href]{cursor:pointer}
 
 /* Borrow the source margin for the selection rail, preserving the reading
    measure and heading alignment. Keep this after Beautiful text's mobile reset

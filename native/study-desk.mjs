@@ -1240,7 +1240,7 @@ function routeFocusHead(reference,label,direction="incoming"){return `<header cl
 function routeGroups(items,selectedId){
   const groups=new Map()
   arr(items).forEach(item=>{const key=String(item.source_pane||item.unit_id||item.sheet_title||item.layer||"TRACE");if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)})
-  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id" ${axiomCopyAttributes(item.id)}>${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></button>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`).join("");return `<section class="route-sheet"${mc?` style="--pane-accent:${layerColor("MC",first)}"`:""}><h3><span>${esc(mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet")}</span><b>${rows.length}</b></h3><div class="route-list">${cards}</div></section>`}).join("")
+  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><article role="button" tabindex="0" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id" ${axiomCopyAttributes(item.id)}>${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></article>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`).join("");return `<section class="route-sheet"${mc?` style="--pane-accent:${layerColor("MC",first)}"`:""}><h3><span>${esc(mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet")}</span><b>${rows.length}</b></h3><div class="route-list">${cards}</div></section>`}).join("")
 }
 function sameLayerRouteItems(reference,direction){
   if(reference?.kind!=="axiom"||routeMode(reference)===(direction==="incoming"?"outgoing":"incoming"))return []
@@ -1312,8 +1312,8 @@ function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),s
     const contains=visibleItems.some(item=>String(item.id)===selectedId||feederIds.has(String(item.id)))
     const items=visibleItems.map(item=>{
       const content=`<span class="axiom-id" ${axiomCopyAttributes(item.id)}>${esc(item.address||item.id)} · ${esc(item.id)}</span><span class="axiom-text">${item.reading_html ?? esc(item.text)}</span><span class="axiom-trace">${esc(traceLabel(item,unit.type))}</span>`
-      if(isRoute){const button=`<button type="button" class="axiom-button ${String(item.id)===selectedId?"selected":feederIds.has(String(item.id))?"route-feeder":""}" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(unit.id)}" aria-pressed="false">${content}</button>`;return `<div class="axiom-row route-axiom-row">${button}${axiomCopyStatus()}${String(item.id)===selectedId?routeArrival(reference):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`}
-      return `<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><button type="button" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false" aria-describedby="desk-selection-help">${content}</button>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`
+      if(isRoute){const button=`<article role="button" tabindex="0" class="axiom-button ${String(item.id)===selectedId?"selected":feederIds.has(String(item.id))?"route-feeder":""}" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(unit.id)}" aria-pressed="false">${content}</article>`;return `<div class="axiom-row route-axiom-row">${button}${axiomCopyStatus()}${String(item.id)===selectedId?routeArrival(reference):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`}
+      return `<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><article role="button" tabindex="0" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false" aria-describedby="desk-selection-help">${content}</article>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`
     }).join("")
     return `<details class="care-section"${section.source_pane?` data-connection-reading="${esc(section.source_pane)}"`:""} ${contains||(!isRoute&&sectionIndex===defaultSectionIndex)?"open":""}><summary><span>${esc(section.number||String(sectionIndex+1))} · ${esc(section.name)}</span><small>${visibleItems.length}</small></summary><div class="axiom-list">${items}</div></details>`
   }).join("")
@@ -2632,6 +2632,113 @@ function setupConnectionResolution(runtime){
 }
 
 
+function installPaneScrollbar(root){
+  const doc=root.ownerDocument,view=doc?.defaultView
+  // A corpus owns embedded desks. Each desk controls only its own strip.
+  const strip=root.querySelector(":scope > [data-strip]")
+  if(!strip||!doc?.createElement||!view?.requestAnimationFrame)return ()=>{}
+  const bar=doc.createElement("div"),thumb=doc.createElement("span")
+  bar.className="care-pane-scrollbar";thumb.className="care-pane-scrollbar-thumb"
+  bar.tabIndex=0;bar.hidden=true;bar.setAttribute("role","scrollbar")
+  bar.setAttribute("aria-label","Scroll across reading panes")
+  bar.setAttribute("aria-orientation","horizontal");bar.setAttribute("aria-valuemin","0")
+  bar.title="Drag to move across reading panes"
+  const originalId=strip.id
+  if(!strip.id)strip.id="care-pane-track-"+Math.random().toString(36).slice(2)
+  bar.setAttribute("aria-controls",strip.id);thumb.setAttribute("aria-hidden","true")
+  bar.append(thumb);root.append(bar);strip.classList.add("care-pane-scrollable")
+  const mouse=view.matchMedia("(any-hover: hover) and (any-pointer: fine)")
+  let frame=0,drag=null,disposed=false,maximum=0,travel=0,pointer=null
+  const reveal=event=>{
+    if(event.pointerType!=="mouse")return
+    pointer={x:event.clientX,y:event.clientY}
+    const bounds=bar.getBoundingClientRect()
+    bar.toggleAttribute("data-revealed",!bar.hidden&&pointer.x>=bounds.left&&pointer.x<=bounds.right&&pointer.y>=bounds.top-14&&pointer.y<=bounds.bottom+8)
+  }
+  const paint=()=>{
+    frame=0;if(disposed)return
+    const outer=root.getBoundingClientRect(),bounds=strip.getBoundingClientRect()
+    const scaleX=outer.width/root.offsetWidth||1,scaleY=outer.height/root.offsetHeight||1
+    maximum=Math.max(0,strip.scrollWidth-strip.clientWidth)
+    bar.hidden=!mouse.matches||maximum<=1||!bounds.width||!bounds.height
+    if(bar.hidden){bar.removeAttribute("data-revealed");return}
+    const inset=14,width=Math.max(0,bounds.width/scaleX-inset*2)
+    // Stay in the strip's bottom gutter, above any footer, at every track zoom.
+    bar.style.left=((bounds.left-outer.left)/scaleX-root.clientLeft+inset)+"px"
+    bar.style.top=((bounds.bottom-outer.top)/scaleY-root.clientTop-24)+"px"
+    bar.style.width=width+"px"
+    const thumbWidth=Math.min(width,Math.max(44,width*strip.clientWidth/strip.scrollWidth))
+    travel=Math.max(0,width-thumbWidth)
+    const left=Math.max(0,Math.min(maximum,strip.scrollLeft))
+    thumb.style.width=thumbWidth+"px";thumb.style.transform=`translateX(${travel*left/maximum}px)`
+    bar.setAttribute("aria-valuemax",String(Math.round(maximum)))
+    bar.setAttribute("aria-valuenow",String(Math.round(left)))
+    bar.setAttribute("aria-valuetext",`${Math.round(left/maximum*100)}% through reading panes`)
+    if(pointer)reveal({pointerType:"mouse",clientX:pointer.x,clientY:pointer.y})
+  }
+  const queue=()=>{if(!disposed&&!frame)frame=view.requestAnimationFrame(paint)}
+  const moveTo=left=>{strip.scrollLeft=Math.max(0,Math.min(maximum,left));paint()}
+  const start=event=>{
+    if(event.button!==0||event.pointerType!=="mouse"||bar.hidden)return
+    event.preventDefault();event.stopPropagation();paint()
+    const bounds=bar.getBoundingClientRect(),scale=bounds.width/bar.clientWidth||1
+    if(!thumb.contains(event.target)){
+      const thumbBounds=thumb.getBoundingClientRect()
+      moveTo(strip.scrollLeft+(event.clientX<thumbBounds.left?-1:1)*strip.clientWidth*.85)
+      return
+    }
+    drag={id:event.pointerId,x:event.clientX,left:strip.scrollLeft,ratio:maximum/(travel*scale||1)}
+    bar.setAttribute("data-dragging","");bar.setPointerCapture(event.pointerId)
+  }
+  const move=event=>{if(!drag||event.pointerId!==drag.id)return;event.preventDefault();moveTo(drag.left+(event.clientX-drag.x)*drag.ratio)}
+  const end=event=>{
+    if(!drag||event.pointerId!==drag.id)return
+    const id=drag.id;drag=null;bar.removeAttribute("data-dragging")
+    if(bar.hasPointerCapture(id))bar.releasePointerCapture(id)
+    if(event.type==="pointercancel"){pointer=null;bar.removeAttribute("data-revealed")}
+    else reveal(event)
+  }
+  const leave=()=>{pointer=null;bar.removeAttribute("data-revealed")}
+  const key=event=>{
+    if(event.ctrlKey||event.metaKey||event.altKey)return
+    const page=strip.clientWidth*.85
+    const destinations={ArrowLeft:strip.scrollLeft-60,ArrowRight:strip.scrollLeft+60,PageUp:strip.scrollLeft-page,PageDown:strip.scrollLeft+page,Home:0,End:maximum}
+    if(!(event.key in destinations))return
+    event.preventDefault();event.stopPropagation();moveTo(destinations[event.key])
+  }
+  const wheel=event=>{
+    if(event.ctrlKey||event.metaKey)return
+    const delta=Math.abs(event.deltaX)>Math.abs(event.deltaY)?event.deltaX:event.deltaY
+    if(!delta)return
+    event.preventDefault();event.stopPropagation()
+    moveTo(strip.scrollLeft+delta*(event.deltaMode===1?16:event.deltaMode===2?strip.clientWidth:1))
+  }
+  const stopClick=event=>event.stopPropagation()
+  bar.addEventListener("pointerdown",start);bar.addEventListener("pointermove",move)
+  bar.addEventListener("pointerup",end);bar.addEventListener("pointercancel",end);bar.addEventListener("lostpointercapture",end)
+  bar.addEventListener("keydown",key);bar.addEventListener("wheel",wheel,{passive:false});bar.addEventListener("click",stopClick)
+  root.addEventListener("pointermove",reveal,{passive:true});root.addEventListener("pointerleave",leave)
+  strip.addEventListener("scroll",queue,{passive:true});view.addEventListener("resize",queue)
+  mouse.addEventListener("change",queue)
+  const resize=view.ResizeObserver?new view.ResizeObserver(queue):null
+  const watch=()=>{resize?.disconnect();resize?.observe(root);resize?.observe(strip);for(const pane of strip.children)resize?.observe(pane);queue()}
+  // Observe only the strip and pane boundaries, never every text/selection edit.
+  const changes=view.MutationObserver?new view.MutationObserver(records=>{
+    if(records.some(record=>record.type==="childList"&&record.target===strip))watch()
+    else if(records.some(record=>record.target===strip||record.target.parentElement===strip))queue()
+  }):null
+  changes?.observe(strip,{childList:true,subtree:true,attributes:true,attributeFilter:["hidden","class","style"]})
+  watch()
+  return ()=>{
+    disposed=true;if(frame)view.cancelAnimationFrame(frame)
+    resize?.disconnect();changes?.disconnect();mouse.removeEventListener("change",queue)
+    root.removeEventListener("pointermove",reveal);root.removeEventListener("pointerleave",leave)
+    strip.removeEventListener("scroll",queue);view.removeEventListener("resize",queue)
+    if(drag&&bar.hasPointerCapture(drag.id))bar.releasePointerCapture(drag.id)
+    strip.classList.remove("care-pane-scrollable");if(!originalId)strip.removeAttribute("id")
+    bar.remove()
+  }
+}
 function installPaneControls(root,states,onChange=()=>{},scope=""){
   for(const pane of root.querySelectorAll(".desk-window[data-pane],.field-pane[data-pane]")){
     const bar=pane.querySelector(":scope > .window-titlebar,:scope > .pane-top")
@@ -4729,17 +4836,69 @@ function axiomCodeSelection(root){
 }
 function setupAxiomCopy(runtime){
   runtime.cleanupAxiomCopy?.()
-  const root=runtime.root
-  const click=event=>{
-    const target=event.target,code=target?.closest?.('[data-reader-code],.passage-address')
-    const selection=axiomCodeSelection(root)
-    // Let the browser select/copy text normally. A completed drag or a click
-    // on metadata must not focus a card, redraw it, or start a route.
-    if((code&&root.contains(code))||(selection&&selection.isCollapsed===false&&String(selection)))event.stopImmediatePropagation()
+  const root=runtime.root,doc=root.ownerDocument
+  const textSelector='[data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id,.axiom-trace,.route-card-via,.field-item .item-copy,.field-item .item-prose,.item-address,.item-trace'
+  const cardSelector='[data-select-axiom],[data-select-passage],[data-open-item]'
+  const textHit=event=>{
+    const target=event.target,container=target?.closest?.(textSelector)
+    if(!container||!root.contains(container)||!doc?.createTreeWalker||!doc?.createRange)return false
+    if(target.closest?.('a[href],svg,math,input,textarea,select'))return false
+    // Read text line rectangles without adding wrappers or changing saved prose.
+    // This also handles formatted, wrapped and dynamically loaded text.
+    const walker=doc.createTreeWalker(container,4),range=doc.createRange()
+    while(walker.nextNode()){
+      const node=walker.currentNode
+      if(!node.textContent.trim()||node.parentElement?.closest('svg,math,script,style'))continue
+      range.selectNodeContents(node)
+      for(const rect of range.getClientRects()){
+        if(event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom)return true
+      }
+    }
+    return false
   }
+  let gesture=null,nativeTextScope=null,cursorTarget=null
+  const clearCursor=()=>{cursorTarget?.removeAttribute('data-reader-text-hit');cursorTarget=null}
+  const hover=event=>{
+    if(event.pointerType==='touch')return
+    const next=textHit(event)?event.target:null
+    if(next===cursorTarget)return
+    clearCursor();cursorTarget=next;cursorTarget?.setAttribute('data-reader-text-hit','')
+  }
+  const down=event=>{
+    nativeTextScope=textHit(event)?event.target.closest(cardSelector)||event.target.closest(textSelector):null
+    gesture=nativeTextScope?{id:event.pointerId}:null
+  }
+  const cancel=()=>{gesture=null;nativeTextScope=null}
+  const click=event=>{
+    const startedOnText=Boolean(gesture);gesture=null
+    if(event.detail===0)return // Keyboard activation still selects the card.
+    const target=event.target,selection=axiomCodeSelection(root)
+    const text=textHit(event)
+    const link=target?.closest?.('a[href]')
+    const selected=selection?.isCollapsed===false&&Boolean(String(selection))
+    // Suppress only native text gestures, never blank card space or unrelated
+    // controls because an earlier text selection happens to remain on screen.
+    if(text||(link&&link.closest(cardSelector))||(startedOnText&&selected))event.stopImmediatePropagation()
+  }
+  const key=event=>{
+    if(!nativeTextScope||!(event.target===nativeTextScope||nativeTextScope.contains(event.target))||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return
+    const selection=axiomCodeSelection(root)
+    if(selection?.isCollapsed===false&&String(selection))event.stopImmediatePropagation()
+  }
+  root.addEventListener('pointerdown',down,true)
+  root.addEventListener('pointercancel',cancel,true)
+  root.addEventListener('pointermove',hover,true)
+  root.addEventListener('pointerleave',clearCursor,true)
   root.addEventListener('click',click,true)
+  root.addEventListener('keydown',key,true)
   const cleanup=()=>{
+    clearCursor()
+    root.removeEventListener('pointerdown',down,true)
+    root.removeEventListener('pointercancel',cancel,true)
+    root.removeEventListener('pointermove',hover,true)
+    root.removeEventListener('pointerleave',clearCursor,true)
     root.removeEventListener('click',click,true)
+    root.removeEventListener('keydown',key,true)
     if(runtime.cleanupAxiomCopy===cleanup)delete runtime.cleanupAxiomCopy
   }
   runtime.cleanupAxiomCopy=cleanup
@@ -4905,6 +5064,7 @@ function renderStudyDesk(component,localNavigation=false){
     let resumeOnResize=applySavedPaneFocus(runtime)?null:resumedSnapshot
     let initialRouteLayout=true
     const stopTrackZoom=runtime.watchTrackZoom()
+    const stopPaneScrollbar=installPaneScrollbar(root)
     const stopWorkspaceWatch=workspaceWatchReader(runtime)
     const stopDialogueWatch=runtime.watchDialoguePlayer()
     const resize=view?.ResizeObserver?new view.ResizeObserver(()=>{if(resumeOnResize){workspaceRestorePosition(runtime,resumeOnResize);resumeOnResize=null}else if(initialRouteLayout&&data?.connection?.reference){if(!preserveConnectionPosition&&centreConnectionReference(runtime))runtime.paintFocus()}else if(initialRouteLayout&&data?.reference&&!preserveRoutePosition){const selected=centreSelectedReference(root,data.reference);if(selected){runtime.focused=selected;runtime.paintFocus()}}if(applySavedPaneFocus(runtime))resumeOnResize=null;initialRouteLayout=false;runtime.queueThreads()}):null
@@ -4915,7 +5075,7 @@ function renderStudyDesk(component,localNavigation=false){
     loader?.remove()
     runtime.applyOutline?.()
     studyNavigationPrefetch(runtime)
-    return finishRender(()=>{runtime.cleanupAxiomCopy?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
+    return finishRender(()=>{runtime.cleanupAxiomCopy?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopPaneScrollbar();stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`
