@@ -9,6 +9,8 @@ Chapter and sheet titles open searchable jump menus. Dragging a chapter rail pre
 - `about.html`: minimal Discover CARE page with the working native reader, a stable Hume map, a searchable books-only reading chooser, and the featured published lateral in the “Compare two books” card, a compact “180+ languages” section with examples and translation context, and plain explanations of laterals and corpuses.
 - `library.html`: compatibility redirect to the public library.
 
+The Discover CARE hero opens the supplied quick start guide in a new tab using the browser's PDF viewer. Share **[CARE quick start guide](https://carelibrary.org/quick-start.pdf)** in emails. `quick-start.pdf` is the original supplied PDF, served directly with no download attribute or embedded viewer; keep this URL stable when replacing the guide.
+
 The public site has two pages: the Library and Discover CARE. Both run without a bottom banner or footer navigation. Retired statement, rights and inactive beta pages are preserved in Git history and in a local archive outside this published directory; they are no longer served or included in the sitemap.
 
 `native/study-desk.mjs` and its stylesheet are exact exports of the app’s `STUDY_DESK_JS` and `STUDY_DESK_CSS`. `native/reference-viewer.*` comes from the app’s reference viewer, with one compatibility fix for keyboard event targets across the standalone desk’s ShadowRoot. Version manifests record the asset hashes. `native/public-scope.css` hides controls that do not apply to this fixed collection. `public-app.mjs` supplies public navigation and browser-local preferences; `public-reader-adapter.mjs` projects the published JSON into the original reader’s payload contract. It never queries the private catalogue or starts an AI run.
