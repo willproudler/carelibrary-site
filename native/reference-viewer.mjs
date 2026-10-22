@@ -29,6 +29,17 @@ function setupViewerVibrantView(runtime) {
   runtime.cleanupVibrantView=()=>{if(disposed)return;disposed=true;view.removeEventListener(VIEWER_VIBRANT_EVENT,change);view.removeEventListener('storage',storage);delete root.dataset.vibrantView}
   paint(read())
 }
+function dismissMobileViewerOutside(runtime,event) {
+  // Wait for a completed tap: pointerdown would dismiss during native scrolling.
+  if(!runtime.open||event.type!=="click"||event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return false
+  const view=runtime.root.ownerDocument?.defaultView||window
+  if(!view.matchMedia?.("(max-width: 640px)").matches)return false
+  const path=typeof event.composedPath==="function"?event.composedPath():[event.target]
+  if(path.includes(runtime.panel)||path.includes(runtime.launcher)||runtime.panel.contains(event.target)||runtime.launcher.contains(event.target))return false
+  // The first outside tap dismisses without activating a control underneath.
+  event.preventDefault();event.stopImmediatePropagation();runtime.onClose()
+  return true
+}
 function setup(parentElement, root, setTriggerValue) {
   const runtime = {
     root, registry:new Map(), sequence:[], selected:null, spatialElement:null, open:false, surface:"read", toolScreen:"home", statusTimer:null, textScaleIndex:2, setTriggerValue,
@@ -336,6 +347,7 @@ function setup(parentElement, root, setTriggerValue) {
     runtime.paneAccent=accent;runtime.root.style.setProperty('--crv-accent',accent)
   }
   runtime.onDocumentClick = event => {
+    if(dismissMobileViewerOutside(runtime,event))return
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     if (event.target instanceof Element && event.target.closest("a[data-care-reference-direct]")) return
     const bookmark = event.target instanceof Element ? event.target.closest("[data-care-reference-bookmark][data-care-reference-kind][data-care-reference-id]") : null
