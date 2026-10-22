@@ -9,10 +9,11 @@
     "Tighten phone sheet title spacing and retain a smaller sheet code",
     "Keep continuation Routes controls visible for preserved corpus feeders",
     "Compact corpus route controls and headers only on phone-sized screens",
-    "Slim mobile corpus route bars with 44-pixel touch areas"
+    "Slim mobile corpus route bars with 44-pixel touch areas",
+    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets"
   ],
   "assets": {
-    "study-desk.css": "5f4af4185526b2ceed63079e37e02994e04306efe5c128935dee6b88898815a7",
+    "study-desk.css": "d9084ad529cd6affb626fac378991d44ada9d7953a317ab4c3453562fd5b1cc7",
     "study-desk.mjs": "e133a3706ceb04df6cd58d075513ec5b7e2e71ee2adeb9cc7b02fdd075a5f598",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },

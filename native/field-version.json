@@ -3,8 +3,8 @@
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "b61255f63a34d98f1658208c4d13f1255a1fb67bf545e12ae6ffc4939e4d92d1",
-    "study-field.mjs": "01a937ac3afa0ce952242326e4c0c22f6150150b2a8111b8eefa64bd36353985"
+    "study-field.css": "42b3b25e6f7ab9f2720c5bd62991251fb30e316d3d2b6fa313722f60dc350273",
+    "study-field.mjs": "115fb16532fc364831178cec1a20623bd4ed59a293fe9d69639a0157c3137b97"
   },
   "compatibility_changes": [
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
@@ -13,6 +13,7 @@
     "Tighten phone sheet title spacing and retain a smaller sheet code",
     "Keep continuation Routes controls visible for preserved corpus feeders",
     "Compact corpus route controls and headers only on phone-sized screens",
-    "Slim mobile corpus route bars with 44-pixel touch areas"
+    "Slim mobile corpus route bars with 44-pixel touch areas",
+    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets"
   ]
 }

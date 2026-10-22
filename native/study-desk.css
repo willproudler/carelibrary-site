@@ -1964,6 +1964,40 @@ button{border-radius:999px}
   .study-desk .desk-menu-panel .desk-tab,.study-desk .desk-menu-panel .desk-action{min-height:44px}
 }
 
+/* A restrained desktop/tablet trim keeps reading type and slider targets unchanged. */
+@media(min-width:641px){
+  .study-desk[data-skin]:not([data-original-expanded="true"])>.desk-strip,
+  .field-desk>.field-strip{padding-top:10px}
+  .study-desk[data-skin] .desk-window:not(.care-pane-minimized):not(.original-pane)>.window-titlebar,
+  .field-desk .field-pane:not(.care-pane-minimized)>.pane-top{height:auto;min-height:38px;padding-top:4px;padding-bottom:4px}
+  .field-desk .field-pane:not(.care-pane-minimized)>.resize-handle{top:38px}
+  .study-desk .desk-window:not(.original-pane)>.pane-slider,
+  .field-desk .field-pane>.pane-slider{padding-top:12px;padding-bottom:6px}
+  .study-desk .desk-window:not(.original-pane)>.pane-slider .slider-track,
+  .field-desk .field-pane>.pane-slider .slider-track{margin-top:4px}
+  .study-desk[data-skin] .desk-window .care-head,
+  .field-desk .field-pane .pane-body .pane-intro{padding-top:10px;padding-bottom:10px}
+  .study-desk[data-title-view="true"] .desk-window .window-body .source-copy .source-head{padding-top:10px;padding-bottom:10px;margin-bottom:10px}
+  .study-desk[data-title-view="true"] .desk-window .reader-pane-imprint,
+  .field-desk[data-title-view="true"] .field-pane .reader-pane-imprint{margin-top:4px}
+  .study-desk .desk-window .reader-pane-code,
+  .field-desk .field-pane .reader-pane-code{min-height:1rem}
+  .study-desk[data-skin] .care-sections,
+  .field-desk .field-sections{padding-top:10px}
+  .study-desk[data-skin] .care-section,
+  .field-desk .field-section{margin-bottom:10px}
+  .study-desk[data-skin] .care-section>summary,
+  .field-desk .field-section>summary{min-height:40px;padding-top:8px;padding-bottom:8px}
+}
+/* Touch layouts retain generous controls while benefiting from the quieter spacing. */
+@media(min-width:641px) and (pointer:coarse){
+  .study-desk[data-skin] .desk-window:not(.care-pane-minimized):not(.original-pane)>.window-titlebar,
+  .field-desk .field-pane:not(.care-pane-minimized)>.pane-top{min-height:44px}
+  .field-desk .field-pane:not(.care-pane-minimized)>.resize-handle{top:44px}
+  .study-desk[data-skin] .care-section>summary,
+  .field-desk .field-section>summary{min-height:44px}
+}
+
 /* Phone panes keep their colour cues while reserving more room for reading. */
 @media(max-width:640px){
   .study-desk[data-skin] .desk-window:not(.care-pane-minimized):not(.original-pane)>.window-titlebar,
