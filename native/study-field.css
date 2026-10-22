@@ -219,6 +219,14 @@
   .field-desk[data-title-view="true"] .field-pane .pane-intro h3{font-size:calc(1.48rem * .92 * var(--scale,1))}
 }
 
+/* Trim mobile selector spacing without shrinking the slider or its controls. */
+@media(max-width:640px){
+  .field-desk .desk-window:not(.original-pane)>.pane-slider,
+  .field-desk .field-pane>.pane-slider{padding-top:12px;padding-bottom:2px}
+  .field-desk .desk-window:not(.original-pane)>.pane-slider .slider-track,
+  .field-desk .field-pane>.pane-slider .slider-track{margin-top:2px}
+}
+
 .field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){
   --vibrant-base:var(--pane-accent,var(--color,#3c6e93));
   --vibrant-accent:var(--vibrant-base);

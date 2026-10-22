@@ -3,11 +3,12 @@
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "e1ab1eeecd23b212d08768860692f926f8dd88a044823cd1e0981d8fd52feb1b",
-    "study-field.mjs": "abbef5984dc66c48e91878232fa3f5f44a46c210e1e91af3097b47e959399435"
+    "study-field.css": "d6d57ec19d1f163c357ec931f60c3b6b92909091f9b8fb837930aea2ff297b96",
+    "study-field.mjs": "5cc51ff843290f2cfdfdc3213b4348d7156f8c628013e06c62111a006d705460"
   },
   "compatibility_changes": [
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
-    "Improve finger-tap selection and compact phone reader controls"
+    "Improve finger-tap selection and compact phone reader controls",
+    "Keep single-sheet WB rails visible and reduce phone slider padding"
   ]
 }

@@ -593,7 +593,6 @@ button{border-radius:999px}
 .slider-rail{position:relative;min-width:max(100%,calc(var(--slider-count,1) * 2.5rem));height:2.8rem}
 /* The line ends at its first/last stop; the thumb's outer ring meets the text inset. */
 .slider-rail::before{content:"";position:absolute;left:var(--slider-edge);right:var(--slider-edge);top:calc(.93rem - 1px);height:2px;background:var(--pane-accent);pointer-events:none}
-.slider-rail:has(.sheet-slider[max="0"])::before{display:none}
 .sheet-slider{position:absolute;z-index:4;left:var(--slider-ring-size);top:.18rem;appearance:none;-webkit-appearance:none;width:calc(100% - 2 * var(--slider-ring-size));height:1.5rem;margin:0;padding:0;border:0;border-radius:0;background:transparent;cursor:grab;touch-action:pan-y;accent-color:var(--pane-accent)}
 .sheet-slider:active{cursor:grabbing}
 .sheet-slider::-webkit-slider-runnable-track{height:2px;background:transparent;border-radius:999px}
@@ -2011,6 +2010,14 @@ button{border-radius:999px}
   .field-desk .field-pane :is(.item-copy,.field-prose){font-size:calc(.92rem * .94 * var(--scale,1))}
   .field-desk .field-pane .pane-intro h3{font-size:calc(1.15rem * .92 * var(--scale,1))}
   .field-desk[data-title-view="true"] .field-pane .pane-intro h3{font-size:calc(1.48rem * .92 * var(--scale,1))}
+}
+
+/* Trim mobile selector spacing without shrinking the slider or its controls. */
+@media(max-width:640px){
+  .study-desk .desk-window:not(.original-pane)>.pane-slider,
+  .field-desk .field-pane>.pane-slider{padding-top:12px;padding-bottom:2px}
+  .study-desk .desk-window:not(.original-pane)>.pane-slider .slider-track,
+  .field-desk .field-pane>.pane-slider .slider-track{margin-top:2px}
 }
 
 .study-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){
