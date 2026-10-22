@@ -6,11 +6,13 @@
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
     "Improve finger-tap selection and compact phone reader controls",
     "Keep single-sheet WB rails visible and reduce phone slider padding",
-    "Tighten phone sheet title spacing and retain a smaller sheet code"
+    "Tighten phone sheet title spacing and retain a smaller sheet code",
+    "Keep continuation Routes controls visible for preserved corpus feeders",
+    "Compact corpus route controls and headers only on phone-sized screens"
   ],
   "assets": {
-    "study-desk.css": "7419a7b92d768c0eef384663ffe85a0fa2a5a146762272eeed5475ccb90e772b",
-    "study-desk.mjs": "55b7212343fe6727725c073e01b5c021d41c40579e6c2e9b7382a7df40ccbc8d",
+    "study-desk.css": "38140fcbdfd4ffff9078c6f613569a1ba9ab51cb14f90f80aa5f8e08be759811",
+    "study-desk.mjs": "e133a3706ceb04df6cd58d075513ec5b7e2e71ee2adeb9cc7b02fdd075a5f598",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },
   "reading_presentation": "care-item-presentation/7"
