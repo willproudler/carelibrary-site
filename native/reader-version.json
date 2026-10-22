@@ -2,11 +2,13 @@
   "version": "care-study-desk/2.55",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
-    "Keep unaligned source translations readable without inventing passage routes"
+    "Keep unaligned source translations readable without inventing passage routes",
+    "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
+    "Improve finger-tap selection and compact phone reader controls"
   ],
   "assets": {
-    "study-desk.css": "a8f0ba3a3dffaf543fb5810ad387b79ae9a8966271d554cce6a02d58a887e331",
-    "study-desk.mjs": "f158e4ab21ca622abfeb908e7c7e254490811bc41b8a032d3c7545c703eb86d0",
+    "study-desk.css": "3342c778460bd4930bee603299e5484505d60ad17b76867bfe17497a745c613f",
+    "study-desk.mjs": "55b7212343fe6727725c073e01b5c021d41c40579e6c2e9b7382a7df40ccbc8d",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },
   "reading_presentation": "care-item-presentation/7"

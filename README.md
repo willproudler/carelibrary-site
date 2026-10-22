@@ -11,6 +11,10 @@ Chapter and sheet titles open searchable jump menus. Dragging a chapter rail pre
 
 The Discover CARE hero opens the supplied quick start guide in a new tab using the browser's PDF viewer. Share **[CARE quick start guide](https://carelibrary.org/quick-start.pdf)** in emails. `quick-start.pdf` is the original supplied PDF, served directly with no download attribute or embedded viewer; keep this URL stable when replacing the guide.
 
+The reader uses the standard colour palette by default, matching the desktop app. The optional Vibrant colours toggle is tucked inside **View → Advanced appearance** across books, laterals and corpora. Older saved vibrancy preferences are ignored; a fresh opt-in stays consistent with the axiom viewer.
+
+On phones the header, swipeable reading tabs, reader menu, coloured pane headers and section bars are compact, with slightly smaller reading text and an icon-only axiom viewer. Short taps on axiom text and codes select the card; scrolling and long-press text selection remain native. The redundant tab dropdown arrow is hidden at every screen size.
+
 The public site has two pages: the Library and Discover CARE. Both run without a bottom banner or footer navigation. Retired statement, rights and inactive beta pages are preserved in Git history and in a local archive outside this published directory; they are no longer served or included in the sitemap.
 
 `native/study-desk.mjs` and its stylesheet are exact exports of the app’s `STUDY_DESK_JS` and `STUDY_DESK_CSS`. `native/reference-viewer.*` comes from the app’s reference viewer, with one compatibility fix for keyboard event targets across the standalone desk’s ShadowRoot. Version manifests record the asset hashes. `native/public-scope.css` hides controls that do not apply to this fixed collection. `public-app.mjs` supplies public navigation and browser-local preferences; `public-reader-adapter.mjs` projects the published JSON into the original reader’s payload contract. It never queries the private catalogue or starts an AI run.

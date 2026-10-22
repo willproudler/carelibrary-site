@@ -1,7 +1,8 @@
-// Restore the reader appearance before the library has finished loading.
-try { document.body.dataset.careVibrantView = String(localStorage.getItem('care-vibrant-view-v1') === 'true'); } catch (_) {}
+// Match the Mac reader's opt-in appearance, ignoring the retired v1 preference.
+try { document.body.dataset.careVibrantView = String(localStorage.getItem('care-vibrant-view-v2') === 'true'); } catch (_) { document.body.dataset.careVibrantView = 'false'; }
+document.body.dataset.careVibrantViewVersion = '2';
 // Keep a dependency/network failure from leaving the beta loading mark forever.
-import('./public-app.mjs?v=d6fb94305f051e89').catch(()=>{
+import('./public-app.mjs?v=f6e04a1f9648f0aa').catch(()=>{
  const host=document.querySelector('#reader');
  const message=document.createElement('p');message.textContent='CARE Library could not load. Check your connection and try again.';
  const retry=document.createElement('button');retry.textContent='Try again';retry.onclick=()=>location.reload();

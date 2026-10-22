@@ -1,11 +1,13 @@
 {
   "source": "care_platform/reference_viewer.py",
   "compatibility_changes": [
-    "Resolve the keyboard event origin across the standalone desk ShadowRoot"
+    "Resolve the keyboard event origin across the standalone desk ShadowRoot",
+    "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
+    "Use an icon-only axiom viewer launcher on phones"
   ],
   "assets": {
     "reference-viewer.html": "e94ef274473b0c7860e48085a8b3d4c8263565d9733209e8d5dee10b814a3845",
-    "reference-viewer.css": "0aee385038ab4890881acceeb8d774808beb3d4c6788dae7cf903fddf181a1e6",
-    "reference-viewer.mjs": "7e737503ca93deaa6d0e74f897f80e124fe0960a922cc4b9b4c53c449012471a"
+    "reference-viewer.css": "c00d9b229136f0d960693f5b4d6b34a1834ac720f667c18f8f63361e5173d8d0",
+    "reference-viewer.mjs": "21e8e849be183ca556fb85fe558583ac06a2bda6a42de4203941634af7b596ad"
   }
 }

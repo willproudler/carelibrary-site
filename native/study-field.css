@@ -141,6 +141,13 @@
 /* Remove surplus chrome, retaining the full menus and a distinct book title. */
 .field-desk .desk-toolbar.desk-menu-toolbar{min-height:2.5rem;gap:.5rem;padding:.1rem .65rem}
 .field-desk .desk-menu-trigger{min-height:36px}
+:is(.study-desk,.field-desk) .reader-advanced-appearance{margin-top:.5rem;padding-top:.35rem;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent)}
+:is(.study-desk,.field-desk) .reader-advanced-appearance>summary{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:36px;padding:.4rem .55rem;border-radius:5px;list-style:none;cursor:pointer;font:550 .72rem var(--font-sans, sans-serif)}
+:is(.study-desk,.field-desk) .reader-advanced-appearance>summary::-webkit-details-marker{display:none}
+:is(.study-desk,.field-desk) .reader-advanced-appearance>summary::after{content:'›';opacity:.65;transition:transform .15s}
+:is(.study-desk,.field-desk) .reader-advanced-appearance[open]>summary::after{transform:rotate(90deg)}
+:is(.study-desk,.field-desk) .reader-advanced-appearance>summary:hover{background:color-mix(in srgb,currentColor 7%,transparent)}
+:is(.study-desk,.field-desk) .reader-advanced-appearance>summary:focus-visible{outline:2px solid var(--desk-accent,#648da4);outline-offset:-2px}
 @media(max-width:760px){
   .field-desk .desk-toolbar.desk-menu-toolbar{gap:.1rem .4rem;flex-wrap:nowrap;padding:.1rem .45rem}
   .field-desk .desk-menu-toolbar>.desk-reader-controls{flex:0 1 auto;max-width:100%;justify-content:flex-start;flex-wrap:wrap;gap:.15rem;margin:0;padding:0}
@@ -150,14 +157,66 @@
   .field-desk .desk-menu-trigger:hover,.field-desk .desk-menu-trigger[aria-expanded="true"]{background:color-mix(in srgb,currentColor 9%,transparent)}
   .field-desk .desk-menu-panel .desk-tab,.field-desk .desk-menu-panel .desk-action{min-height:36px}
 }
+/* Phones keep the book title on the menu row rather than reserving a second line. */
 @media(max-width:560px){
-  .field-desk .desk-toolbar.desk-menu-toolbar{flex-wrap:wrap;padding:.2rem .45rem .1rem}
-  .field-desk .desk-menu-toolbar>.desk-title{order:-1;flex-basis:100%;padding:.05rem .25rem 0}
-  .field-desk .desk-menu-toolbar>.desk-title strong{font-size:.84rem;line-height:1.15}
+  .field-desk .desk-toolbar.desk-menu-toolbar{min-height:44px;flex-wrap:nowrap;gap:4px;padding:0 4px}
+  .field-desk .desk-menu-toolbar>.desk-reader-controls{flex:0 0 auto;flex-wrap:nowrap;gap:0}
+  .field-desk .desk-menu-toolbar>.desk-title{order:0;flex:1 1 0;min-width:0;margin-left:auto;padding:0 2px;text-align:right}
+  .field-desk .desk-menu-toolbar>.desk-title strong{font-size:.78rem;line-height:1.15;letter-spacing:-.015em}
+  .field-desk .desk-menu-trigger{min-width:44px;min-height:44px;padding:0 5px;gap:3px;font-size:.7rem}
+  .field-desk .desk-menu-trigger svg{width:8px;height:8px}
 }
 @media(pointer:coarse){
   .field-desk .desk-menu-trigger{min-width:44px;min-height:44px}
   .field-desk .desk-menu-panel .desk-tab,.field-desk .desk-menu-panel .desk-action{min-height:44px}
+}
+
+/* Phone panes keep their colour cues while reserving more room for reading. */
+@media(max-width:640px){
+  .field-desk[data-skin] .desk-window:not(.care-pane-minimized):not(.original-pane)>.window-titlebar,
+  .field-desk .field-pane:not(.care-pane-minimized)>.pane-top{height:32px;min-height:32px;padding:0 14px;border-top-width:0;gap:6px}
+  .field-desk[data-skin] .desk-window:not(.care-pane-minimized):not(.original-pane)>.window-titlebar .care-pane-controls,
+  .field-desk .field-pane:not(.care-pane-minimized)>.pane-top .care-pane-controls{gap:28px;margin-right:6px}
+  .field-desk[data-skin] .desk-window:not(.care-pane-minimized):not(.original-pane)>.window-titlebar .care-pane-controls button,
+  .field-desk .field-pane:not(.care-pane-minimized)>.pane-top .care-pane-controls button{position:relative;z-index:2;flex:0 0 16px;width:16px;height:16px}
+  /* The extra hit area falls in the slider's empty top padding, away from its controls. */
+  .field-desk[data-skin] .desk-window:not(.care-pane-minimized):not(.original-pane)>.window-titlebar .care-pane-controls button::after,
+  .field-desk .field-pane:not(.care-pane-minimized)>.pane-top .care-pane-controls button::after{content:"";position:absolute;top:-8px;left:50%;width:44px;height:44px;transform:translateX(-50%)}
+  .field-desk[data-skin] .care-section,
+  .field-desk .field-section{overflow:visible;margin-bottom:12px}
+  .field-desk[data-skin] .care-section>summary,
+  .field-desk .field-section>summary{position:relative;z-index:1;min-height:32px;padding:4px 10px;gap:7px;line-height:1.3;border-radius:6px}
+  .field-desk[data-skin] .care-section>summary::before,
+  .field-desk .field-section>summary::before{flex:0 0 18px;width:18px;height:18px}
+  /* Adjacent cards already have 12px gaps, allowing a 44px target around a 32px bar. */
+  .field-desk[data-skin] .care-section>summary::after,
+  .field-desk .field-section>summary::after{content:"";position:absolute;inset:-6px 0;min-height:44px}
+  .field-desk[data-skin] .care-section[open]>summary,
+  .field-desk .field-section[open]>summary{border-bottom-left-radius:0;border-bottom-right-radius:0}
+  .field-desk[data-skin] .care-section>.axiom-list{border-radius:0 0 6px 6px}
+  .field-desk .field-pane:not(.care-pane-minimized)>.resize-handle{top:32px}
+}
+
+/* Slightly smaller phone reading type still follows the reader's A− / A+ setting. */
+@media(max-width:640px){
+  .field-desk{--phone-axiom-size:.84rem}
+  .field-desk[data-skin="care"]{--phone-axiom-size:.92rem}
+  .field-desk[data-skin="library"]{--phone-axiom-size:.91rem}
+  .field-desk[data-skin="classic"]{--phone-axiom-size:.67rem}
+  .field-desk[data-skin] .axiom-text{font-size:calc(var(--phone-axiom-size) * .94 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk .source-copy .passage-text{font-size:calc(1.04rem * .94 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk[data-beautiful-text="true"] .source-copy .passage-text{font-size:calc(1.06rem * .94 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk[data-beautiful-text="true"] .source-copy .passage[data-beautiful-opening] .passage-text{font-size:calc(1.02rem * .94 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk .source-copy .source-head h2{font-size:calc(clamp(1.65rem,3vw,2.55rem) * .92)}
+  .field-desk[data-beautiful-text="true"] .source-copy .source-head h2{font-size:calc(clamp(1.35rem,2.25vw,1.9rem) * .92)}
+  .field-desk[data-skin] .care-head .care-heading h2{font-size:calc(1.15rem * .92 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk[data-skin="library"] .care-head .care-heading h2{font-size:calc(1.28rem * .92 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk[data-skin="classic"] .care-head .care-heading h2{font-size:calc(1.02rem * .92 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk[data-title-view="true"] .source-copy .source-head h2,
+  .field-desk[data-title-view="true"] .care-head .care-heading h2{font-size:calc(1.48rem * .92 * var(--desk-text-scale,var(--reader-text-scale,1)))}
+  .field-desk .field-pane :is(.item-copy,.field-prose){font-size:calc(.92rem * .94 * var(--scale,1))}
+  .field-desk .field-pane .pane-intro h3{font-size:calc(1.15rem * .92 * var(--scale,1))}
+  .field-desk[data-title-view="true"] .field-pane .pane-intro h3{font-size:calc(1.48rem * .92 * var(--scale,1))}
 }
 
 .field-desk[data-vibrant-view="true"] :is(.desk-window,.field-pane,.route-sheet,.route-card){

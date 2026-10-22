@@ -5,7 +5,7 @@ const keyFor = (kind, id, scope="") => `${String(kind || "").toLowerCase()}\u000
 const HISTORY_KEY = "care-reference-history-v1"
 const TEXT_SIZE_KEY = "care-reference-viewer-text-size-v1"
 const TEXT_SCALES = [.78,.88,1,1.12,1.26]
-const VIEWER_VIBRANT_KEY = "care-vibrant-view-v1"
+const VIEWER_VIBRANT_KEY = "care-vibrant-view-v2"
 const VIEWER_VIBRANT_EVENT = "care-vibrant-view-change"
 const layerColor = layer => ({
   CB:"#a96624",WB:"#9a4327",MC:"#594f88",CL:"#2d6b67",CH:"#3d668b",
@@ -14,15 +14,16 @@ const layerColor = layer => ({
 function setupViewerVibrantView(runtime) {
   const root=runtime.root,doc=root.ownerDocument||document,view=doc.defaultView||window
   const read=()=>{
+    if(doc.body?.dataset?.careVibrantViewVersion==='2')return doc.body.dataset.careVibrantView==='true'
     try{const saved=view.localStorage?.getItem(VIEWER_VIBRANT_KEY);if(saved!==null&&saved!==undefined)return saved==='true'}catch(_){}
-    return doc.body?.dataset?.careVibrantView==='true'
+    return false
   }
   const paint=enabled=>{
     runtime.vibrantView=enabled===true;root.dataset.vibrantView=String(runtime.vibrantView)
-    if(doc.body)doc.body.dataset.careVibrantView=String(runtime.vibrantView)
+    if(doc.body){doc.body.dataset.careVibrantView=String(runtime.vibrantView);doc.body.dataset.careVibrantViewVersion='2'}
   }
   const change=event=>{if(typeof event.detail?.enabled==='boolean')paint(event.detail.enabled)}
-  const storage=event=>{if(event.key===VIEWER_VIBRANT_KEY||event.key===null)paint(read())}
+  const storage=event=>{if(event.key===VIEWER_VIBRANT_KEY||event.key===null)paint(event.key!==null&&event.newValue==='true')}
   view.addEventListener(VIEWER_VIBRANT_EVENT,change);view.addEventListener('storage',storage)
   let disposed=false
   runtime.cleanupVibrantView=()=>{if(disposed)return;disposed=true;view.removeEventListener(VIEWER_VIBRANT_EVENT,change);view.removeEventListener('storage',storage);delete root.dataset.vibrantView}

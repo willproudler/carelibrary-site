@@ -504,7 +504,7 @@ function readerViewOptions({showZoom=true,showAppearance=true,showBeautifulText=
   const zoom=showZoom?'<span class="desk-menu-heading">Pane zoom</span>'+trackZoomControls():''
   const appearance=showAppearance?'<span class="desk-menu-heading">Appearance</span><div class="desk-skin" aria-label="Visual skin"><button type="button" data-skin-value="care">CARE</button><button type="button" data-skin-value="library">BOOK</button><button type="button" data-skin-value="classic">CLASSIC</button></div>':''
   const rows=shortcuts==='lateral'?[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane'],['− / + on a pane','Fold or unfold'],['Tab · Enter','Move to and use controls']]:[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane']]
-  return titleViewControl()+(showBeautifulText?beautifulTextControl():'')+connectionViewControl()+vibrantViewControl()+text+zoom+appearance+`<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
+  return titleViewControl()+(showBeautifulText?beautifulTextControl():'')+connectionViewControl()+text+zoom+appearance+vibrantViewControl()+`<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
 }
 function readerMenuBar(data,tabs,options={}){
   const book=options.file??(data?.corpus_sheet?'<span class="desk-menu-heading">Saved reading</span><span class="desk-sheet-version-slot" data-sheet-version-slot></span>':`<span class="desk-menu-heading">Book versions</span>${buildVersionControl(data)||'<span class="desk-menu-empty">Current reading</span>'}<div class="desk-menu-rule"></div>${readerMenuLabel(originalFormatControl(data),'Original reading format')}${readerMenuLabel(originalDownloadControl(data),'Download original')}<span class="desk-sheet-version-slot" data-sheet-version-slot></span>`)
@@ -550,7 +550,7 @@ function setupReaderMenus(runtime){
     }
   }
   const buttons=()=>[...root.querySelectorAll('[data-reader-menu]')]
-  const items=panel=>[...panel.querySelectorAll('button:not(:disabled),a[href],select:not(:disabled),input:not(:disabled)')].filter(el=>el.getClientRects().length)
+  const items=panel=>[...panel.querySelectorAll('button:not(:disabled),a[href],select:not(:disabled),input:not(:disabled),summary')].filter(el=>el.getClientRects().length)
   runtime.closeReaderLayers=({restoreFocus=false}={})=>{
     const layer=runtime.readerLayers;if(!layer)return
     runtime.readerLayers=null;layer.panel.hidden=true;layer.anchor.setAttribute('aria-expanded','false')
@@ -4797,19 +4797,19 @@ function setupTitleView(runtime){
 }
 
 
-const VIBRANT_VIEW_KEY='care-vibrant-view-v1'
+const VIBRANT_VIEW_KEY='care-vibrant-view-v2'
 const VIBRANT_VIEW_EVENT='care-vibrant-view-change'
 const vibrantViewSessions=new WeakMap()
 function vibrantViewControl(){
-  return '<button type="button" class="title-view-toggle vibrant-view-toggle" data-vibrant-view-toggle aria-pressed="false" title="Quietly rich colours, gently luminous lettering and a deep, inky background"><span>Vibrant colours</span><span class="title-view-switch" aria-hidden="true"></span></button>'
+  return '<details class="reader-advanced-appearance"><summary>Advanced appearance</summary><button type="button" class="title-view-toggle vibrant-view-toggle" data-vibrant-view-toggle aria-pressed="false" title="Richer colours and a deeper background"><span>Vibrant colours</span><span class="title-view-switch" aria-hidden="true"></span></button></details>'
 }
 function setupVibrantView(runtime){
   runtime.cleanupVibrantView?.()
   const root=runtime.root,view=root?.ownerDocument?.defaultView
   if(!root||!view)return()=>{}
-  const read=()=>{const fallback=vibrantViewSessions.get(view)??runtime.vibrantView??false;try{const saved=view.localStorage?.getItem(VIBRANT_VIEW_KEY);return saved===null||saved===undefined?fallback:saved==='true'}catch(_){return fallback}}
+  const read=()=>{const body=root.ownerDocument.body;if(body?.dataset.careVibrantViewVersion==='2')return body.dataset.careVibrantView==='true';const savedSession=vibrantViewSessions.get(view);if(typeof savedSession==='boolean')return savedSession;try{return view.localStorage?.getItem(VIBRANT_VIEW_KEY)==='true'}catch(_){return false}}
   let enabled=read(),disposed=false
-  const paint=()=>{root.dataset.vibrantView=String(enabled);if(root.ownerDocument.body)root.ownerDocument.body.dataset.careVibrantView=String(enabled);root.querySelectorAll('[data-vibrant-view-toggle]').forEach(button=>button.setAttribute('aria-pressed',String(enabled)))}
+  const paint=()=>{root.dataset.vibrantView=String(enabled);if(root.ownerDocument.body){root.ownerDocument.body.dataset.careVibrantView=String(enabled);root.ownerDocument.body.dataset.careVibrantViewVersion='2'}root.querySelectorAll('[data-vibrant-view-toggle]').forEach(button=>button.setAttribute('aria-pressed',String(enabled)))}
   const apply=(value,persist=false)=>{
     enabled=value===true;runtime.vibrantView=enabled;vibrantViewSessions.set(view,enabled);paint()
     if(persist){try{view.localStorage?.setItem(VIBRANT_VIEW_KEY,String(enabled))}catch(_){};if(view.CustomEvent)view.dispatchEvent(new view.CustomEvent(VIBRANT_VIEW_EVENT,{detail:{enabled}}))}
@@ -4817,7 +4817,7 @@ function setupVibrantView(runtime){
   const click=event=>{const control=event.target?.closest?.('[data-vibrant-view-toggle]');if(!control||!root.contains(control))return;event.preventDefault();event.stopImmediatePropagation();apply(!enabled,true)}
   const key=event=>{if(event.target?.closest?.('[data-vibrant-view-toggle]')&&[' ','Enter'].includes(event.key))event.stopImmediatePropagation()}
   const change=event=>{if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
-  const storage=event=>{if(event.key===VIBRANT_VIEW_KEY||event.key===null)apply(read())}
+  const storage=event=>{if(event.key===VIBRANT_VIEW_KEY||event.key===null)apply(event.key!==null&&event.newValue==='true')}
   root.addEventListener('click',click,true);root.addEventListener('keydown',key,true)
   view.addEventListener(VIBRANT_VIEW_EVENT,change);view.addEventListener('storage',storage)
   runtime.paintVibrantView=paint
@@ -4834,9 +4834,39 @@ function axiomCopyStatus(){return ''}
 function axiomCodeSelection(root){
   return root.getRootNode?.()?.getSelection?.()||root.ownerDocument?.defaultView?.getSelection?.()
 }
+function setupReaderTouchSelection(root){
+  const cardSelector='[data-select-axiom],[data-select-passage],[data-open-item]'
+  const selectionState=()=>{const s=axiomCodeSelection(root);return s&&s.isCollapsed===false?[s.anchorNode,s.anchorOffset,s.focusNode,s.focusOffset,String(s)]:null}
+  const clock=event=>Number.isFinite(event.timeStamp)?event.timeStamp:Date.now()
+  let gesture=null
+  const down=event=>{
+    if(event.pointerType!=='touch'){gesture=null;return}
+    if(event.isPrimary===false){if(gesture)gesture.cancelled=true;return}
+    const card=event.target?.closest?.(cardSelector),control=event.target?.closest?.('a[href],button,input,textarea,select,summary,[contenteditable="true"]')
+    if(!card||!root.contains(card)||(control&&control!==card)){gesture=null;return}
+    gesture={id:event.pointerId,card,x:event.clientX,y:event.clientY,time:clock(event),selection:selectionState(),moved:false,cancelled:false,ended:false}
+  }
+  const move=event=>{if(gesture&&event.pointerId===gesture.id&&Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y)>10)gesture.moved=true}
+  const up=event=>{if(!gesture||event.pointerId!==gesture.id)return;move(event);gesture.ended=true;gesture.endTime=clock(event);gesture.duration=gesture.endTime-gesture.time}
+  const cancel=event=>{if(gesture&&(event.pointerId===undefined||event.pointerId===gesture.id))gesture.cancelled=true}
+  const scroll=event=>{if(gesture&&!gesture.ended&&(event.target===root||event.target?.contains?.(gesture.card)))gesture.moved=true}
+  const classify=event=>{
+    if(event.detail===0||!gesture)return null
+    const touch=gesture;gesture=null
+    if(event.target?.closest?.(cardSelector)!==touch.card||clock(event)-(touch.endTime??touch.time)>1500)return null
+    const selection=selectionState(),changed=selection&&(!touch.selection||selection.some((value,index)=>value!==touch.selection[index]))
+    // A quick finger tap selects the whole card, including its text and code.
+    // Keep scrolling, long-press selection and pinch gestures entirely native.
+    return touch.ended&&!touch.cancelled&&!touch.moved&&touch.duration<500&&!changed
+  }
+  const handlers={pointerdown:down,pointermove:move,pointerup:up,pointercancel:cancel,contextmenu:cancel,scroll}
+  for(const [name,handler]of Object.entries(handlers))root.addEventListener(name,handler,{capture:true,passive:true})
+  return {classify,cleanup(){gesture=null;for(const [name,handler]of Object.entries(handlers))root.removeEventListener(name,handler,true)}}
+}
 function setupAxiomCopy(runtime){
   runtime.cleanupAxiomCopy?.()
   const root=runtime.root,doc=root.ownerDocument
+  const touchSelection=setupReaderTouchSelection(root)
   const textSelector='[data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id,.axiom-trace,.route-card-via,.field-item .item-copy,.field-item .item-prose,.item-address,.item-trace'
   const cardSelector='[data-select-axiom],[data-select-passage],[data-open-item]'
   const textHit=event=>{
@@ -4872,6 +4902,8 @@ function setupAxiomCopy(runtime){
   const click=event=>{
     const startedOnText=Boolean(gesture);gesture=null
     if(event.detail===0)return // Keyboard activation still selects the card.
+    const touchTap=touchSelection.classify(event)
+    if(touchTap!==null){if(!touchTap)event.stopImmediatePropagation();return}
     const target=event.target,selection=axiomCodeSelection(root)
     const text=textHit(event)
     const link=target?.closest?.('a[href]')
@@ -4892,6 +4924,7 @@ function setupAxiomCopy(runtime){
   root.addEventListener('click',click,true)
   root.addEventListener('keydown',key,true)
   const cleanup=()=>{
+    touchSelection.cleanup()
     clearCursor()
     root.removeEventListener('pointerdown',down,true)
     root.removeEventListener('pointercancel',cancel,true)

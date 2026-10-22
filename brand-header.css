@@ -142,7 +142,7 @@
   .app-header nav {margin-left: auto;}
 }
 @media (max-width: 640px) {
-  .app-header {min-height: 53px; flex-wrap: nowrap; padding: 4px 8px;}
+  .app-header {min-height: 47px; flex-wrap: nowrap; padding: 1px 6px;}
   .app-header nav {
     display: grid;
     grid-template-columns: repeat(6,minmax(44px,1fr));

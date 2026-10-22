@@ -2,7 +2,7 @@ import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
 import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,fieldViewerReferences} from './public-fields.mjs?v=d6fb94305f051e89';
-import mountReader from './native/study-desk.mjs?v=d6fb94305f051e89';
+import mountReader from './native/study-desk.mjs?v=f6e04a1f9648f0aa';
 
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=d6fb94305f051e89';
 import {searchLibrary} from './library-core.mjs?v=d6fb94305f051e89';
@@ -17,7 +17,7 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=d6fb94305f051e89'),loadText('./native/public-scope.css?v=d6fb94305f051e89')]);
+ const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=f6e04a1f9648f0aa'),loadText('./native/public-scope.css?v=d6fb94305f051e89')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
@@ -30,14 +30,14 @@ async function start(){
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise;
  async function ensureViewer(){
-  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=d6fb94305f051e89'),loadText('./native/reference-viewer.css?v=d6fb94305f051e89'),loadText('./native/reference-viewer.html?v=d6fb94305f051e89')]).then(([module,viewerCSS,viewerHTML])=>{
+  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=f6e04a1f9648f0aa'),loadText('./native/reference-viewer.css?v=f6e04a1f9648f0aa'),loadText('./native/reference-viewer.html?v=d6fb94305f051e89')]).then(([module,viewerCSS,viewerHTML])=>{
    mountViewer=module.default;
    viewerHost.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
   }).catch(error=>{viewerPromise=null;throw error;});
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=d6fb94305f051e89'),loadText('./native/study-field.css?v=d6fb94305f051e89')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=f6e04a1f9648f0aa'),loadText('./native/study-field.css?v=f6e04a1f9648f0aa')]).then(([module,fieldCSS])=>{
    mountField=module.default;const style=document.createElement('style');
    // Keep the bottom save control still when pointer entry reveals trace links.
    style.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
@@ -76,6 +76,12 @@ async function start(){
    const w=adapter.workFor(key),kind=isSaved?'saved':w?(w.content_kind||'work'):(fieldFor(key)?.field||'lateral'),style=isSaved?SAVED_READING_STYLE:READING_STYLES[kind]||READING_STYLES.work,title=isSaved?'Saved library':w?.title||fieldFor(key)?.title||data.lateral.title,href=isSaved?'#view=saved':w?'#book='+w.slug:fieldFor(key)?'#field='+encodeURIComponent(key):'#lateral='+data.lateral.id,active=(view==='workspace'||view==='saved')&&currentKey()===key;
    return `<span class="open-tab ${active?'active':''}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${href}"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span></a>${!w&&!isSaved?`<button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button>`:''}<button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
   }).join('');
+  const activeTab=el.querySelector('.open-tab.active');
+  if(activeTab&&window.matchMedia('(max-width: 640px)').matches){
+   const rail=el.getBoundingClientRect(),tab=activeTab.getBoundingClientRect();
+   if(tab.left<rail.left)el.scrollLeft+=tab.left-rail.left;
+   else if(tab.right>rail.right)el.scrollLeft+=tab.right-rail.right;
+  }
   document.querySelectorAll('.app-header [data-page]').forEach(el=>el.classList.toggle('active',(view==='library'&&el.dataset.page==='library')||(view==='laterals'&&el.dataset.page==='laterals')||(view==='corpuses'&&el.dataset.page==='corpuses')||(view==='saved'&&el.dataset.page==='saved')));
  }
  function saveState(){if(view==='workspace')bookStates.set(currentKey(),{...state});}
