@@ -341,7 +341,7 @@ async function start(){
  let searchRequest=0,searchTimer;
  async function runSearch(){
   const request=++searchRequest,q=$('#search-query').value.trim();
-  if(!q){$('#search-status').textContent='Search the published source texts and their saved readings.';$('#search-results').replaceChildren();return;}
+  if(!q){$('#search-status').textContent='';$('#search-results').replaceChildren();return;}
   $('#search-status').textContent='Loading the published readings for search…';
   try{await loader.ensureAll();if(request!==searchRequest)return;refreshAdapter();const nodes=searchLibrary(index,q,60);$('#search-status').textContent=nodes.length?`${nodes.length===60?'First ':''}${nodes.length} matching passages and claims`:'No matches. Try a shorter phrase.';$('#search-results').innerHTML=nodes.map(resultLink).join('');}
   catch(error){if(request!==searchRequest)return;$('#search-status').textContent=error.message;const button=document.createElement('button');button.textContent='Try search again';button.onclick=runSearch;$('#search-results').replaceChildren(button);}

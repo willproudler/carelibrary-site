@@ -47,3 +47,9 @@
   .open-tab button{align-self:center;width:40px;height:40px;min-height:40px;border-radius:0;font-size:18px}
   .open-tab a:focus-visible,.open-tab button:focus-visible{outline-offset:-3px}
 }
+
+/* Keep search focused on its input until there is a query. */
+#search-dialog .search-controls{align-items:center;gap:16px}
+#search-dialog .search-controls input{flex:1;min-width:0;width:auto;margin:0}
+#search-dialog .search-controls button{flex:0 0 32px}
+#search-status:empty,#search-results:empty{display:none}
