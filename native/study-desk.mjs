@@ -550,7 +550,11 @@ function watchReaderRouteLayout(runtime){
       const triggers=[...menus?.querySelectorAll('.desk-menu-trigger')||[]],menuStyle=menus?view.getComputedStyle(menus):null
       const menuWidth=triggers.reduce((width,button)=>width+outerWidth(button),0)+Math.max(0,triggers.length-1)*number(menuStyle?.columnGap)
       const required=menuWidth+outerWidth(route)+number(style.columnGap)*2
-      if(bar.clientWidth<=640||required>available)bar.dataset.routeLayout='stacked'
+      // The title can squeeze this flex group before the whole bar overflows.
+      // Treat a wrapped menu (for example View on its own line) as crowded too.
+      const menuTops=triggers.map(button=>button.getBoundingClientRect().top)
+      const menuWrapped=menuTops.length>1&&Math.max(...menuTops)-Math.min(...menuTops)>1
+      if(bar.clientWidth<=640||required>available||menuWrapped)bar.dataset.routeLayout='stacked'
     }
     if(previous!==bar.dataset.routeLayout){runtime.positionReaderMenu?.();runtime.queueThreads?.()}
   }

@@ -1,10 +1,10 @@
 {
-  "version": "care-study-field/2.55-responsive-routes.1",
+  "version": "care-study-field/2.55-responsive-routes.2",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
     "study-field.css": "204866372e9516cdd7ba417e27af13af9f87d599d6f0caf46cb4ff3a3033cc2c",
-    "study-field.mjs": "8e5d9bbee56998ba060d5cb1e7c9313fa2c313c7b821e3ea6c94aead3274ccb4"
+    "study-field.mjs": "3e22940eea890ea5dbbc1a4be516afb002c9f3d1bd4532ebd831725d920c930f"
   },
   "compatibility_changes": [
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
@@ -15,6 +15,7 @@
     "Compact corpus route controls and headers only on phone-sized screens",
     "Slim mobile corpus route bars with 44-pixel touch areas",
     "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
-    "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit"
+    "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
+    "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts"
   ]
 }

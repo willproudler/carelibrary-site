@@ -1,6 +1,6 @@
 /* The Discover page mounts CARE's shipped reader against the selected public
  * collection. No authoring, generation, account or private-library API is used. */
-import mountReader from './native/study-desk.mjs?v=b7af7565a570db6a';
+import mountReader from './native/study-desk.mjs?v=b795d0c6f80e4275';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=d6fb94305f051e89';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
 import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=aefc8861e610f34d';
@@ -220,7 +220,7 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=b7af7565a570db6a')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=b795d0c6f80e4275')]);
           if(destroyed||version!==requestVersion)return;
           await loadFieldMembers(field,library);
           if(destroyed||version!==requestVersion)return;

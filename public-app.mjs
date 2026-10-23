@@ -2,7 +2,7 @@ import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
 import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=aefc8861e610f34d';
-import mountReader from './native/study-desk.mjs?v=b7af7565a570db6a';
+import mountReader from './native/study-desk.mjs?v=b795d0c6f80e4275';
 
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=d6fb94305f051e89';
 import {searchLibrary} from './library-core.mjs?v=d6fb94305f051e89';
@@ -37,7 +37,7 @@ async function start(){
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=b7af7565a570db6a'),loadText('./native/study-field.css?v=b7af7565a570db6a')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=b795d0c6f80e4275'),loadText('./native/study-field.css?v=b7af7565a570db6a')]).then(([module,fieldCSS])=>{
    mountField=module.default;const style=document.createElement('style');
    // Keep the bottom save control still when pointer entry reveals trace links.
    style.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
