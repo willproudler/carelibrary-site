@@ -103,8 +103,8 @@ export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,on
     };
     const [loaded,{default:mountField},css,scope]=await Promise.all([
       loadPublicField(field,(path,options)=>fetchFile(new URL(path,import.meta.url),options)),
-      import('./native/study-field.mjs?v=c47c12affb3ca81e'),
-      readText('./native/study-field.css?v=c47c12affb3ca81e'),
+      import('./native/study-field.mjs?v=b7af7565a570db6a'),
+      readText('./native/study-field.css?v=b7af7565a570db6a'),
       readText('./native/public-scope.css?v=d6fb94305f051e89'),
     ]);
     const controller=createDiscoverFieldController(loaded,adapter);

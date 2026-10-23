@@ -1,5 +1,5 @@
 {
-  "version": "care-study-desk/2.55",
+  "version": "care-study-desk/2.55-responsive-routes.1",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
@@ -10,11 +10,12 @@
     "Keep continuation Routes controls visible for preserved corpus feeders",
     "Compact corpus route controls and headers only on phone-sized screens",
     "Slim mobile corpus route bars with 44-pixel touch areas",
-    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets"
+    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
+    "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit"
   ],
   "assets": {
-    "study-desk.css": "d9084ad529cd6affb626fac378991d44ada9d7953a317ab4c3453562fd5b1cc7",
-    "study-desk.mjs": "e133a3706ceb04df6cd58d075513ec5b7e2e71ee2adeb9cc7b02fdd075a5f598",
+    "study-desk.css": "8ab68423adf9f8232a75c84d8cbbc99946c24ac66f9bdc35ad80181c14085c6f",
+    "study-desk.mjs": "7f3f5955c35c5bfcd701b41d800b9499f7b58e6c47311810bb82f9ebf8e481b9",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },
   "reading_presentation": "care-item-presentation/7"

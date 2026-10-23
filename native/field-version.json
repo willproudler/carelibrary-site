@@ -1,10 +1,10 @@
 {
-  "version": "care-study-field/2.55",
+  "version": "care-study-field/2.55-responsive-routes.1",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "42b3b25e6f7ab9f2720c5bd62991251fb30e316d3d2b6fa313722f60dc350273",
-    "study-field.mjs": "115fb16532fc364831178cec1a20623bd4ed59a293fe9d69639a0157c3137b97"
+    "study-field.css": "204866372e9516cdd7ba417e27af13af9f87d599d6f0caf46cb4ff3a3033cc2c",
+    "study-field.mjs": "8e5d9bbee56998ba060d5cb1e7c9313fa2c313c7b821e3ea6c94aead3274ccb4"
   },
   "compatibility_changes": [
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
@@ -14,6 +14,7 @@
     "Keep continuation Routes controls visible for preserved corpus feeders",
     "Compact corpus route controls and headers only on phone-sized screens",
     "Slim mobile corpus route bars with 44-pixel touch areas",
-    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets"
+    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
+    "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit"
   ]
 }

@@ -2067,6 +2067,27 @@ button{border-radius:999px}
   .field-desk .field-pane .reader-pane-code{min-height:0;font-size:.5rem;line-height:1.2;letter-spacing:.04em}
 }
 
+/* Share the Corpus route row whenever the reader's own width is crowded.
+   The fit watcher removes this marker as soon as the ordinary toolbar fits. */
+.study-desk .desk-toolbar.desk-menu-toolbar[data-route-layout="stacked"]{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:0 4px;height:auto;min-height:44px;padding:0 6px}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>.desk-reader-controls{grid-column:1;grid-row:1;min-width:0;max-width:100%;margin:0;padding:0;flex-wrap:nowrap;gap:0;overflow:visible}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>.desk-title{grid-column:2;grid-row:1;min-width:0;max-width:100%;margin-left:0;padding:0;text-align:right}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>.desk-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>.desk-title span{display:none}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"] .desk-menu-trigger{min-width:44px;min-height:44px;padding:0 5px;gap:3px;font-size:.7rem}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"] .desk-menu-trigger svg{width:8px;height:8px}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>:is(.route-toolbar,.lateral-route-toolbar){grid-column:1/-1;grid-row:2;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;margin:0;padding:0 2px;border:0;border-radius:0;background:transparent;box-shadow:none}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>:is(.route-toolbar,.lateral-route-toolbar)>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.58rem}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"] .route-history-actions{flex:0 0 auto;gap:0}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>:is(.route-toolbar,.lateral-route-toolbar) :is(button,.route-close,.route-history-arrow){position:relative;flex-shrink:0;height:32px;min-width:32px;margin:0 6px;padding:4px 6px;border:0;border-radius:4px;background:transparent;color:inherit;box-shadow:none;font-size:.58rem}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"] .route-history-actions .route-history-arrow{width:32px;padding:8px}
+/* Extend touch targets downward into the reading gutter, away from the menus. */
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>:is(.route-toolbar,.lateral-route-toolbar) button::after{content:"";position:absolute;top:0;left:-6px;width:calc(100% + 12px);height:44px}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>:is(.route-toolbar,.lateral-route-toolbar) button:hover:not(:disabled){background:color-mix(in srgb,currentColor 7%,transparent);color:inherit}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>:is(.route-toolbar,.lateral-route-toolbar) button:focus-visible{outline:2px solid #88a7ca;outline-offset:2px}
+.study-desk .desk-menu-toolbar[data-route-layout="stacked"]>:is(.route-toolbar,.lateral-route-toolbar) svg{width:.85rem;height:.85rem}
+.study-desk:has(>.desk-menu-toolbar[data-route-layout="stacked"])>:is(.desk-strip,.field-strip){padding-top:12px}
+
 /* Corpus routes use the same compact phone chrome as the reading panes. */
 @media(max-width:640px){
   .study-desk .desk-toolbar.desk-menu-toolbar.corpus-build-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 4px;height:auto;min-height:44px;padding:0 6px}

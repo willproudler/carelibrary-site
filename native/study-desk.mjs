@@ -526,6 +526,47 @@ function portraitMenuAction(runtime,event){
   runtime.api?.setTriggerValue('book_action',{action:kind==='directory'?'portrait_directory':kind==='author'?'author_library':'book_portrait',work_id:work,nonce:`${Date.now()}-${Math.random()}`})
   return true
 }
+function watchReaderRouteLayout(runtime){
+  const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
+  if(!view?.requestAnimationFrame||!root.querySelector)return ()=>{}
+  let frame=null,disposed=false,observedBar=null
+  const fit=()=>{
+    frame=null;if(disposed)return
+    const bar=root.querySelector(':scope > .desk-menu-toolbar')
+    if(bar!==observedBar){if(observedBar)resize?.unobserve(observedBar);observedBar=bar;if(bar)resize?.observe(bar)}
+    if(!bar)return
+    const route=bar.querySelector(':scope > .route-toolbar, :scope > .lateral-route-toolbar')
+    const previous=bar.dataset.routeLayout
+    // Measure the ordinary inline layout on every fit, so growing the window
+    // restores it without keeping a breakpoint derived from the stacked row.
+    delete bar.dataset.routeLayout
+    if(route&&bar.clientWidth){
+      const menus=bar.querySelector(':scope > .desk-reader-controls'),style=view.getComputedStyle(bar)
+      const number=value=>parseFloat(value)||0
+      const available=bar.clientWidth-number(style.paddingLeft)-number(style.paddingRight)
+      const outerWidth=element=>{if(!element)return 0;const css=view.getComputedStyle(element);return Math.max(element.offsetWidth,element.scrollWidth)+number(css.marginLeft)+number(css.marginRight)}
+      // Popovers live inside the menu group but must not count toward its
+      // inline width while open. Count the four visible triggers instead.
+      const triggers=[...menus?.querySelectorAll('.desk-menu-trigger')||[]],menuStyle=menus?view.getComputedStyle(menus):null
+      const menuWidth=triggers.reduce((width,button)=>width+outerWidth(button),0)+Math.max(0,triggers.length-1)*number(menuStyle?.columnGap)
+      const required=menuWidth+outerWidth(route)+number(style.columnGap)*2
+      if(bar.clientWidth<=640||required>available)bar.dataset.routeLayout='stacked'
+    }
+    if(previous!==bar.dataset.routeLayout){runtime.positionReaderMenu?.();runtime.queueThreads?.()}
+  }
+  const queue=()=>{if(!disposed&&frame===null)frame=view.requestAnimationFrame(fit)}
+  const resize=view.ResizeObserver?new view.ResizeObserver(queue):null
+  resize?.observe(root)
+  // Corpus routes can insert their controls after the native desk mounts;
+  // lateral repaints can replace the header without remounting the component.
+  const mutations=view.MutationObserver?new view.MutationObserver(records=>{
+    if(records.some(record=>record.target===root||(record.target.nodeType===3?record.target.parentElement:record.target).closest?.('.desk-menu-toolbar')===observedBar))queue()
+  }):null
+  mutations?.observe(root,{childList:true,subtree:true,characterData:true})
+  view.addEventListener('resize',queue);doc.fonts?.addEventListener?.('loadingdone',queue)
+  queue()
+  return ()=>{disposed=true;resize?.disconnect();mutations?.disconnect();view.removeEventListener('resize',queue);doc.fonts?.removeEventListener?.('loadingdone',queue);if(frame!==null)view.cancelAnimationFrame(frame)}
+}
 function setupReaderMenus(runtime){
   const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
   // Existing popovers become cascading submenus when launched from this bar.
@@ -644,9 +685,9 @@ function setupReaderMenus(runtime){
     runtime.closeReaderMenu()
   }
   const wheel=event=>{if(runtime.readerMenu?.panel.contains(event.target))event.stopPropagation()}
-  runtime.attachReaderMenus=()=>{root.addEventListener('click',click);root.addEventListener('pointerover',hover);doc.addEventListener('pointerdown',outside,true);doc.addEventListener('focusin',outside,true);view?.addEventListener('resize',runtime.positionReaderMenu);root.addEventListener('wheel',wheel,true)}
+  runtime.attachReaderMenus=()=>{runtime.stopReaderRouteLayout?.();runtime.stopReaderRouteLayout=watchReaderRouteLayout(runtime);root.addEventListener('click',click);root.addEventListener('pointerover',hover);doc.addEventListener('pointerdown',outside,true);doc.addEventListener('focusin',outside,true);view?.addEventListener('resize',runtime.positionReaderMenu);root.addEventListener('wheel',wheel,true)}
   runtime.restoreReaderMenu=()=>{const saved=runtime.readerMenuRestore;runtime.readerMenuRestore=null;if(saved&&saved.workId===String(runtime.data?.stack?.work?.id||'')){const button=root.querySelector(`[data-reader-menu="${saved.id}"]`);if(button){runtime.openReaderMenu(button);if(saved.layers){const anchor=root.querySelector('[data-reader-layers]');if(anchor)runtime.openReaderLayers(anchor)}}}}
-  runtime.cleanupReaderMenus=()=>{runtime.readerMenuRestore=runtime.readerMenu?{id:runtime.readerMenu.button.dataset.readerMenu,workId:String(runtime.data?.stack?.work?.id||''),layers:Boolean(runtime.readerLayers)}:null;runtime.closeReaderMenu({children:false});root.removeEventListener('click',click);root.removeEventListener('pointerover',hover);doc.removeEventListener('pointerdown',outside,true);doc.removeEventListener('focusin',outside,true);view?.removeEventListener('resize',runtime.positionReaderMenu);root.removeEventListener('wheel',wheel,true)}
+  runtime.cleanupReaderMenus=()=>{runtime.stopReaderRouteLayout?.();runtime.stopReaderRouteLayout=null;runtime.readerMenuRestore=runtime.readerMenu?{id:runtime.readerMenu.button.dataset.readerMenu,workId:String(runtime.data?.stack?.work?.id||''),layers:Boolean(runtime.readerLayers)}:null;runtime.closeReaderMenu({children:false});root.removeEventListener('click',click);root.removeEventListener('pointerover',hover);doc.removeEventListener('pointerdown',outside,true);doc.removeEventListener('focusin',outside,true);view?.removeEventListener('resize',runtime.positionReaderMenu);root.removeEventListener('wheel',wheel,true)}
 }
 
 function paneTab(id,label){return `<button type="button" class="desk-tab" data-pane-target="${esc(id)}">${esc(label)}</button>`}
