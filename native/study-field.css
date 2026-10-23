@@ -480,7 +480,7 @@
 
 .care-pane-controls{display:flex;align-items:center;gap:.4rem;flex:0 0 auto;margin-right:.7rem}
 .care-pane-controls button{display:grid;place-items:center;position:relative;width:1rem;height:1rem;min-height:0;padding:0;border:1px solid #0003;border-radius:50%;color:#35251d;background:color-mix(in srgb,#cf8a72 88%,var(--pane-accent,var(--color,#736486)));cursor:pointer;box-shadow:inset 0 1px 1px #ffffff25}
-.care-pane-controls button:nth-child(2){background:color-mix(in srgb,#c7b174 88%,var(--pane-accent,var(--color,#736486)))}
+.care-pane-controls button[data-pane-control="sections"]{background:color-mix(in srgb,#c7b174 88%,var(--pane-accent,var(--color,#736486)))}
 .care-pane-controls svg{display:block;width:.62rem;height:.62rem;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.5}.care-pane-controls:hover svg,.care-pane-controls button:focus-visible svg{opacity:1}
 .care-pane-controls button:hover,.care-pane-controls button:focus-visible{filter:brightness(1.3);outline:2px solid #fff8;outline-offset:2px}
 .window-titlebar:has(.care-pane-controls)>strong,.pane-top:has(.care-pane-controls)>strong{margin-left:auto;text-align:right;min-width:0;flex:1}
@@ -507,6 +507,36 @@
 }
 @media(prefers-reduced-motion:reduce){.care-pane-scrollbar,.care-pane-scrollbar-thumb::before{transition:none}}
 @media(forced-colors:active){.care-pane-scrollbar::before{background:CanvasText}.care-pane-scrollbar-thumb::before{background:Highlight;box-shadow:0 0 0 1px Canvas}}
+
+/* Green expands the workspace, retaining every pane's width, slider and zoom. */
+.care-pane-controls button[data-pane-control="reading"]{background:color-mix(in srgb,#72b38b 92%,var(--pane-accent,var(--color,#736486)))}
+:is(.study-desk,.field-desk)[data-pane-reading="true"]{position:fixed!important;inset:0!important;z-index:999980!important;width:100%!important;height:100dvh!important;max-height:none!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;overflow:hidden!important;isolation:isolate}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"]):not([data-original-expanded="true"]){display:flex!important;flex-direction:column;min-height:0!important}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>:is(.desk-status,.field-status,.field-nav,.field-head,.field-manager,.field-warning,.numo-chambers){display:none!important}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar{position:static!important;display:flex!important;align-items:center;justify-content:flex-end;flex:0 0 36px;box-sizing:border-box;width:auto!important;min-height:36px!important;height:36px!important;margin:0!important;padding:0 6px 4px!important;gap:0!important}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar>:not(.route-toolbar):not(.lateral-route-toolbar):not(.pane-reading-exit){display:none!important}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar>:is(.route-toolbar,.lateral-route-toolbar){display:flex;align-items:center;justify-content:space-between;flex:1 1 auto;min-width:0;gap:6px;margin:0;padding:0 2px;border:0;border-radius:0;background:transparent;box-shadow:none}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"]):not([data-original-expanded="true"])>:is(.desk-strip,.field-strip){flex:1 1 0;min-height:0!important;height:0!important;padding-top:0!important;padding-bottom:0!important}
+.field-desk[data-pane-reading="true"] :is(.ct-toolbar,.ct-shared-toolbar,.ct-shared-status,[data-corpus-toolbar],[data-corpus-status]){display:none!important}
+.field-desk[data-pane-reading="true"] :is(.ct-native-build,.ct-reading-window){min-height:0;padding-top:0;padding-bottom:0}
+/* Match the route strip, keeping the idle side clear and the exit quiet. */
+:is(.study-desk,.field-desk) .desk-menu-toolbar>.pane-reading-exit{position:relative;display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;height:32px;min-height:32px;margin:0 6px;padding:4px 8px;border:0;border-radius:5px;background:transparent;box-shadow:none;color:#8bc5a1;font:600 .65rem/1.2 var(--st-font,system-ui,sans-serif);white-space:nowrap;cursor:pointer}
+.pane-reading-exit svg{width:.85rem;height:.85rem;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.pane-reading-exit::after{content:"";position:absolute;inset:0 -6px auto;height:36px}
+:is(.study-desk,.field-desk) .desk-menu-toolbar>.pane-reading-exit:hover{background:color-mix(in srgb,#8bc5a1 10%,transparent)}
+.pane-reading-exit:focus-visible{outline:2px solid #8bc5a1;outline-offset:1px}
+:is(.study-desk,.field-desk) .desk-menu-toolbar:has(>:is(.route-toolbar,.lateral-route-toolbar))>.pane-reading-exit{display:none!important}
+:is(.study-desk,.field-desk)[data-pane-reading-native="true"]>.desk-menu-toolbar{padding-left:100px!important}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar :is(.route-toolbar,.lateral-route-toolbar)>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.58rem;letter-spacing:.025em}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar .route-history-actions{flex:0 0 auto;gap:0}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar :is(.route-toolbar,.lateral-route-toolbar) button{position:relative;flex-shrink:0;height:32px;min-height:32px;min-width:32px;margin:0 6px;padding:4px 6px;border:0;border-radius:5px;background:transparent;color:inherit;box-shadow:none;font-size:.65rem}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar .route-history-actions .route-history-arrow{width:32px;padding:8px}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar :is(.route-toolbar,.lateral-route-toolbar) button:hover:not(:disabled){background:color-mix(in srgb,currentColor 7%,transparent)}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar :is(.route-toolbar,.lateral-route-toolbar) button:focus-visible{outline:2px solid currentColor;outline-offset:1px}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar :is(.route-toolbar,.lateral-route-toolbar) svg{width:.85rem;height:.85rem}
+:is(.study-desk,.field-desk):is([data-pane-reading="true"],[data-pane-reading-child="true"])>.desk-menu-toolbar :is(.route-toolbar,.lateral-route-toolbar) button::after{height:36px}
+/* Original editions retain their separate page-only expansion option. */
+.study-desk[data-pane-reading="true"][data-original-expanded="true"]{display:block!important}
 
 .study-desk[data-skin="care"] [data-connection-resolution]{background:#171c23;color:#e4e6e8;border-color:#303641;max-width:11rem;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
 .field-desk{--desk-paper:#141920;--desk-ink:#e8e3d8;--desk-line:#39414b}.field-desk [data-connection-resolution]{border:1px solid #303641;border-radius:6px;background:#171c23;color:#e8e3d8;padding:8px 10px;font-size:11px}

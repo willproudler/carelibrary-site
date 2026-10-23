@@ -1,10 +1,10 @@
 {
-  "version": "care-study-field/2.55-responsive-routes.2",
+  "version": "care-study-field/2.55-pane-reading.1",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "204866372e9516cdd7ba417e27af13af9f87d599d6f0caf46cb4ff3a3033cc2c",
-    "study-field.mjs": "3e22940eea890ea5dbbc1a4be516afb002c9f3d1bd4532ebd831725d920c930f"
+    "study-field.css": "0db2dffdac0460d23aa17055ee4fce8ae9c7db545224bbd73a88bbad9eb5965d",
+    "study-field.mjs": "2d90428b2e584fdaa930a78d1091c91933b991840df8565cd11ff0fd4a5b0ade"
   },
   "compatibility_changes": [
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
@@ -16,6 +16,7 @@
     "Slim mobile corpus route bars with 44-pixel touch areas",
     "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
     "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
-    "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts"
+    "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts",
+    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights"
   ]
 }

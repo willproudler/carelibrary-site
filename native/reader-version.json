@@ -1,5 +1,5 @@
 {
-  "version": "care-study-desk/2.55-responsive-routes.2",
+  "version": "care-study-desk/2.55-pane-reading.1",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
@@ -12,11 +12,12 @@
     "Slim mobile corpus route bars with 44-pixel touch areas",
     "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
     "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
-    "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts"
+    "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts",
+    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights"
   ],
   "assets": {
-    "study-desk.css": "8ab68423adf9f8232a75c84d8cbbc99946c24ac66f9bdc35ad80181c14085c6f",
-    "study-desk.mjs": "1b445a7822903da6df92cd91a04fe2a16483ce485c7a771f5a42010c1a242d5b",
+    "study-desk.css": "2e5d90dead971ad34e409c5eccbdc3c537d763d48931782c00b7ecf25e877ad1",
+    "study-desk.mjs": "7327399b44087cf80da41e8cedd2a01e922aeed5335808fb05f5caf15d7e5759",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },
   "reading_presentation": "care-item-presentation/7"
