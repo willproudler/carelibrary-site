@@ -2455,7 +2455,7 @@ function setup(root){
   }
   runtime.paintFocus=()=>{root.querySelectorAll("[data-pane]").forEach(pane=>pane.classList.toggle("pane-focused",pane.dataset.pane===runtime.focused));root.querySelectorAll("[data-pane-target]").forEach(tab=>{const active=tab.dataset.paneTarget===runtime.focused;tab.classList.toggle("active",active);tab.setAttribute("aria-current",String(active))});const label=root.querySelector("[data-focus-label]");const pane=root.querySelector(`[data-pane="${CSS.escape(runtime.focused)}"]`);if(label)label.textContent=`FOCUS · ${(pane?.querySelector(`.window-titlebar .reader-${root.dataset.titleView==="true"?"simple":"full"}-title`)||pane?.querySelector(".window-titlebar strong"))?.textContent||runtime.focused}`}
   runtime.applySkin=()=>{root.dataset.skin=runtime.skin;root.querySelectorAll("[data-skin-value]").forEach(button=>{const active=button.dataset.skinValue===runtime.skin;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active))})}
-  runtime.applyTextScale=()=>{root.style.setProperty("--desk-text-scale",String(TEXT_SCALES[runtime.textScaleIndex]));root.querySelectorAll("[data-text-size]").forEach(button=>{const direction=Number(button.dataset.textSize||0);button.disabled=(direction<0&&runtime.textScaleIndex===0)||(direction>0&&runtime.textScaleIndex===TEXT_SCALES.length-1)})}
+  runtime.applyTextScale=()=>{root.style.setProperty("--desk-text-scale",String(TEXT_SCALES[runtime.textScaleIndex]));root.style.setProperty("--care-reader-text-scale",String(TEXT_SCALES[runtime.textScaleIndex]));root.querySelectorAll("[data-text-size]").forEach(button=>{const direction=Number(button.dataset.textSize||0);button.disabled=(direction<0&&runtime.textScaleIndex===0)||(direction>0&&runtime.textScaleIndex===TEXT_SCALES.length-1)})}
   runtime.onScroll=()=>{
     const view=root.ownerDocument.defaultView,strip=root.querySelector("[data-strip]");if(!view||!strip)return
     if(runtime.scrollTimer)view.clearTimeout(runtime.scrollTimer)
@@ -2683,6 +2683,43 @@ function setupConnectionResolution(runtime){
 }
 
 
+function fitPaneSize(pane){
+  const strip=pane.parentElement,view=pane.ownerDocument?.defaultView
+  if(!pane.dataset.paneSize||!strip?.matches?.('[data-strip]')||!view?.getComputedStyle)return
+  const style=view.getComputedStyle(strip),available=strip.clientWidth-(parseFloat(style.paddingLeft)||0)-(parseFloat(style.paddingRight)||0)
+  if(available<=0)return
+  // Layout widths exclude both the local track zoom and any corpus zoom.
+  const standard=Number(pane.dataset.paneStandardWidth)||0
+  const peers=[...strip.children].filter(other=>other!==pane&&!other.hidden&&other.matches?.('.desk-window[data-pane],.field-pane[data-pane]')&&!other.classList.contains('care-pane-minimized'))
+  const neighbour=peers.find(other=>other===pane.nextElementSibling)||peers.find(other=>other===pane.previousElementSibling)
+  const neighbourWidth=neighbour?(neighbour.dataset.paneSize?Number(neighbour.dataset.paneStandardWidth):neighbour.offsetWidth)||0:0
+  const beside=neighbour?available-neighbourWidth-(parseFloat(style.columnGap)||0):available
+  // When two readings fit, leave the neighbouring chapter fully visible.
+  const width=pane.dataset.paneSize==='full'?available:Math.min(available,Math.max(standard,Math.min(Math.max(680,available*.62),beside)))
+  const value=width+'px'
+  if(pane.style.getPropertyValue('--care-pane-sized-width')!==value)pane.style.setProperty('--care-pane-sized-width',value)
+}
+function paintPaneSizeControl(button,pane,state){
+  const size=['wide','full'].includes(state.size)?state.size:'standard'
+  if(!pane.dataset.paneSize&&!state.minimized&&pane.offsetWidth)pane.dataset.paneStandardWidth=String(pane.offsetWidth)
+  if(size==='standard'){delete pane.dataset.paneSize;pane.style.removeProperty?.('--care-pane-sized-width')}
+  else{pane.dataset.paneSize=size;fitPaneSize(pane)}
+  const names={standard:'Standard',wide:'Wide',full:'Full width'},next={standard:'wide',wide:'full',full:'standard'}
+  const label=`Pane size: ${names[size]}. Change to ${names[next[size]]}`
+  button.title=label;button.setAttribute('aria-label',label);button.setAttribute('aria-pressed',String(size!=='standard'))
+  const path={standard:'M4 2h4v8H4z',wide:'M2.5 2h7v8h-7z',full:'M1 2h10v8H1z'}
+  button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${path[size]}"/></svg>`
+}
+function alignSizedPane(pane){
+  const strip=pane.parentElement,view=pane.ownerDocument?.defaultView
+  if(!strip?.matches?.('[data-strip]')||!view?.getComputedStyle)return
+  const bounds=strip.getBoundingClientRect(),rect=pane.getBoundingClientRect(),style=view.getComputedStyle(strip),scale=bounds.width/strip.offsetWidth||1
+  const left=(rect.left-bounds.left)/scale-strip.clientLeft-(parseFloat(style.paddingLeft)||0)
+  const right=(rect.right-bounds.left)/scale-strip.clientLeft-strip.clientWidth+(parseFloat(style.paddingRight)||0)
+  // Move only as far as needed to reveal this pane, retaining nearby context.
+  if(left<0)strip.scrollLeft+=left
+  else if(right>0)strip.scrollLeft+=right
+}
 function installPaneScrollbar(root){
   const doc=root.ownerDocument,view=doc?.defaultView
   // A corpus owns embedded desks. Each desk controls only its own strip.
@@ -2708,6 +2745,7 @@ function installPaneScrollbar(root){
   }
   const paint=()=>{
     frame=0;if(disposed)return
+    for(const pane of strip.children)fitPaneSize(pane)
     const outer=root.getBoundingClientRect(),bounds=strip.getBoundingClientRect()
     const scaleX=outer.width/root.offsetWidth||1,scaleY=outer.height/root.offsetHeight||1
     maximum=Math.max(0,strip.scrollWidth-strip.clientWidth)
@@ -2796,11 +2834,12 @@ function installPaneControls(root,states,onChange=()=>{},scope=""){
     if(!bar||pane.dataset.pane==="connection:explore")continue
     const key=scope+"|"+pane.dataset.pane,state=states[key]||(states[key]={}),name=(bar.querySelector("strong .reader-full-title")||bar.querySelector("strong"))?.textContent?.trim()||"pane"
     let controls=bar.querySelector(".care-pane-controls")
-    if(!controls){controls=root.ownerDocument.createElement("div");controls.className="care-pane-controls";controls.setAttribute("role","group");controls.setAttribute("aria-label",`Controls for ${name}`);for(const [action,glyph] of [["minimize","−"],["sections","⌃"],["reading","⤢"]]){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl=action;button.textContent=glyph;controls.append(button)}bar.prepend(controls)}
+    if(!controls){controls=root.ownerDocument.createElement("div");controls.className="care-pane-controls";controls.setAttribute("role","group");controls.setAttribute("aria-label",`Controls for ${name}`);for(const [action,glyph] of [["minimize","−"],["sections","⌃"],["size","↔"],["reading","⤢"]]){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl=action;button.textContent=glyph;controls.append(button)}bar.prepend(controls)}
     if(![...controls.children].some(button=>button.dataset.paneControl==="reading")){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl="reading";controls.append(button)}
+    if(![...controls.children].some(button=>button.dataset.paneControl==="size")){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl="size";controls.insertBefore(button,controls.querySelector('[data-pane-control="reading"]'))}
     const hasSections=[...pane.querySelectorAll("details")].some(section=>!section.matches?.(".sheet-versions")),sectionControl=[...controls.children].find(button=>button.dataset.paneControl==="sections")
     if(!hasSections)sectionControl?.remove()
-    else if(!sectionControl){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl="sections";controls.insertBefore(button,controls.querySelector('[data-pane-control="reading"]'))}
+    else if(!sectionControl){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl="sections";controls.insertBefore(button,[...controls.children].find(button=>button.dataset.paneControl==="size"))}
     const paint=()=>{
       if(!pane.classList.contains("care-pane-minimized")){
         const a=controls.getBoundingClientRect(),b=bar.getBoundingClientRect()
@@ -2817,11 +2856,26 @@ function installPaneControls(root,states,onChange=()=>{},scope=""){
         }
       }
       pane.classList.toggle("care-pane-minimized",Boolean(state.minimized))
-      for(const button of controls.children){const action=button.dataset.paneControl;if(action==="reading"){paintPaneReadingControl(button,pane);continue}const label=action==="minimize"?(state.minimized?"Restore":"Minimise")+` ${name}`:([...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open)?"Fold":"Unfold")+` all sections in ${name}`;button.title=label;button.setAttribute("aria-label",label);button.setAttribute("aria-pressed",String(action==="minimize"?Boolean(state.minimized):![...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open)));const folded=![...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open),path=action==="minimize"?(state.minimized?"M2 6h8M6 2v8":"M2 6h8"):(folded?"M3 4l3-3 3 3M3 8l3 3 3-3":"M3 1l3 3 3-3M3 11l3-3 3 3");button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${path}"/></svg>`;if(action==="sections")button.disabled=![...pane.querySelectorAll("details")].some(section=>!section.matches?.(".sheet-versions"))}
+      for(const button of controls.children){const action=button.dataset.paneControl;if(action==="reading"){paintPaneReadingControl(button,pane);continue}if(action==="size"){paintPaneSizeControl(button,pane,state);continue}const label=action==="minimize"?(state.minimized?"Restore":"Minimise")+` ${name}`:([...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open)?"Fold":"Unfold")+` all sections in ${name}`;button.title=label;button.setAttribute("aria-label",label);button.setAttribute("aria-pressed",String(action==="minimize"?Boolean(state.minimized):![...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open)));const folded=![...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open),path=action==="minimize"?(state.minimized?"M2 6h8M6 2v8":"M2 6h8"):(folded?"M3 4l3-3 3 3M3 8l3 3 3-3":"M3 1l3 3 3-3M3 11l3-3 3 3");button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${path}"/></svg>`;if(action==="sections")button.disabled=![...pane.querySelectorAll("details")].some(section=>!section.matches?.(".sheet-versions"))}
     }
     // Assign a local handler so repeated renders neither duplicate events nor
     // invoke Streamlit. The reading body and scroll positions stay mounted.
-    controls.onclick=event=>{const button=event.target.closest("[data-pane-control]");if(!button)return;event.preventDefault();event.stopPropagation();const action=button.dataset.paneControl;if(action==="reading"){togglePaneReading(pane);return}if(action==="minimize")state.minimized=!state.minimized;else{const sections=[...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")),open=!sections.some(section=>section.open);sections.forEach(section=>section.open=open)}paint();onChange(pane)}
+    controls.onclick=event=>{
+      const button=event.target.closest("[data-pane-control]");if(!button)return
+      event.preventDefault();event.stopPropagation()
+      const action=button.dataset.paneControl
+      if(action==="reading"){togglePaneReading(pane);return}
+      if(action==="minimize")state.minimized=!state.minimized
+      else if(action==="size")state.size=state.size==="wide"?"full":state.size==="full"?"standard":"wide"
+      else{const sections=[...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")),open=!sections.some(section=>section.open);sections.forEach(section=>section.open=open)}
+      paint();onChange(pane)
+      // Queue after the reader's track refit, so the clicked pane stays in view.
+      if(action==="size"){
+        alignSizedPane(pane)
+        const view=pane.ownerDocument?.defaultView
+        if(view?.requestAnimationFrame)view.requestAnimationFrame(()=>{if(pane.isConnected)alignSizedPane(pane)})
+      }
+    }
     paint()
   }
 }

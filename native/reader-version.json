@@ -1,5 +1,5 @@
 {
-  "version": "care-study-desk/2.55-pane-reading.1",
+  "version": "care-study-desk/2.55-pane-reading.1-pane-sizing.1",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
@@ -13,11 +13,12 @@
     "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
     "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
     "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts",
-    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights"
+    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights",
+    "Per-pane Standard, Wide and Full width sizing; independent pale-green control with preserved reading position and separate workspace fullscreen"
   ],
   "assets": {
-    "study-desk.css": "2e5d90dead971ad34e409c5eccbdc3c537d763d48931782c00b7ecf25e877ad1",
-    "study-desk.mjs": "7327399b44087cf80da41e8cedd2a01e922aeed5335808fb05f5caf15d7e5759",
+    "study-desk.css": "e0322be3aa6cecc30681a957a498943f6d0531b6474aba8be8b530cea1084b94",
+    "study-desk.mjs": "cf923ebaba3e5c8a3ed9011f8e0130e4a627556196ab4df95727031790f009ff",
     "reading-views.mjs": "ae16e9346d221c446a1b18271e72e3c9f6fb0ffaf7c00c81fec552ee18ad38da"
   },
   "reading_presentation": "care-item-presentation/7"

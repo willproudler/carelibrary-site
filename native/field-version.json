@@ -1,10 +1,10 @@
 {
-  "version": "care-study-field/2.55-pane-reading.1",
+  "version": "care-study-field/2.55-pane-reading.1-pane-sizing.1",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "0db2dffdac0460d23aa17055ee4fce8ae9c7db545224bbd73a88bbad9eb5965d",
-    "study-field.mjs": "2d90428b2e584fdaa930a78d1091c91933b991840df8565cd11ff0fd4a5b0ade"
+    "study-field.css": "033524eec26518ab9b48c02a1dcf364d3b8f4f4d562fdc84b86fb7e77aef87d8",
+    "study-field.mjs": "29ba6688fe618c082f98936013e2e5da7c03ac000c24ca61d9e98db9d544ecab"
   },
   "compatibility_changes": [
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
@@ -17,6 +17,7 @@
     "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
     "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
     "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts",
-    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights"
+    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights",
+    "Per-pane Standard, Wide and Full width sizing; independent pale-green control with preserved reading position and separate workspace fullscreen"
   ]
 }
