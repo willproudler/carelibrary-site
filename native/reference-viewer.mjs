@@ -336,6 +336,7 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.onReferencePreview=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;runtime.previewSource=detail.source||null;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:true,remember:!selected})}
   runtime.onReferenceDismissPreview=event=>{if(!runtime.previewSource||event.detail?.source!==runtime.previewSource)return;runtime.previewSource=null;runtime.open=false;runtime.render()}
   runtime.onReferenceSelect=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:runtime.open,remember:!selected});event.preventDefault?.()}
+  runtime.onReferenceClearSelection=event=>{const detail=event.detail||{},selected=runtime.selected;if(!selected||keyFor(selected.kind,selected.id,selected.scope)!==keyFor(detail.kind,detail.id,detail.scope))return;runtime.selected=null;runtime.previewSource=null;runtime.surface="read";runtime.toolScreen="home";runtime.render()}
   runtime.onPaneFocus = event => {
     if(!runtime.studioMode)return
     const path=typeof event.composedPath==="function"?event.composedPath():[event.target]
@@ -422,6 +423,7 @@ function setup(parentElement, root, setTriggerValue) {
   window.addEventListener("care-reference-preview",runtime.onReferencePreview)
   window.addEventListener("care-reference-dismiss-preview",runtime.onReferenceDismissPreview)
   window.addEventListener("care-reference-select",runtime.onReferenceSelect)
+  window.addEventListener("care-reference-clear-selection",runtime.onReferenceClearSelection)
   Object.assign(runtime,SAVED_VIEWERS.get(parentElement)||{})
   setupViewerVibrantView(runtime)
   INSTANCES.set(parentElement, runtime)
@@ -458,6 +460,7 @@ function teardown(parentElement, runtime) {
   window.removeEventListener("care-reference-preview",runtime.onReferencePreview)
   window.removeEventListener("care-reference-dismiss-preview",runtime.onReferenceDismissPreview)
   window.removeEventListener("care-reference-select",runtime.onReferenceSelect)
+  window.removeEventListener("care-reference-clear-selection",runtime.onReferenceClearSelection)
   if (runtime.statusTimer !== null) window.clearTimeout(runtime.statusTimer)
   if(INSTANCES.get(parentElement)===runtime)INSTANCES.delete(parentElement)
 }

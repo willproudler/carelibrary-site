@@ -1,7 +1,7 @@
 /* Small, read-only previews of the existing Lateral and Corpus environments.
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
-import {publicReadingText} from './native/reading-views.mjs?v=ae16e9346d221c44';
+import {publicReadingText} from './native/reading-views.mjs?v=b831bfdb675f0225';
 import {loadPublicField} from './public-fields.mjs?v=aefc8861e610f34d';
 import {loadLibrary} from './library-loader.mjs';
 export const LATERAL_SAMPLES = Object.freeze([

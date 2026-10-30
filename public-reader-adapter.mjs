@@ -25,7 +25,8 @@ function publicSourceDetailHint(canonical, passage) {
  * Source alignments and item references are the only edges in a route.
  */
 import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=d6fb94305f051e89';
-import {publicReadingText} from './native/reading-views.mjs?v=ae16e9346d221c44';
+import * as publicReadingViews from './native/reading-views.mjs?v=b831bfdb675f0225';
+const {publicReadingText, publicSourcePresentation = () => ({})} = publicReadingViews;
 import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=d6fb94305f051e89';
 
 const array = value => Array.isArray(value) ? value : [];
@@ -135,11 +136,13 @@ export function createPublicReaderAdapter(data) {
     const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${originalLabels(source,source.work,state)}`;
     if (chapterCache.has(cacheKey)) return chapterCache.get(cacheKey);
     const rows = array(reading.paragraphs), canonicalPassages = new Map(array(source.paragraphs).map(row=>[row.id,row]));
+    const sourceTypesetting = publicSourcePresentation(source, reading);
     const canonicalPositions = new Map(array(source.paragraphs).map((row, position) => [row.id, position]));
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
       sequence_number:source.order, ...paneReadingTitle(source,source.work,state), label:paneTitle(source,source.work,state),
       source_rendition_type:variant?.rendition_type || (variant ? 'machine' : 'original'),
+      ...(sourceTypesetting.chapter || {}),
       passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
       passages:rows.map((passage, position) => {
         const display = sourceReadingText(passage.text,source,source.work,state);
@@ -155,6 +158,7 @@ export function createPublicReaderAdapter(data) {
         id:passage.id, text:passage.text, reading_text:display,
         ...(omitPrefix ? {beautiful_omit_prefix:omitPrefix} : {}),
         ...(sourceDetail ? {beautiful_source_detail:sourceDetail} : {}),
+        ...(sourceTypesetting.passages?.[passage.id] || {}),
         reading_html:inline(display), reading_block_html:block(display),
         address:publicSourcePassageAddress(source, passage, canonical, position, sequence),
         sequence, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',

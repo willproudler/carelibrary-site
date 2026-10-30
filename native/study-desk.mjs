@@ -320,6 +320,14 @@ function refreshStudyDeskOutlineContext(runtime,data){
   state.cache.clear();state.errors.clear()
   return true
 }
+function studyDeskSelectionContext(data){
+  return JSON.stringify([data?.stack?.work?.id||'',data?.stack?.active_raw_unit_id||'',data?.reference?.id||'',data?.connection?.id||''])
+}
+function restoreStudyDeskServerSelection(runtime,data){
+  // Explicitly clearing a local selection is distinct from an uninitialised
+  // reader. Older acknowledgements must not resurrect the cleared passage.
+  if(!runtime.selectedAxiom&&runtime.clearedSelectionContext!==studyDeskSelectionContext(data))runtime.selectedAxiom=data?.selected_axiom||null
+}
 function reuseStudyDeskRender(runtime,component,signature){
   const data=component.data||{},cleanup=runtime.renderCleanup?.resources
   // Content revisions, explicit navigation and a remount still follow the
@@ -339,7 +347,7 @@ function reuseStudyDeskRender(runtime,component,signature){
     }
   }
   if(data.mode==="library"){runtime.syncLibrarySelection?.(data);runtime.paintLibrarySelection?.()}
-  if(!runtime.selectedAxiom)runtime.selectedAxiom=data.selected_axiom||null
+  restoreStudyDeskServerSelection(runtime,data)
   runtime.paintSelection()
   return ownStudyDeskCleanup(runtime,cleanup)
 }
@@ -1322,9 +1330,9 @@ function sourcePane(data,selectedId,reference){
   const sourceDetailsInUse=new Set(arr(data.care_path).flatMap(unit=>[...arr(unit.items),...arr(unit.sections).flatMap(section=>arr(section.items))]).flatMap(item=>[...arr(item.source_trace),...arr(item.deep_source_trace),...arr(item.matrix_trace),...arr(item.passage_trace_ids)]).map(String))
   const passages=arr(chapter.passages).map(passage=>{
     if(passage.route_available===false)return `<div class="passage-row"><article class="passage" data-beautiful-opening-foldable="${beautifulHeadingDetail(passage)}"><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`
-    return `<div class="passage-row"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button></div>`
+    return `<div class="passage-row"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||'')}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(passage.beautiful_reading_block_html||'')}" data-beautiful-original-html="${passage.beautiful_reading_block_html?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button></div>`
   }).join("")
-  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${arr(chapter.source_versions?.options).length?`<button type="button" class="pane-language" data-edit-source="${esc(chapter.raw_unit_id)}" title="Edit source and passage size">Edit passages</button>`:""}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
+  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${arr(chapter.source_versions?.options).length?`<button type="button" class="pane-language" data-edit-source="${esc(chapter.raw_unit_id)}" title="Edit source and passage size">Edit passages</button>`:""}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
 }
 function traceLabel(item,layer){
   if(String(layer).toUpperCase()==="SOURCE")return "Saved source passage"
@@ -2106,6 +2114,37 @@ function setupConnectionReader(runtime){
   runtime.onConnectionChange=event=>{const select=event.target?.closest?.("[data-connection-choice]");if(select?.value)runtime.connectionAction({action:"open",id:select.value})}
   const paintSelection=runtime.paintSelection;runtime.paintSelection=()=>{paintSelection();runtime.paintConnectionSelection()}
 }
+function setupTypesetPassageDismissal(runtime){
+  runtime.cleanupTypesetPassageDismissal?.()
+  const root=runtime.root,doc=root.ownerDocument
+  const origin=event=>event.composedPath?.().find(node=>node?.closest)||event.target
+  const nativeSelection=()=>{
+    const selection=root.getRootNode?.()?.getSelection?.()||doc.defaultView?.getSelection?.()
+    return selection?.isCollapsed===false&&Boolean(String(selection))
+  }
+  const click=event=>{
+    if(event.defaultPrevented||event.detail===0||nativeSelection())return
+    const target=origin(event)
+    // Actions belonging to the reading keep their reference until the action
+    // completes. Text dragging is stopped earlier by the native-copy handler.
+    if(target?.closest?.('[data-select-passage],[data-open-passage-routes],[data-open-axiom-routes],[data-bookmark-toggle],a[href],summary,input,textarea,select,[contenteditable],.reference-viewer,[data-care-reference-viewer-root],.care-reference-component'))return
+    runtime.clearTypesetPassageSelection?.()
+  }
+  const key=event=>{
+    if(event.key!=='Escape'||event.defaultPrevented||event.isComposing||event.metaKey||event.ctrlKey||event.altKey||event.shiftKey)return
+    const target=origin(event)
+    if(root.contains(target)||target?.isContentEditable||target?.closest?.('input,textarea,select,[contenteditable],[role="textbox"]'))return
+    if(runtime.clearTypesetPassageSelection?.())event.preventDefault()
+  }
+  doc.addEventListener?.('click',click)
+  doc.addEventListener?.('keydown',key)
+  const cleanup=()=>{
+    doc.removeEventListener?.('click',click);doc.removeEventListener?.('keydown',key)
+    if(runtime.cleanupTypesetPassageDismissal===cleanup)delete runtime.cleanupTypesetPassageDismissal
+  }
+  runtime.cleanupTypesetPassageDismissal=cleanup
+  return cleanup
+}
 function setup(root){
   let savedTextScale=1
   try{savedTextScale=Number(root.ownerDocument.defaultView?.sessionStorage?.getItem(TEXT_SCALE_KEY)??1)}catch(_){}
@@ -2135,6 +2174,23 @@ function setup(root){
   runtime.sectionMemory=new Map()
   runtime.sliderScrollPositions=new Map()
   runtime.isRouting=()=>isRouteReference(runtime.data?.reference)
+  runtime.clearTypesetPassageSelection=()=>{
+    const selection=runtime.selectedAxiom
+    if(!selection?.passage_id||runtime.isRouting()||runtime.data?.connection?.reference)return false
+    const passage=root.querySelector(`[data-select-passage="${CSS.escape(selection.passage_id)}"]`)
+    if(!passage?.closest('.beautiful-typeset')||passage.dataset.sourceUnit!==selection.unit_id)return false
+    runtime.selectedAxiom=null
+    runtime.clearedSelectionContext=studyDeskSelectionContext(runtime.data)
+    runtime.viewerSelectionPending=false
+    runtime.paintSelection()
+    runtime.api?.setStateValue('selected_axiom',null)
+    const view=root.ownerDocument.defaultView
+    if(view?.CustomEvent){
+      view.dispatchEvent(new view.CustomEvent('care-reference-clear-selection',{detail:{kind:'passage',id:selection.passage_id}}))
+      view.dispatchEvent(new view.CustomEvent('care-workspace-checkpoint'))
+    }
+    return true
+  }
   runtime.readingPassageVisible=button=>!button.closest("[hidden]")&&(root.dataset.beautifulText!=="true"||button.dataset.beautifulFolded===undefined)
   runtime.readingPassageTarget=button=>{
     if(!button?.dataset.selectPassage||root.dataset.beautifulText!=="true"||button.dataset.beautifulFolded===undefined||runtime.isRouting())return button
@@ -2172,6 +2228,7 @@ function setup(root){
       const routes=button.parentElement.querySelector("[data-open-passage-routes]")
       if(routes)routes.hidden=!active
     })
+    runtime.paintBeautifulMargins?.()
   }
   runtime.openPreparedReference=id=>{if(!studyNavigationChoose(runtime,"ROUTE",id))runtime.api?.setTriggerValue("open_reference",id)}
   runtime.selectAxiom=button=>{
@@ -2186,6 +2243,7 @@ function setup(root){
     if(!pane)return
     const selection={work_id:String(runtime.data?.stack?.work?.id||""),unit_id:button.dataset.selectionUnit||(passage?button.dataset.sourceUnit:pane.dataset.pane),...(passage?{passage_id:button.dataset.selectPassage}:{axiom_id:button.dataset.selectAxiom}),...(routing?{route_root_id:runtime.referenceId}: {})}
     const changed=JSON.stringify(selection)!==JSON.stringify(runtime.selectedAxiom)
+    runtime.clearedSelectionContext=null
     runtime.selectedAxiom=selection
     if(!routing)runtime.originalDeskChapter?.(runtime.data?.stack?.active_raw_unit_id)
     runtime.paintSelection()
@@ -2286,7 +2344,11 @@ function setup(root){
     if(event.target?.closest?.("[data-route-direction-control]"))return
     if(runtime.onSectionsClick(event))return
     const select=event.target.closest("[data-select-axiom],[data-select-passage]")
-    if(select){runtime.selectAxiom(select);return}
+    if(select){
+      const selected=runtime.selectedAxiom
+      if(event.detail>0&&!runtime.isRouting()&&select.closest('.beautiful-typeset')&&select.dataset.selectPassage===selected?.passage_id&&select.dataset.sourceUnit===selected?.unit_id&&runtime.clearTypesetPassageSelection())return
+      runtime.selectAxiom(select);return
+    }
     const routes=event.target.closest("[data-open-axiom-routes],[data-open-passage-routes]")
     if(routes&&!routes.hidden){runtime.openPreparedReference(routes.dataset.openPassageRoutes||routes.dataset.openAxiomRoutes);return}
     if(runtime.onSliderClick?.(event))return
@@ -2420,6 +2482,7 @@ function setup(root){
     if(runtime.onBookMenuKey(event))return
     if(event.target?.closest?.("[data-route-direction]"))return
     if(event.defaultPrevented||event.isComposing||event.metaKey||event.ctrlKey||event.altKey||event.shiftKey||event.target?.isContentEditable||event.target?.closest?.('textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]')||event.target?.matches?.("input:not([data-sheet-slider])"))return
+    if(event.key==='Escape'&&runtime.clearTypesetPassageSelection()){event.preventDefault();return}
     if(runtime.onSelectionKey(event))return
     if(runtime.onSliderKey?.(event))return;if(event.metaKey||event.ctrlKey||event.altKey||event.shiftKey||event.target?.matches?.("input,textarea,select"))return;const reference=event.target?.closest?.("[data-ref-id]");if(reference&&!reference.disabled&&["Enter"," "].includes(event.key)){event.preventDefault();const id=String(reference.dataset.refId||"");if(id&&id===runtime.referenceId)runtime.api?.setTriggerValue("clear_reference",true);else runtime.openPreparedReference(id);return}const movement={"[":-1,"]":1}[event.key];if(movement){event.preventDefault();runtime.step(movement)}
   }
@@ -4557,6 +4620,7 @@ function beautifulTextOpeningKind(container,verifiedTitles=null){
 
 function beautifulSourceDetail(passage){
   if(!beautifulHeadingDetail(passage)||passage.route_available===false)return false
+  if(passage.beautiful_apparatus_only===true)return true
   const text=String(passage.text??passage.reading_text??'').trim()
   // Context-dependent folios and running heads are classified against the
   // canonical source upstream. Never infer them from a short translated line.
@@ -4618,7 +4682,7 @@ function beautifulTextNormalizeProse(value,knownOCR=false){
   return text.replace(/([^\n])[ \t]*\r?\n[ \t]*(?=[^\n])/g,'$1 ')
 }
 
-const BEAUTIFUL_TEXT_PROTECTED='a,pre,code,kbd,samp,math,svg,script,style,textarea,table,ul,ol,li,blockquote,h1,h2,h3,h4,h5,h6,.care-reading-math,.katex,.MathJax,[data-verse],[data-poetry],.verse,.poem,.poetry,[contenteditable]'
+const BEAUTIFUL_TEXT_PROTECTED='a,pre,code,kbd,samp,math,svg,script,style,textarea,table,ul,ol,li,blockquote,details,h1,h2,h3,h4,h5,h6,.care-reading-math,.katex,.MathJax,[data-verse],[data-poetry],.verse,.poem,.poetry,[contenteditable]'
 
 function beautifulTextOmitVerifiedPrefix(container,prefix){
   // This is an evidence-backed hint from the source payload, never a guess
@@ -4645,6 +4709,13 @@ function beautifulTextOmitVerifiedPrefix(container,prefix){
 
 function beautifulTextProseClone(container){
   const clone=container.cloneNode(true),document=container.ownerDocument
+  const article=container.closest('.passage'),projection=article?.dataset.beautifulReadingHtml,original=article?.dataset.beautifulOriginalHtml
+  if(projection&&original){
+    const expected=document.createElement('template');expected.innerHTML=original
+    // The owner may have edited the DOM since the evidence was prepared.
+    // Never reapply an older projection to newly changed source content.
+    if(container.innerHTML===expected.innerHTML)clone.innerHTML=projection
+  }
   const verifiedPrefix=container.dataset.beautifulOmitPrefix??container.closest('.passage')?.dataset.beautifulOmitPrefix
   beautifulTextOmitVerifiedPrefix(clone,verifiedPrefix)
   const paragraphs=[...clone.querySelectorAll('p')]
@@ -4704,12 +4775,131 @@ function beautifulTextReadingAnchors(root){
   return()=>{for(const {body,anchor,offset,scale} of anchors){if(!root.contains(anchor))continue;const delta=anchor.getBoundingClientRect().top-body.getBoundingClientRect().top-offset;if(Math.abs(delta)>.5)body.scrollTop+=delta/(scale||1)}}
 }
 
+function beautifulTypesetSource(source){
+  if(source.dataset.beautifulTypesetReady!=='true')return null
+  const document=source.ownerDocument,undo=[],markers=[]
+  const attr=(node,name,value)=>{const old=node.getAttribute(name);undo.push(()=>old===null?node.removeAttribute(name):node.setAttribute(name,old));node.setAttribute(name,value)}
+  const footer=document.createElement('details'),summary=document.createElement('summary')
+  footer.className='beautiful-chapter-notes';summary.textContent='Notes and references';footer.append(summary)
+  const rail=document.createElement('span')
+  rail.className='beautiful-selection-rail';rail.hidden=true;rail.setAttribute('aria-hidden','true')
+  source.append(rail);undo.push(()=>rail.remove())
+  source.classList.add('beautiful-typeset');undo.push(()=>source.classList.remove('beautiful-typeset'))
+  let opening=true,previous=null
+  for(const row of source.querySelectorAll(':scope>.passage-row')){
+    const article=row.querySelector(':scope>.passage'),container=article?.querySelector(':scope>.passage-text')
+    if(!container)continue
+    const wrapper=container.querySelector(':scope>.care-reading-text')||container
+    const blocks=[...wrapper.children].filter(node=>!node.matches('.beautiful-source-notes'))
+    const first=blocks[0],last=blocks.at(-1),id=article.dataset.refId
+    for(const note of container.querySelectorAll(':scope>.beautiful-source-notes')){
+      const parent=note.parentNode,next=note.nextSibling,label=note.querySelector('summary'),labelText=label?.textContent
+      if(label)label.textContent='Passage '+(article.dataset.beautifulPassageNumber||id?.split(':').at(-1)||'')+' · '+labelText
+      footer.append(note)
+      undo.push(()=>{if(source.contains(parent)){parent.insertBefore(note,next?.parentNode===parent?next:null);if(label)label.textContent=labelText}})
+    }
+    if(article.dataset.beautifulFolded==='true'||!first||!wrapper.textContent.trim())continue
+    for(const block of blocks){
+      if(!opening)break
+      const label=block.textContent.trim()
+      if(block.tagName==='P'&&beautifulTextOpeningLabel(label)==='heading'){
+        const title=source.querySelector(':scope>.source-head h2')?.textContent||''
+        attr(block,'data-beautiful-chapter-label',beautifulTextHeadingKey(title).includes(beautifulTextHeadingKey(label))?'duplicate':'true')
+      }
+      else if(block.tagName==='P'&&label.length<420&&/^(?:concerning\b|dionysius\b|to\s+\w+.*:|sur\b|de\s+[“"«])/i.test(label))attr(block,'data-beautiful-subtitle','true')
+      else opening=false
+    }
+    const protectedBlock=node=>!node||node.tagName!=='P'||node.querySelector('br,pre,code,table,ul,ol,blockquote,math,svg,[data-verse],[data-poetry],.verse,.poem,.poetry')||node.hasAttribute('data-beautiful-chapter-label')||node.hasAttribute('data-beautiful-subtitle')
+    if(previous&&article.dataset.beautifulJoinPrevious===previous.id&&!protectedBlock(first)&&!protectedBlock(previous.last)){
+      const before=previous.last,oldBefore=before.getAttribute('data-beautiful-flow'),oldFirst=first.getAttribute('data-beautiful-flow')
+      before.setAttribute('data-beautiful-flow',oldBefore?'middle':'start');first.setAttribute('data-beautiful-flow','end')
+      undo.push(()=>{oldBefore===null?before.removeAttribute('data-beautiful-flow'):before.setAttribute('data-beautiful-flow',oldBefore);oldFirst===null?first.removeAttribute('data-beautiful-flow'):first.setAttribute('data-beautiful-flow',oldFirst)})
+      const space=document.createTextNode(' ');previous.row.after(space);undo.push(()=>space.remove())
+    }
+    const address=article.querySelector(':scope>.passage-address'),mark=row.querySelector(':scope>.reader-axiom-mark'),routes=row.querySelector(':scope>.passage-routes')
+    if(address){
+      const text=address.textContent,style=address.getAttribute('style')
+      attr(address,'title',text);attr(address,'aria-label','Passage '+text)
+      address.textContent=article.dataset.beautifulPassageNumber||text
+      undo.push(()=>{address.textContent=text;style===null?address.removeAttribute('style'):address.setAttribute('style',style)})
+      for(const control of [mark,routes].filter(Boolean)){const style=control.getAttribute('style');undo.push(()=>style===null?control.removeAttribute('style'):control.setAttribute('style',style))}
+      markers.push({article,container,address,mark,routes})
+    }
+    previous={id,last,row}
+  }
+  if(footer.childElementCount>1){source.append(footer);undo.push(()=>footer.remove())}
+  const positionControls=()=>{
+    const selected=markers.find(marker=>marker.routes&&!marker.routes.hidden&&Number.isFinite(marker.controlTop))
+    const body=source.closest('.window-body')
+    if(!selected||!body)return
+    const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
+    const minimum=(body.getBoundingClientRect().top-bounds.top)/(scale||1)+8
+    const top=Math.max(selected.controlTop,minimum)
+    if(selected.mark)selected.mark.style.top=top+'px'
+    selected.routes.style.top=(top+(selected.mark?28:0))+'px'
+  }
+  const paintSelectionRail=()=>{
+    const selected=markers.find(marker=>marker.article.getAttribute('aria-pressed')==='true')
+    rail.hidden=!selected
+    if(!selected){rail.removeAttribute('data-passage-id');return}
+    const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
+    const walker=document.createTreeWalker(selected.container,4),range=document.createRange()
+    let node,first=null,last=null
+    while(node=walker.nextNode()){
+      const start=node.nodeValue.search(/\S/),end=node.nodeValue.trimEnd().length
+      if(start<0||node.parentElement?.closest('details,[hidden]'))continue
+      range.setStart(node,start);range.setEnd(node,end)
+      const lines=[...range.getClientRects()].filter(rect=>rect.width&&rect.height)
+      if(lines.length){first??=lines[0];last=lines.at(-1)}
+    }
+    if(!first||!last){rail.hidden=true;return}
+    const inset=parseFloat(document.defaultView.getComputedStyle(source).paddingLeft)||0
+    rail.style.left=Math.max(0,inset-9)+'px'
+    rail.style.top=((first.top-bounds.top)/(scale||1)-2)+'px'
+    rail.style.height=(Math.max(16,(last.bottom-first.top)/(scale||1)+4))+'px'
+    rail.dataset.passageId=selected.article.dataset.refId||''
+  }
+  const layout=()=>{
+    if(!source.isConnected)return
+    const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
+    let previousTop=-Infinity,nextControl=-Infinity
+    for(const marker of markers){
+      const {container,address,mark,routes}=marker
+      const walker=document.createTreeWalker(container,4)
+      let node,rect=null
+      while(node=walker.nextNode()){
+        const index=node.nodeValue.search(/\S/)
+        if(index<0||node.parentElement?.closest('details,[hidden]'))continue
+        const range=document.createRange();range.setStart(node,index);range.setEnd(node,index+1)
+        const candidate=range.getBoundingClientRect()
+        if(candidate.height&&candidate.width){rect=candidate;break}
+      }
+      if(!rect)continue
+      const natural=(rect.top-bounds.top)/(scale||1),top=Math.max(natural,previousTop+26)
+      address.style.top=top+'px';previousTop=top
+      const controlTop=Math.max(natural,nextControl)
+      marker.controlTop=controlTop
+      if(mark)mark.style.top=controlTop+'px'
+      if(routes){routes.style.top=(controlTop+(mark?28:0))+'px'}
+      nextControl=controlTop+(routes&&!routes.hidden?56:28)
+    }
+    positionControls()
+    paintSelectionRail()
+  }
+  layout()
+  return {layout,positionControls,cleanup(){for(const restore of undo.reverse())restore()}}
+}
+
 function setupBeautifulText(runtime){
   runtime.cleanupBeautifulText?.()
   const root=runtime.root,view=root?.ownerDocument?.defaultView
   if(!root||!view)return()=>{}
-  const originals=new Map(),details=new Map(),openings=new Map(),prepared=new WeakSet()
-  let disposed=false,observer=null,frame=null,updating=false
+  const originals=new Map(),details=new Map(),openings=new Map(),prepared=new WeakSet(),typesets=new Map()
+  let disposed=false,observer=null,frame=null,updating=false,marginFrame=null,marginObserver=null,controlFrame=null
+  const clearTypesets=()=>{for(const record of typesets.values())record.cleanup();typesets.clear()}
+  const layoutMargins=()=>{for(const record of typesets.values())record.layout()}
+  const queueMargins=()=>{if(disposed||!typesets.size||marginFrame!==null)return;marginFrame=view.requestAnimationFrame(()=>{marginFrame=null;if(!disposed)layoutMargins()})}
+  const queueControls=()=>{if(disposed||!typesets.size||controlFrame!==null)return;controlFrame=view.requestAnimationFrame(()=>{controlFrame=null;if(!disposed)for(const record of typesets.values())record.positionControls()})}
   const discardChangedProse=records=>{
     for(const record of records){
       if(record.type!=='childList'&&record.type!=='characterData')continue
@@ -4742,6 +4932,7 @@ function setupBeautifulText(runtime){
     root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed',String(enabled)))
   }
   const refresh=()=>mutate(()=>{
+    clearTypesets()
     for(const [node,previous] of openings){if(root.contains(node)){if(previous===null)node.removeAttribute('data-beautiful-opening');else node.setAttribute('data-beautiful-opening',previous)}}
     openings.clear()
     for(const [container,nodes] of originals){if(!root.contains(container)){originals.delete(container);continue}if(!enabled){container.replaceChildren(...nodes);originals.delete(container);prepared.delete(container)}}
@@ -4781,6 +4972,11 @@ function setupBeautifulText(runtime){
       }
       fold(article,record)
     }
+    if(!routeContext())for(const source of root.querySelectorAll('.source-copy')){
+      if(source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
+      const typeset=beautifulTypesetSource(source)
+      if(typeset){typesets.set(source,typeset);marginObserver?.observe(source)}
+    }
     runtime.paintSelection?.()
   })
   const apply=(value,persist=false)=>{
@@ -4793,12 +4989,13 @@ function setupBeautifulText(runtime){
     }
   }
   const click=event=>{
+    if(event.target?.closest?.('.beautiful-source-notes,.beautiful-chapter-notes')){event.stopImmediatePropagation();return}
     const control=event.target?.closest?.('[data-beautiful-text-toggle]')
     if(!control||!root.contains(control))return
     event.preventDefault();event.stopImmediatePropagation()
     apply(!enabled,true)
   }
-  const key=event=>{if(event.target?.closest?.('[data-beautiful-text-toggle]')&&[' ','Enter','ArrowUp','ArrowDown','Home','End'].includes(event.key))event.stopImmediatePropagation()}
+  const key=event=>{if(event.target?.closest?.('.beautiful-source-notes,.beautiful-chapter-notes')||event.target?.closest?.('[data-beautiful-text-toggle]')&&[' ','Enter','ArrowUp','ArrowDown','Home','End'].includes(event.key))event.stopImmediatePropagation()}
   const change=event=>{if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
   const storage=event=>{if(event.key===BEAUTIFUL_TEXT_KEY||event.key===null)apply(read())}
   const queueRefresh=()=>{
@@ -4828,26 +5025,35 @@ function setupBeautifulText(runtime){
     if(relevant)queueRefresh()
   })
   root.addEventListener('click',click,true);root.addEventListener('keydown',key,true)
+  root.addEventListener('scroll',queueControls,true)
   view.addEventListener(BEAUTIFUL_TEXT_EVENT,change);view.addEventListener('storage',storage)
+  view.addEventListener('resize',queueMargins)
+  if(view.ResizeObserver)marginObserver=new view.ResizeObserver(queueMargins)
+  root.ownerDocument.fonts?.ready?.then(()=>{if(!disposed)queueMargins()})
   runtime.paintBeautifulText=refresh
+  runtime.paintBeautifulMargins=layoutMargins
   const cleanup=()=>{
     if(disposed)return
     discardChangedProse(observer?.takeRecords?.()||[])
-    disposed=true;observer?.disconnect();if(frame!==null)view.cancelAnimationFrame(frame)
+    disposed=true;observer?.disconnect();marginObserver?.disconnect();if(frame!==null)view.cancelAnimationFrame(frame);if(marginFrame!==null)view.cancelAnimationFrame(marginFrame)
+    if(controlFrame!==null)view.cancelAnimationFrame(controlFrame)
+    clearTypesets()
     root.removeEventListener('click',click,true);root.removeEventListener('keydown',key,true)
+    root.removeEventListener('scroll',queueControls,true)
     view.removeEventListener(BEAUTIFUL_TEXT_EVENT,change);view.removeEventListener('storage',storage)
+    view.removeEventListener('resize',queueMargins)
     for(const [container,nodes] of originals)if(root.contains(container))container.replaceChildren(...nodes)
     for(const [article,record] of details)if(root.contains(article))restoreDetail(article,record)
     for(const [node,previous] of openings)if(root.contains(node)){if(previous===null)node.removeAttribute('data-beautiful-opening');else node.setAttribute('data-beautiful-opening',previous)}
     root.removeAttribute('data-beautiful-text')
     root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed','false'))
     if(runtime.cleanupBeautifulText===cleanup){runtime.cleanupBeautifulText=null;runtime.paintBeautifulText=null}
+    if(runtime.paintBeautifulMargins===layoutMargins)delete runtime.paintBeautifulMargins
   }
   runtime.cleanupBeautifulText=cleanup
   refresh()
   return cleanup
 }
-
 
 const TITLE_VIEW_KEY='care-title-view-v1'
 const TITLE_VIEW_EVENT='care-title-view-change'
@@ -5117,6 +5323,11 @@ function setupAxiomCopy(runtime){
     const text=textHit(event)
     const link=target?.closest?.('a[href]')
     const selected=selection?.isCollapsed===false&&Boolean(String(selection))
+    // Continuous typeset prose has no card padding to click. A plain click
+    // selects its passage; dragging and multi-click word selection stay native.
+    if(target?.closest?.('.beautiful-typeset')&&target?.closest?.('[data-select-passage]')&&!link){
+      if(target.closest('.passage-address')||(!selected&&event.detail===1))return
+    }
     // Suppress only native text gestures, never blank card space or unrelated
     // controls because an earlier text selection happens to remain on screen.
     if(text||(link&&link.closest(cardSelector))||(startedOnText&&selected))event.stopImmediatePropagation()
@@ -5212,12 +5423,12 @@ function renderStudyDesk(component,localNavigation=false){
     // Keep offsets while Routes temporarily hides the sliders; reset for a new book.
     if(sameWork)runtime.rememberSliders();else runtime.sliderScrollPositions.clear()
     const resumedSnapshot=(!sameWork||!sameConnection)?workspaceReadSnapshot(root,String(stack?.work?.id||""),nextSignature,nextReference,studyDeskWorkspaceContext(data),String(data?.connection?.id||"")):null
-    if(!sameWork){runtime.sectionMemory.clear();runtime.selectedAxiom=data?.selected_axiom||null}
+    if(!sameWork){runtime.sectionMemory.clear();runtime.clearedSelectionContext=null;runtime.selectedAxiom=data?.selected_axiom||null}
     workspaceRestoreRuntime(runtime,resumedSnapshot)
     runtime.viewerSelectionPending=Boolean(resumedSnapshot?.selectedAxiom)
     // Local selection leads while an acknowledgement is in flight, so a rapid
     // series of arrow presses cannot be rolled back by an older rerun.
-    if(!runtime.selectedAxiom)runtime.selectedAxiom=data?.selected_axiom||null
+    restoreStudyDeskServerSelection(runtime,data)
     if(!runtime.isRouting()&&runtime.readerView!=="outline"&&runtime.selectedAxiom){
       const selection=runtime.selectedAxiom,valid=selection.passage_id?String(stack.active_chapter?.raw_unit_id)===selection.unit_id&&arr(stack.active_chapter?.passages).some(item=>String(item.id)===selection.passage_id):arr(stack.care_path).some(unit=>String(unit.id)===selection.unit_id&&arr(unit.sections).some(section=>arr(section.items).some(item=>String(item.id)===selection.axiom_id)))
       if(!valid)runtime.selectedAxiom=null
@@ -5255,6 +5466,7 @@ function renderStudyDesk(component,localNavigation=false){
     setupTitleView(runtime)
     setupVibrantView(runtime)
     setupAxiomCopy(runtime)
+    setupTypesetPassageDismissal(runtime)
     runtime.paintConnectionView?.()
     runtime.restoreReaderMenu?.()
     if(sameWork)runtime.restoreVersionMenus(versionMenus)
@@ -5318,7 +5530,7 @@ function renderStudyDesk(component,localNavigation=false){
     loader?.remove()
     runtime.applyOutline?.()
     studyNavigationPrefetch(runtime)
-    return finishRender(()=>{stopPaneReading();runtime.cleanupAxiomCopy?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopPaneScrollbar();stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
+    return finishRender(()=>{stopPaneReading();runtime.cleanupAxiomCopy?.();runtime.cleanupTypesetPassageDismissal?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopPaneScrollbar();stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`

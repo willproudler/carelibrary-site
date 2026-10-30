@@ -1,10 +1,10 @@
 {
-  "version": "care-study-field/2.55-pane-reading.1-pane-sizing.1",
+  "version": "care-study-field/2.55-pane-reading.1-pane-sizing.1-beautiful-typeset.1",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
     "study-field.css": "033524eec26518ab9b48c02a1dcf364d3b8f4f4d562fdc84b86fb7e77aef87d8",
-    "study-field.mjs": "29ba6688fe618c082f98936013e2e5da7c03ac000c24ca61d9e98db9d544ecab"
+    "study-field.mjs": "acb4469ace69e18075f1db27a93cd315d3b13efc0780b0dc6addb9bdda484c10"
   },
   "compatibility_changes": [
     "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
@@ -18,6 +18,8 @@
     "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
     "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts",
     "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights",
-    "Per-pane Standard, Wide and Full width sizing; independent pale-green control with preserved reading position and separate workspace fullscreen"
-  ]
+    "Per-pane Standard, Wide and Full width sizing; independent pale-green control with preserved reading position and separate workspace fullscreen",
+    "Verified source paragraph flow, restrained margin selection, immediate toggle and click-away dismissal; preserve published source revisions and native quotation gestures"
+  ],
+  "source_typography": "care-study-desk/2.74"
 }

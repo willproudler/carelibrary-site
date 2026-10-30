@@ -2,9 +2,9 @@ import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
 import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=aefc8861e610f34d';
-import mountReader from './native/study-desk.mjs?v=16a09958493b5d02';
+import mountReader from './native/study-desk.mjs?v=b831bfdb675f0225';
 
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=d6fb94305f051e89';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=b831bfdb675f0225';
 import {searchLibrary} from './library-core.mjs?v=d6fb94305f051e89';
 import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=d6fb94305f051e89';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
@@ -17,7 +17,7 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=16a09958493b5d02'),loadText('./native/public-scope.css?v=d6fb94305f051e89')]);
+ const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=b831bfdb675f0225'),loadText('./native/public-scope.css?v=b831bfdb675f0225')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
@@ -30,14 +30,14 @@ async function start(){
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise;
  async function ensureViewer(){
-  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=c47c12affb3ca81e'),loadText('./native/reference-viewer.css?v=c47c12affb3ca81e'),loadText('./native/reference-viewer.html?v=d6fb94305f051e89')]).then(([module,viewerCSS,viewerHTML])=>{
+  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=b831bfdb675f0225'),loadText('./native/reference-viewer.css?v=b831bfdb675f0225'),loadText('./native/reference-viewer.html?v=b831bfdb675f0225')]).then(([module,viewerCSS,viewerHTML])=>{
    mountViewer=module.default;
    viewerHost.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
   }).catch(error=>{viewerPromise=null;throw error;});
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=16a09958493b5d02'),loadText('./native/study-field.css?v=16a09958493b5d02')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=b831bfdb675f0225'),loadText('./native/study-field.css?v=b831bfdb675f0225')]).then(([module,fieldCSS])=>{
    mountField=module.default;const style=document.createElement('style');
    // Keep the bottom save control still when pointer entry reveals trace links.
    style.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
@@ -204,7 +204,7 @@ async function start(){
   state=next;syncURL();paint();
  }
  async function dispatchField(field,action){
-  if(action.type==='selected_axiom'){state.fieldSelected={id:action.value?.axiom_id||action.value?.passage_id,source_pane:action.source_pane||'',work_id:action.work_id||action.value?.work_id||'',kind:action.value?.passage_id?'passage':'axiom'};paintFieldViewer(field);return;}
+  if(action.type==='selected_axiom'){const id=action.value?.axiom_id||action.value?.passage_id;state.fieldSelected=id?{id,source_pane:action.source_pane||'',work_id:action.work_id||action.value?.work_id||'',kind:action.value?.passage_id?'passage':'axiom'}:null;paintFieldViewer(field);return;}
   if(['bookmark_action','axiom_favourite_action'].includes(action.type)){
    if(!action.source_pane){
     const member=fieldMemberFor(field,adapter,action.work_id),node=index.nodes.get(action.care_item_id||action.care_unit_id);
