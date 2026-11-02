@@ -52,9 +52,29 @@ class AuthStore:
         if inside(self.path, Path(web_root).resolve()):
             raise ValueError("The production database must stay outside the web root.")
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        parent = self.path.parent.stat()
-        if parent.st_uid != os.getuid() or stat.S_IMODE(parent.st_mode) != 0o700:
-            raise ValueError("The private database directory must be owned by the service user with permissions 0700.")
+        parent_fd = os.open(str(self.path.parent), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            parent = os.fstat(parent_fd)
+            if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid():
+                raise ValueError(
+                    "The private database directory must be owned by the service user "
+                    f"(owner_uid={parent.st_uid}, process_uid={os.getuid()}, mode={stat.S_IMODE(parent.st_mode):04o})."
+                )
+            # Restrict an existing service-owned private directory before any
+            # credential files are created. Check ownership on the descriptor
+            # before chmod, so a foreign directory is never changed.
+            if (stat.S_IMODE(parent.st_mode) & 0o777) != 0o700:
+                os.fchmod(parent_fd, 0o700)
+            parent = os.fstat(parent_fd)
+            # Volumes can propagate SGID: 02700 is still owner-only access.
+            if (not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid()
+                    or (stat.S_IMODE(parent.st_mode) & 0o777) != 0o700):
+                raise ValueError(
+                    "The private database directory could not be restricted to access permissions 0700 "
+                    f"(owner_uid={parent.st_uid}, process_uid={os.getuid()}, mode={stat.S_IMODE(parent.st_mode):04o})."
+                )
+        finally:
+            os.close(parent_fd)
         try:
             fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
             os.close(fd)

@@ -8,9 +8,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 from pathlib import Path
 import smtplib
 import sqlite3
+import stat
 import sys
 import tempfile
 import time
@@ -133,6 +135,22 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
     def assert_no_store(self, response):
         self.assertIn("no-store", response.headers.get("cache-control", ""))
 
+    def inherited_setgid(self, directory):
+        # Some macOS filesystems strip SGID when chmod is applied. Present the
+        # Linux volume metadata to the guard while using real private files.
+        original_fstat = os.fstat
+        identity = directory.stat()
+
+        def fstat(descriptor):
+            info = original_fstat(descriptor)
+            if (info.st_dev, info.st_ino) == (identity.st_dev, identity.st_ino):
+                fields = list(info)
+                fields[0] |= stat.S_ISGID
+                return os.stat_result(fields)
+            return info
+
+        return patch("server.auth.os.fstat", fstat)
+
     async def test_public_discover_and_login_are_available_but_readings_require_session(self):
         for path in ("/", "/index.html", "/about.html", "/welcome.html", "/login.html",
                      "/request-access.html", "/auth.mjs", "/landing.mjs", "/login.mjs",
@@ -200,6 +218,41 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(p, 3)
         self.assertEqual(self.database.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.database.parent.stat().st_mode & 0o777, 0o700)
+
+    async def test_private_database_directory_accepts_inherited_setgid_without_group_access(self):
+        private = self.root / "setgid-private"
+        private.mkdir(mode=0o700)
+        private.chmod(0o2700)
+        database = private / "accounts.sqlite3"
+        with self.inherited_setgid(private), patch("server.auth.os.fchmod", wraps=os.fchmod) as chmod:
+            application = await asyncio.to_thread(
+                create_app, env={**self.env, "CARE_DATABASE_PATH": str(database)})
+            chmod.assert_not_called()
+        self.assertEqual(stat.S_IMODE(private.stat().st_mode) & 0o777, 0o700)
+        self.assertEqual(stat.S_IMODE(database.stat().st_mode), 0o600)
+        self.assertFalse(application.state.auth.has_enabled_users())
+        response = await self.new_client(app=application).get("/api/session")
+        self.assertEqual(response.json(), {"authenticated": False})
+
+    async def test_private_directory_repairs_only_service_owned_access_permissions(self):
+        private = self.root / "setgid-insecure"
+        private.mkdir(mode=0o700)
+        private.chmod(0o2770)
+        database = private / "accounts.sqlite3"
+        with self.inherited_setgid(private):
+            create_app(env={**self.env, "CARE_DATABASE_PATH": str(database)})
+        self.assertEqual(stat.S_IMODE(private.stat().st_mode) & 0o777, 0o700)
+        self.assertEqual(stat.S_IMODE(database.stat().st_mode), 0o600)
+        private.chmod(0o2770)
+        foreign_database = private / "foreign.sqlite3"
+        actual_uid = os.getuid()
+        with self.inherited_setgid(private), patch("server.auth.os.getuid", return_value=actual_uid + 1), \
+             patch("server.auth.os.fchmod", wraps=os.fchmod) as chmod:
+            with self.assertRaisesRegex(ValueError, f"owner_uid={actual_uid}, process_uid={actual_uid + 1}"):
+                create_app(env={**self.env, "CARE_DATABASE_PATH": str(foreign_database)})
+            chmod.assert_not_called()
+        self.assertEqual(stat.S_IMODE(private.stat().st_mode) & 0o777, 0o770)
+        self.assertFalse(foreign_database.exists())
 
     async def test_login_rotates_session_and_session_expiry_does_not_write_during_lookup(self):
         first = await self.authenticated()
@@ -482,7 +535,7 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises((ValueError, RuntimeError)):
             create_app(env=self.env)
 
-    async def test_private_paths_refuse_symlinks_unsafe_permissions_and_local_account_database(self):
+    async def test_private_paths_refuse_symlinks_and_local_account_database(self):
         web_link = self.root / "linked-web"
         web_link.symlink_to(self.web, target_is_directory=True)
         with self.assertRaises(ValueError):
@@ -491,11 +544,6 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         db_link.symlink_to(self.database)
         with self.assertRaises(ValueError):
             create_app(env={**self.env, "CARE_DATABASE_PATH": str(db_link)})
-        insecure_parent = self.root / "insecure"
-        insecure_parent.mkdir(mode=0o755)
-        insecure_parent.chmod(0o755)
-        with self.assertRaises(ValueError):
-            create_app(env={**self.env, "CARE_DATABASE_PATH": str(insecure_parent / "accounts.sqlite3")})
         legacy_parent = self.root / "legacy"
         legacy_parent.mkdir(mode=0o700)
         legacy = legacy_parent / "accounts.sqlite3"
