@@ -112,7 +112,7 @@ export function createDiscoverController(data) {
     if(current.referenceId)params.set('ref',current.referenceId);
     else if(state.unitId)params.set('unit',state.unitId);
     else if(state.rawUnitId)params.set('source',state.rawUnitId);
-    return './#'+params;
+    return './library.html#'+params;
   }
   function refresh(){
     if(indexedLateral===data.lateral&&indexedWorks.length===data.works.length&&indexedWorks.every((work,i)=>work===data.works[i]))return adapter;
@@ -189,7 +189,7 @@ export async function mountDiscoverReader(host,options={}) {
       if(!current)return;
       host.dataset.book=current.book;host.dataset.reference=current.referenceId||'';
       picker?.select(current.book);
-      if(openLink){openLink.href=current.fieldId?'./#field='+encodeURIComponent(current.fieldId):controller.href();openLink.setAttribute('aria-label',`Open ${current.title} in the reading room`);}
+      if(openLink){openLink.href=current.fieldId?'./library.html#field='+encodeURIComponent(current.fieldId):controller.href();openLink.setAttribute('aria-label',`Open ${current.title} in the reading room`);}
       notify(current.referenceId?'A saved route is open. Select a passage or claim to explore its connections.':'Read every scale. Select a passage or claim, then choose Routes to follow its connections.');
       view.dispatchEvent(new view.CustomEvent('care:discover-route',{detail:current}));
     }

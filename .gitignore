@@ -6,3 +6,14 @@ data/chunks/
 data/cover-variants.json
 assets/covers/web/
 _site/
+dist/
+.venv/
+.env
+.env.*
+!.env.example
+.care-beta/
+*.sqlite3
+*.sqlite3-*
+email.json
+*.pem
+*.key

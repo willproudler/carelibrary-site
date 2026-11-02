@@ -1,4 +1,5 @@
 import {loadLibrary} from './library-loader.mjs?v=20261018';
+import {accountStorageKey} from './auth.mjs';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord} from './saved-library.mjs?v=20261018';
 import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=aefc8861e610f34d';
@@ -11,8 +12,10 @@ import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from 
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const readLocal = (key,fallback) => {try{return JSON.parse(localStorage.getItem(key)) || fallback;}catch{return fallback;}};
-const saveLocal = (key,value) => {try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{notice('Your browser could not save this change. Please allow browser storage and try again.');return false;}};
+// Keep historical anonymous saves untouched; only this account's collection is read.
+const storageKey = key => accountStorageKey(key,document.documentElement.dataset.careAccount);
+const readLocal = (key,fallback) => {try{return JSON.parse(localStorage.getItem(storageKey(key))) || fallback;}catch{return fallback;}};
+const saveLocal = (key,value) => {try{localStorage.setItem(storageKey(key),JSON.stringify(value));return true;}catch{notice('Your browser could not save this change. Please allow browser storage and try again.');return false;}};
 let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 

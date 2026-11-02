@@ -1,14 +1,13 @@
-# CARE Library
+# CARE Library Beta
 
-> An open reading room for Kant, Hume and Bergson, with original source texts, saved CARE interpretations and recorded connections.
-
+CARE Library is a reading environment for following ideas through texts, arguments, and recorded connections.
 CARE means Canonical Axiomatic Reduction Engine, created by William Proudler.
-The homepage offers three fixed public readings: Kant’s Critique of Pure Reason (Meiklejohn translation, Gutenberg eText 4280) and Hume’s Treatise of Human Nature (Gutenberg eText 4705, retained 2012 transcription), plus Bergson’s Matière et mémoire in original French.
-The source texts are assessed as public domain in the UK and labelled public domain in the USA by Gutenberg; no worldwide claim is made. CARE’s saved AI-assisted interpretations are distinct from the original texts and their copyright status.
-The public reader includes Source, CH, CL, MC, WB, outline, search, comparison and a saved diagnostic lateral XR_KPR_THN R01. Saved language controls can select English machine translations of five Bergson CARE sheets; untranslated sheets and all Bergson source passages remain in French. It starts no AI runs and accepts no uploaded books. No account is needed.
 
-- [Open library](https://carelibrary.org/)
-- [Discover CARE with actual examples](https://carelibrary.org/about.html)
-- [Public export audit](https://carelibrary.org/data/export-audit.json)
+Discover is the public landing page. The library and its reading files require an approved beta account. Visitors can request access by providing their name and email; the team reviews each request before granting access.
 
-Recorded references describe provenance, not proof of correctness. Missing passage links must not be invented.
+- [Discover CARE](https://carelibrary.org/)
+- [Log in](https://carelibrary.org/login.html)
+- [Request beta access](https://carelibrary.org/request-access.html)
+- [Quick start guide](https://carelibrary.org/quick-start.pdf)
+
+Original source texts and saved AI-assisted interpretations are distinct. Recorded references describe provenance, not proof of correctness. Missing passage links must not be invented.

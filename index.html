@@ -1,13 +1,14 @@
 <!doctype html>
-<html lang="en-GB"><head>
+<html lang="en-GB">
+<head>
 <meta charset="utf-8">
-<meta name="color-scheme" content="dark"><style>html,body{background:#0d1015;color:#ece8df;color-scheme:dark}</style><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CARE Library</title>
-<meta name="description" content="Open Kant, Hume and Bergson in CARE Library. Read the source, explore CARE’s layered readings, and follow their saved connections. Free, with no account needed.">
-<meta name="theme-color" content="#0d1015"><link rel="canonical" href="https://carelibrary.org/">
-<meta property="og:title" content="CARE Library"><meta property="og:site_name" content="CARE Library"><meta property="og:description" content="Books, saved readings and their connections. Open to everyone."><meta property="og:url" content="https://carelibrary.org/"><meta property="og:type" content="website">
-<meta name="twitter:title" content="CARE Library">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","@id":"https://carelibrary.org/#website","name":"CARE Library","url":"https://carelibrary.org/"}</script>
+<meta name="color-scheme" content="dark"><style>html,body{background:#0d1015;color:#ece8df;color-scheme:dark}</style><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Discover CARE — CARE Library</title>
+<meta name="description" content="A reading environment for exploring texts, arguments and connections. Discover CARE Library’s connected panes, source routes and open public-library project.">
+<meta name="author" content="William Proudler"><meta name="theme-color" content="#0d1015">
+<link rel="canonical" href="https://carelibrary.org/">
+<meta property="og:type" content="website"><meta property="og:site_name" content="CARE Library"><meta property="og:title" content="Discover CARE — CARE Library"><meta property="og:description" content="Read the text. Open its arguments. Follow the connections."><meta property="og:url" content="https://carelibrary.org/">
+<meta name="twitter:title" content="Discover CARE — CARE Library">
 <link rel="icon" href="/favicon.ico?v=20261022-transparent" sizes="16x16 32x32 48x48">
 <link rel="icon" href="/assets/favicon-32.png?v=20261022-transparent" type="image/png" sizes="32x32">
 <link rel="icon" href="/assets/favicon-128.png?v=20261022-transparent" type="image/png" sizes="128x128">
@@ -15,27 +16,66 @@
 <link rel="icon" href="/assets/favicon-light-128.png?v=20261022-transparent" type="image/png" sizes="128x128" media="(prefers-color-scheme: light)">
 <link rel="icon" href="/favicon.svg?v=20261022-transparent" type="image/svg+xml" sizes="any">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=20261021-opened-cube" sizes="180x180">
-<link rel="manifest" href="/site.webmanifest?v=20261021-opened-cube">
-<link rel="stylesheet" href="/public-app.css?v=20261023-simple-search"><script type="module" src="/boot.mjs?v=b831bfdb675f0225"></script>
+<link rel="manifest" href="/site.webmanifest?v=20261021-opened-cube"><link rel="alternate" type="text/markdown" href="/llms.txt"><link rel="stylesheet" href="/styles.css?v=20261010"><link rel="stylesheet" href="/discover.css?v=20261022-quick-start"><link rel="stylesheet" href="/discover-atlas.css?v=20261005d"><link rel="stylesheet" href="/discover-experiments.css?v=20261016-books">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","@id":"https://carelibrary.org/#website","name":"CARE Library","alternateName":"Canonical Axiomatic Reduction Engine","url":"https://carelibrary.org/","description":"A reading environment for exploring texts, arguments and connections with recorded routes back to sources.","inLanguage":"en-GB","creator":{"@type":"Person","name":"William Proudler"}}</script>
 <link rel="stylesheet" href="/brand-header.css?v=c47c12affb3ca81e">
-</head><body>
-<a class="skip-link" href="#reader">Skip to the library</a>
-<header class="app-header">
- <a class="brand" href="/" aria-label="CARE Library Beta home"><img class="brand-mark" src="/assets/care-header-mark.svg" alt="" aria-hidden="true"><span class="brand-name"><strong>CARE</strong> Library</span><small><span data-nosnippet>Beta</span></small></a>
- <nav aria-label="Main navigation">
-  <button data-page="search" aria-label="Search" title="Search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg><span class="nav-label">Search</span></button>
-  <a data-page="library" href="/" class="active" aria-label="Library" title="Library"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 7v10M10 7 3 4v10l7 3 7-3V4z"/><circle cx="10" cy="3" r="2"/></svg><span class="nav-label">Library</span></a>
-  <a data-page="laterals" href="#view=laterals" aria-label="Laterals" title="Laterals"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15M10 3v14"/><circle cx="5" cy="5" r="2"/><circle cx="15" cy="5" r="2"/><circle cx="5" cy="15" r="2"/><circle cx="15" cy="15" r="2"/></svg><span class="nav-label">Laterals</span></a>
-  <a href="#view=corpuses" data-page="corpuses" aria-label="Corpora" title="Corpora"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c5 3 5 11 0 14M10 3c-5 3-5 11 0 14"/></svg><span class="nav-label">Corpora</span></a>
-  <button data-page="saved" aria-label="Saved readings" title="Saved on this device"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-5-3-5 3z"/></svg><span class="nav-label compact-label">Saved</span></button>
-  <a class="discover" href="/about.html" aria-label="Discover CARE" title="Discover CARE"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 15 15 5M6 5h9v9"/></svg><span class="nav-label">Discover<span class="wide-label"> CARE</span></span></a>
- </nav>
-</header>
-<nav id="open-books" class="open-books" aria-label="Open books" hidden></nav>
-<div id="load-status" class="load-status" role="status" aria-live="polite" hidden></div>
-<main id="main"><section class="saved-library" data-saved-library hidden aria-label="Saved library"></section><div id="reader" tabindex="-1"><p class="loading" role="status"><img class="loading-mark" src="/assets/care-mark.svg" alt=""><span class="loading-name"><strong>CARE</strong> Library <small><span data-nosnippet>Beta</span></small></span></p></div></main>
+<link rel="stylesheet" href="/auth.css?v=20261102-beta">
+<script type="module" src="/landing.mjs?v=20261102-beta"></script>
+</head>
+<body class="discover-page">
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header"><div class="shell header-inner">
+<a class="wordmark" href="/" aria-label="CARE Library Beta home"><img class="brand-mark" src="/assets/care-header-mark.svg" alt="" aria-hidden="true"><span class="brand-name"><strong>CARE</strong> Library</span><small><span data-nosnippet>Beta</span></small></a>
+<nav class="beta-nav" aria-label="Main navigation"><a class="beta-nav-link" data-guest-only href="/request-access.html">Request access</a><a class="button small" data-library-entry href="/login.html">Log in <span aria-hidden="true">↗</span></a><button class="beta-nav-link" data-logout data-members-only hidden>Log out</button></nav>
+</div></header>
+<main id="main">
+<section class="hero shell" aria-labelledby="hero-title">
+<div class="hero-copy">
+<h1 id="hero-title">Giving books <br>weight in <br><em>cyberspace.</em></h1>
+<p class="discover-subtitle">Follow an idea.<br>Keep the way back.</p>
+<div class="beta-hero-actions"><a class="button beta-primary" data-library-entry href="/login.html">Log in to the library <span aria-hidden="true">↗</span></a><a class="beta-text-link" data-guest-only href="/request-access.html">Request beta access</a></div>
+<a class="button primary quick-start-guide" href="/quick-start.pdf?v=446949901bbf" target="_blank" rel="noopener" type="application/pdf" aria-describedby="quick-start-detail">
+<svg class="quick-start-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg>
+<span class="quick-start-copy"><span>Read the quick start guide</span><small id="quick-start-detail">PDF · Opens in a new tab</small></span>
+<span class="quick-start-arrow" aria-hidden="true">↗</span>
+</a>
+</div>
+<div class="hero-architecture" aria-label="A real saved Hume reading across source, chapter and whole-book panes">
+<div class="hero-topline" aria-hidden="true"></div>
+<div class="hero-pane hero-source"><div class="pane-bar source"><span>01 / SOURCE</span><span>◇</span></div><div class="hero-pane-body"><span class="micro">HUME · INTRODUCTION</span><h2>Where knowledge<br>begins.</h2><p>“Principles taken upon trust, consequences lamely deduced from them, want of coherence in the parts, and of evidence in the whole…”</p><span class="passage-tag">Source excerpt · Hume</span></div></div>
+<div class="hero-pane hero-chapter"><div class="pane-bar chapter"><span>02 / CHAPTER</span><span>CH</span></div><div class="hero-pane-body"><span class="micro">ARGUMENTAL SPINE</span><h3>What can knowledge rest on?</h3><p>The governing problem is the absence of evidentially secure and internally coherent foundations across the sciences.</p><span class="trace-label">2 source connections</span></div></div>
+<div class="hero-pane hero-whole"><div class="pane-bar whole"><span>05 / WHOLE BOOK</span><span>WB</span></div><div class="hero-pane-body"><span class="micro">THE LARGER READING</span><h3>From perception<br>to a shared world.</h3><span class="trace-label">Follow the route to its source</span></div></div>
+<svg class="hero-routes" viewBox="0 0 600 540" aria-hidden="true"><path d="M165 292 C165 365 330 245 330 326 S435 375 435 420"/><circle cx="165" cy="292" r="5"/><circle cx="330" cy="326" r="5"/><circle cx="435" cy="420" r="5"/></svg>
+<div class="hero-bottomline"><span class="layer-dot source"></span><span class="layer-dot chapter"></span><span class="layer-dot cluster"></span><span class="layer-dot meta"></span><span class="layer-dot whole"></span><span>Text → argument → connection</span></div>
+</div>
+</section>
+<section class="beta-invitation shell" data-guest-only aria-labelledby="beta-invitation-title">
+<div><p class="beta-eyebrow">CARE Library Beta</p><h2 id="beta-invitation-title">A place to read.<br>A way to connect.</h2><p>Explore original texts, open their arguments and follow connections between books. Log in to enter the library, or request access to join the beta.</p></div>
+<div class="beta-invitation-actions"><a class="button beta-primary" href="/request-access.html">Request access <span aria-hidden="true">↗</span></a><a class="beta-text-link" href="/login.html">Already have access? Log in</a></div>
+</section>
+<section hidden data-members-only class="discover-reading" id="experience" aria-label="Read and explore CARE">
+<div class="discover-reading-toolbar">
+<span class="discover-book-label">Open a book</span>
+<div id="discover-book"><span class="discover-loading">Loading published books…</span></div>
+<a id="discover-open" href="/library.html">Open in library <span aria-hidden="true">↗</span></a>
+</div>
+<div id="discover-reader" tabindex="-1"><p class="discover-loading" role="status">Opening Hume’s reading…</p></div>
+<p id="discover-reader-status" class="visually-hidden" aria-live="polite"></p>
+<div class="discover-reading-caption"><span>Original text · AI-assisted CARE reading</span></div>
+<noscript><p class="discover-fallback">The interactive reader needs JavaScript.</p></noscript>
+</section>
+<section hidden data-members-only class="discover-map shell" aria-label="Map of Hume’s reading">
+<div id="discover-atlas"><p class="discover-loading" role="status">Opening the library map…</p></div>
+</section>
+<section class="discover-language shell" aria-labelledby="language-title">
+<h2 id="language-title">180+ languages.</h2>
+<div class="language-details">
+<p class="language-examples">Including English, French, Spanish, German, Portuguese, Arabic, Hindi, Chinese, Japanese and Korean.</p>
+<p class="language-description">All 189 language choices in CARE. In the full application, machine-translated readings keep their links to the source. Translation quality varies by language.</p>
+</div>
+</section>
+<section hidden data-members-only class="shell discover-experiments-section" aria-label="Laterals and corpora"><div id="discover-experiments"></div></section>
+<section class="beta-connections shell" data-guest-only aria-label="Laterals and corpora"><div><p class="beta-eyebrow">Laterals</p><h2>Compare two books.</h2><p>Explore where their arguments agree, where they differ, and what could be developed from both.</p></div><div><p class="beta-eyebrow">Corpora</p><h2>Study a collection.</h2><p>Bring books together by author, subject, place or time. Follow shared ideas, differences and changes across the collection.</p></div></section>
+</main>
 <div id="notice" class="notice" role="status" hidden></div>
-<dialog id="search-dialog" aria-label="Search"><div class="dialog-heading search-controls"><input id="search-query" type="search" aria-label="Search" placeholder="Search" autocomplete="off"><button data-close-dialog aria-label="Close search">×</button></div><p id="search-status" role="status"></p><div id="search-results"></div></dialog>
-
-<noscript><p class="loading">The reading panes need JavaScript. You can also read the original texts at <a href="https://www.gutenberg.org/ebooks/4280">Gutenberg: Kant</a> and <a href="https://www.gutenberg.org/ebooks/4705">Gutenberg: Hume</a>.</p></noscript>
 </body></html>

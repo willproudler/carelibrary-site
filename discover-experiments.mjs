@@ -94,7 +94,7 @@ function mapMarkup(){
 export async function mountDiscoverExperiments(host,options={}){
   if(!host)return null;
   const doc=host.ownerDocument,view=doc.defaultView;
-  let selectedSample=0,selectedBook=0,samples=[],lateralHref='./#view=laterals',published=false;
+  let selectedSample=0,selectedBook=0,samples=[],lateralHref='./library.html#view=laterals',published=false;
   host.classList.add('discover-experiments');
   host.innerHTML=`<section class="de-card de-lateral" aria-labelledby="de-lateral-title">
       <div class="de-heading"><p class="de-label">Laterals</p><h2 id="de-lateral-title">Compare two books.</h2><p class="de-description">A lateral compares two books: where their arguments agree, where they differ, and what could be developed from both.</p></div>
@@ -104,7 +104,7 @@ export async function mountDiscoverExperiments(host,options={}){
       </div>
       <div class="de-sample-tabs" role="group" aria-label="Explore the saved lateral">${LATERAL_SAMPLES.map((sample,i)=>`<button type="button" data-sample="${i}" aria-pressed="${i===0}" disabled>${sample.label}</button>`).join('')}</div>
       <div class="de-claim"><p class="de-explanation" aria-live="polite" aria-atomic="true">Loading the saved comparison…</p><details class="de-saved-claim"><summary>Read the saved analysis</summary><p class="de-claim-text"></p><p class="de-claim-kind"></p><span class="de-claim-ref"></span></details></div>
-      <div class="de-card-foot"><a class="de-show" data-show-lateral href="./#view=laterals">Open comparison <span aria-hidden="true">↗</span></a><a class="de-open" href="./#view=laterals">All laterals <span aria-hidden="true">↗</span></a></div>
+      <div class="de-card-foot"><a class="de-show" data-show-lateral href="./library.html#view=laterals">Open comparison <span aria-hidden="true">↗</span></a><a class="de-open" href="./library.html#view=laterals">All laterals <span aria-hidden="true">↗</span></a></div>
     </section>
     <section class="de-card de-corpus" aria-labelledby="de-corpus-title">
       <div class="de-heading"><p class="de-label">Corpora</p><h2 id="de-corpus-title">Study a collection.</h2><p class="de-description">A corpus groups books by author, subject, place or time period. CARE analyses them together to find shared ideas, differences and changes across the collection.</p></div>
@@ -149,7 +149,7 @@ export async function mountDiscoverExperiments(host,options={}){
     const data=options.data||library.data;
     const field=featuredLateral(data);
     if(field){
-      published=true;lateralHref='./#field='+encodeURIComponent(field.id);
+      published=true;lateralHref='./library.html#field='+encodeURIComponent(field.id);
       $('[data-show-lateral]').href=lateralHref;
       const members=field.members||[];
       const authors=members.map(member=>member.author).filter(Boolean);
@@ -167,7 +167,7 @@ export async function mountDiscoverExperiments(host,options={}){
       else{$('.de-explanation').textContent='Open this published comparison to explore its saved readings.';$('.de-saved-claim').hidden=true;}
     }else if(data.lateral?.id==='XR_KPR_THN'){
       if(library)await library.ensureLateral();
-      lateralHref='./#lateral='+encodeURIComponent(data.lateral.id);
+      lateralHref='./library.html#lateral='+encodeURIComponent(data.lateral.id);
       samples=savedLateralSamples(data);paintSample();
     }else{
       $('.de-strands').hidden=true;

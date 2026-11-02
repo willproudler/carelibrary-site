@@ -1,51 +1,72 @@
 # CARE Library Beta
 
-CARE Library Beta at https://carelibrary.org. It uses the original app’s shelf and study-desk renderer against the published collection. GitHub Pages serves it without a private application server, API key or account. A Pages workflow prepares lightweight delivery files and verifies the release before publishing.
+This release adds an approved-account beta to the current CARE Library at https://carelibrary.org. Discover is the public homepage. The library, native reader, reading files, and covers require a server session. Requests for access collect a name and email and notify **willproudler@gmail.com** and **ianwenzelgaray@gmail.com**; submitting a request does not create an account.
 
-Chapter and sheet titles open searchable jump menus. Dragging a chapter rail previews its heading before loading the reading on release. The workspace keeps every visible reading in a closeable tab; comparison menus can close the lateral or choose which book to keep. The wordmark and joined-box logo match the Mac loading screen, and browser icons use the Mac app artwork.
+The current exported collection and reader are retained, including chunk loading, saved readings, translations, and the quick start guide. The request page uses the small “Join the beta” heading. Existing reading links keep their destination after login.
 
-- `index.html`: native library shelf and reading workspace. Kant, Hume, Bergson, saved Kant–Hume lateral, source/CH/CL/MC/WB panes, chapter rails, outline strips, routes, reading skins, local search and bookmarks.
-- `welcome.html`: compatibility redirect to the same native library.
-- `about.html`: minimal Discover CARE page with the working native reader, a stable Hume map, a searchable books-only reading chooser, and the featured published lateral in the “Compare two books” card, a compact “180+ languages” section with examples and translation context, and plain explanations of laterals and corpuses.
-- `library.html`: compatibility redirect to the public library.
+## Run and verify
 
-The Discover CARE hero opens the supplied quick start guide in a new tab using the browser's PDF viewer. Share **[CARE quick start guide](https://carelibrary.org/quick-start.pdf)** in emails. `quick-start.pdf` is the original supplied PDF, served directly with no download attribute or embedded viewer; keep this URL stable when replacing the guide.
-
-The reader uses the standard colour palette by default, matching the desktop app. The optional Vibrant colours toggle is tucked inside **View → Advanced appearance** across books, laterals and corpora. Older saved vibrancy preferences are ignored; a fresh opt-in stays consistent with the axiom viewer.
-
-On phones the header, swipeable reading tabs, reader menu, coloured pane headers and section bars are compact, with slightly smaller reading text and an icon-only axiom viewer. Short taps on axiom text and codes select the card; scrolling and long-press text selection remain native. The redundant tab dropdown arrow is hidden at every screen size.
-
-The public site has two pages: the Library and Discover CARE. Both run without a bottom banner or footer navigation. Retired statement, rights and inactive beta pages are preserved in Git history and in a local archive outside this published directory; they are no longer served or included in the sitemap.
-
-`native/study-desk.mjs` and its stylesheet are exact exports of the app’s `STUDY_DESK_JS` and `STUDY_DESK_CSS`. `native/reference-viewer.*` comes from the app’s reference viewer, with one compatibility fix for keyboard event targets across the standalone desk’s ShadowRoot. Version manifests record the asset hashes. `native/public-scope.css` hides controls that do not apply to this fixed collection. `public-app.mjs` supplies public navigation and browser-local preferences; `public-reader-adapter.mjs` projects the published JSON into the original reader’s payload contract. It never queries the private catalogue or starts an AI run.
-
-`native/reading-views.mjs` is generated from this public collection through the app’s reading presentation code. It hides processing tags, separate relation/inheritance fields and inline trace wrappers, and uses known sheet titles in place of technical identifiers. Each view is matched to the exact item ID and original wording, including saved translations. Canonical text, generation inputs, reference IDs and Routes remain intact. Refresh the native export whenever the public collection or reading cleanup changes.
-
-The only public data are the sealed KPR, THN and MEMA readings plus XR_KPR_THN R01. All 79 CARE sheets, 53 source sections and 53 saved lateral claims are retained. The exporter checks immutable artifact hashes, explicit fields and closed references. Kant’s supplemental grounding preserves the original wording and has 2,669 aligned claims and 23 unresolved claims. AI passage links remain unreviewed; a trace does not establish interpretive correctness.
-
-To refresh from the private CARE workspace, run these with its Python environment:
+Requires Python 3.12 and Node 24. Install `requirements-server.txt`, `requirements-build.txt`, and `httpx==0.28.1` for tests.
 
 ```sh
-python tools/export_public_library.py /path/to/care-workspace --require-kant-grounding
-python tools/export_native_reader.py /path/to/care-workspace
-node tools/export_showcase.mjs
+python tools/build-production-site.py
+python -m unittest discover -s tests -p 'test_production*.py'
+```
+
+The build copies an explicit browser-file allowlist into `dist/`, verifies the repository's split collection, creates smaller covers and on-demand reading files, and updates browser cache versions. It does not read a private CARE workspace or copy server code, account databases, environment files, or local setup helpers. Only `dist/` is a valid production web root.
+
+For the full reader regression suite, materialize the reviewed catalogue in a disposable checkout first:
+
+```sh
+node tools/materialize-public-library.mjs
+node tools/build-public-assets.mjs
 node --test tests/*.test.mjs
 ```
 
-The export tools are preparation utilities, never part of a visitor’s interaction. Do not publish the private workspace, credentials, source EPUB containers, unrelated works or commercial cover images. Future source editions need their own provenance and rights review. See `PUBLICATION_NOTES.md` and `data/export-audit.json`.
+Materialization changes `data/library.json` from its committed split-file manifest to the exact verified export. Do not commit that generated file. The production build materializes its own copy inside ignored `dist/`.
 
-Prepare the local preview with `python3 tools/optimise-covers.py` (Pillow required) and `node tools/build-public-assets.mjs`, then run `python3 -m http.server 4173 --bind 127.0.0.1` in this website directory. Open http://127.0.0.1:4173. Serve this directory only. Before release, check native panes, source routes, outline expansion, saved lateral, reference viewer, bookmarks, search, keyboard controls and mobile layout. Preserve `CNAME` and existing Pages settings.
+## Production hosting
 
-The October 5 release adds Bergson’s original French *Matière et mémoire* (six source sections and nine CARE sheets, sealed WB R002). Its absent MC level stays absent. The shelf derives each book’s language and layers from the export. Lateral membership comes only from its pinned parents, so adding Bergson does not change the Kant–Hume comparison. Reader assets are synced from `care-study-desk/1.73`.
+GitHub Pages cannot run the login server. `render.yaml` prepares a single Python web service in Frankfurt with a 1 GB persistent disk. Hosting creation requires the owner's cost and workspace approval. No account or email password is committed. The service is prepared with automatic deployment off until the cutover is verified.
 
-The supplied Kant, Hume and Bergson PNG covers appear on the native shelf; the lateral combines its two parent covers. The same translation icon and FR/EN pane menus as the main app switch between the original reading and explicitly pinned saved translations. The toolbar follows the focused pane. Five Bergson CARE sheets have saved English machine translations (four chapters and the whole-book reading); its other four sheets and all source passages remain French. Changing language keeps canonical reference IDs and source routes. Visitors cannot create translations or other new readings.
+Required settings:
 
-## Beta loading and Saved library
+| Setting | Value |
+| --- | --- |
+| `CARE_PUBLIC_ORIGIN` | `https://carelibrary.org` |
+| `CARE_ADDITIONAL_ORIGINS` | Defaults at startup to Render's exact `RENDER_EXTERNAL_URL`; explicitly include it and `https://www.carelibrary.org` if attaching www |
+| `CARE_WEB_ROOT` | Absolute path to the built `dist` directory; supplied by the start command |
+| `CARE_DATABASE_PATH` | `/var/data/care/accounts.sqlite3` on the persistent disk |
+| `CARE_TRUSTED_PROXY_CIDRS` | Verified Render reverse-proxy ranges; confirm the staging chain before cutover |
 
-The shelf reads `data/catalogue.json`; opening a book fetches only its immutable, content-addressed delivery file. Full-library search loads the collection on demand. Discover shares the same loader and initially loads Hume. The canonical `data/library.json` remains unchanged and is still the export input. The delivery files and compressed cover copies are generated at release time, so publishing a new book or translation automatically updates them.
+Start with the command in `render.yaml`: one Uvicorn worker, proxy parsing disabled in Uvicorn, and the application's explicit trusted-proxy handling enabled. Do not serve the repository with a static server or deploy it to Pages. `/healthz` is a process health check. `/readyz` also requires a configured mail sender and an enabled account; it is not an SMTP delivery test.
 
-Saved readings open as a closeable red **Saved library** workspace tab, alongside books and fields. Existing browser bookmarks and favourites are retained, including entries temporarily absent from the public collection. Saved panes and axioms reopen at their exact location. Bookmarks remain local to the browser and device; this does not add Mac/browser sync.
+### Email and accounts
 
-Requests have time limits and retry controls. A transient failure cannot erase saved readings or replace a good reading file. The reader prepares viewer references only for its current panes, instead of every item in the collection. A refresh control recovers sessions left open across a newer publication.
+Set the Gmail app password privately in Render's environment settings as `CARE_BETA_SMTP_PASSWORD`. The blueprint supplies Gmail SSL on port 465, with `willproudler@gmail.com` as the sender and username. Google requires an eligible account with two-step verification. Never paste a password into chat, source code, or a shell command. Recipients are fixed in the server, not supplied by the applicant.
 
-GitHub Pages must use **GitHub Actions** as its build source. `.github/workflows/pages.yml` prepares delivery files, runs `node --test tests/*.test.mjs`, uploads the site and deploys it with the existing CNAME. A failed build does not replace the previous live site.
+Create the first fresh production account from the service's private shell:
+
+```sh
+CARE_WEB_ROOT="$PWD/dist" python -m server.manage add-user --email willproudler@gmail.com --name "Will Proudler"
+```
+
+The command asks for the password privately. Use `reset-password` or `disable-user` for ongoing management. These actions invalidate existing sessions. Invite approved applicants manually; no automatic access is granted by the form. Do not copy local preview accounts into production.
+
+The database contains account password hashes, hashed sessions, rate limits, and access requests. Keep it on the persistent disk, restrict administrative access, and back it up before changes. This SQLite configuration is for one instance; do not add replicas against separate copies. Browser bookmarks stay on the browser/device and are scoped to the signed-in account. Existing anonymous bookmarks are retained but not assigned to another person's account.
+
+### Domain cutover
+
+1. Create the reviewed Render service after approval, with its persistent disk and private email settings. The start command allows its actual Render HTTPS URL for staging and health checks.
+2. Create an enabled account. Verify login/logout, rejected anonymous file requests, access-request delivery, and the proxy/IP handling at the Render URL. An unavailable mail service must never report that a message was sent.
+3. Add `carelibrary.org` (and `www` if used) in Render. Change only the website records at Namecheap to the exact targets Render supplies; preserve mail and verification records. Wait for domain verification and TLS.
+4. Verify the same behavior at the custom domain, then disable the former GitHub Pages site so its alternate URL cannot bypass login. Merge this release's workflow change before resuming normal publishing. The workflow now verifies the app and never uploads protected files to Pages.
+5. Once the migration is verified, select the intended deployment branch and enable automatic deployments if desired. Keep the persistent database through future releases.
+
+This protects the hosted beta going forward. Previously published readings remain in this repository's public history; login cannot retroactively make those copies confidential. Do not change repository visibility or remove publication history without a separate decision by the owner.
+
+## Collection and reader updates
+
+The source collection is already reviewed and versioned in this repository. `PUBLICATION_NOTES.md` and `data/export-audit.json` retain provenance. Original passages and saved AI-assisted interpretations remain distinct; a recorded reference is not proof of interpretive correctness.
+
+Future exports must target this current repository and preserve `index.html` as Discover, `library.html` as the reader, and their session-aware boot modules. The production build updates cache references for both entry points, so no private workspace exporter is needed for this migration. Do not re-export stale local copies over the latest live catalogue.

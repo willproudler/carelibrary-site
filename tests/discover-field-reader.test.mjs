@@ -26,7 +26,7 @@ test('Discover field status names the selected publication and only its public m
     fieldId:'FIELD:lateral:chosen',title:'Chosen comparison',referenceId:'',scope:'',
     book:'field:FIELD:lateral:chosen',connectionId:'FIELD:lateral:chosen',workId:'FIRST',memberWorkIds:['FIRST','SECOND'],
   });
-  assert.equal(reader.href(),'./#field=FIELD%3Alateral%3Achosen');
+  assert.equal(reader.href(),'./library.html#field=FIELD%3Alateral%3Achosen');
   const payload=reader.payload();
   assert.deepEqual(Object.keys(payload.stacks),['FIRST','LATEST_SECOND']);
   assert.match(payload.field.member_load_errors.PRIVATE,/not been published/);

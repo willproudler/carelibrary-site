@@ -79,7 +79,7 @@ export function createDiscoverFieldController(field,adapter) {
     book:'field:'+field.id,connectionId:field.id,workId:memberWorkIds[0]||'',memberWorkIds:[...memberWorkIds],
   };}
   return {open,clearRoute,dispatch,activateMembers,getState,status,
-    payload:()=>fieldPayload(field,adapter,state),href:()=>'./#field='+encodeURIComponent(field.id)};
+    payload:()=>fieldPayload(field,adapter,state),href:()=>'./library.html#field='+encodeURIComponent(field.id)};
 }
 
 const embedCSS=`

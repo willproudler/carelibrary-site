@@ -1,0 +1,43 @@
+# Create this service only after approving the hosting cost and workspace.
+# Configure the Gmail app password privately in Render, never in this repository.
+services:
+  - type: web
+    name: carelibrary-beta
+    runtime: python
+    repo: https://github.com/willproudler/carelibrary-site
+    branch: release/beta-login-20261102
+    region: frankfurt
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: "off"
+    buildCommand: pip install -r requirements-server.txt -r requirements-build.txt && python tools/build-production-site.py
+    startCommand: CARE_ADDITIONAL_ORIGINS="${CARE_ADDITIONAL_ORIGINS:-$RENDER_EXTERNAL_URL}" CARE_WEB_ROOT="$PWD/dist" python -m uvicorn server.app:create_app --factory --host 0.0.0.0 --port "$PORT" --workers 1 --no-proxy-headers --limit-concurrency 32 --timeout-keep-alive 5 --no-access-log
+    healthCheckPath: /healthz
+    disk:
+      name: care-beta-private
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.13
+      - key: NODE_VERSION
+        value: "24"
+      - key: CARE_PUBLIC_ORIGIN
+        value: https://carelibrary.org
+      - key: CARE_DATABASE_PATH
+        value: /var/data/care/accounts.sqlite3
+      # Check these against the actual Render proxy chain before domain cutover.
+      - key: CARE_TRUSTED_PROXY_CIDRS
+        value: 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - key: CARE_BETA_SMTP_HOST
+        value: smtp.gmail.com
+      - key: CARE_BETA_SMTP_PORT
+        value: "465"
+      - key: CARE_BETA_SMTP_TLS
+        value: ssl
+      - key: CARE_BETA_SMTP_FROM
+        value: willproudler@gmail.com
+      - key: CARE_BETA_SMTP_USERNAME
+        value: willproudler@gmail.com
+      - key: CARE_BETA_SMTP_PASSWORD
+        sync: false
