@@ -467,11 +467,33 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertTrue(response.json()["delivered"])
         sender.assert_called_once()
-        self.assertEqual(set(sender.call_args.args[3]), {"willproudler@gmail.com", "ianwenzelgaray@gmail.com"})
+        self.assertEqual(sender.call_args.args[3], ["willproudler@gmail.com"])
         with sqlite3.connect(self.database) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM users").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT delivery_status FROM access_requests").fetchone()[0], "delivered")
         self.assertEqual((await client.get("/data/library.json")).status_code, 401)
+
+    async def test_access_email_only_addresses_will_and_keeps_applicant_as_reply_to(self):
+        app = create_app(env={**self.env, **SMTP_ENV})
+        client = self.new_client(app=app)
+        smtp = Mock()
+        smtp.send_message.return_value = {}
+        with patch("server.access_requests.smtplib.SMTP_SSL", return_value=smtp) as connection:
+            response = await self.post("/api/access-requests", {
+                "name": "Applicant", "email": "applicant@example.test", "website": ""}, client=client)
+            self.assertEqual(response.status_code, 200, response.text)
+            connection.assert_called_once()
+        smtp.send_message.assert_called_once()
+        message = smtp.send_message.call_args.args[0]
+        self.assertEqual(smtp.send_message.call_args.kwargs["to_addrs"], ["willproudler@gmail.com"])
+        self.assertEqual(str(message["To"]), "willproudler@gmail.com")
+        self.assertEqual(str(message["Reply-To"]), "applicant@example.test")
+        self.assertIsNone(message["Cc"])
+        self.assertIsNone(message["Bcc"])
+        self.assertNotIn("ianwenzelgaray@gmail.com", message.as_string())
+        with self.assertRaises(ValueError):
+            app.state.access_requests._send("Applicant", "applicant@example.test", "test", ["ianwenzelgaray@gmail.com"])
+        smtp.send_message.assert_called_once()
 
     async def test_access_request_validation_origin_and_throttle_apply_without_login(self):
         app = create_app(env={**self.env, **SMTP_ENV})

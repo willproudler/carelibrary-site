@@ -21,7 +21,7 @@ from typing import Mapping
 import uuid
 
 
-RECIPIENTS = ("willproudler@gmail.com", "ianwenzelgaray@gmail.com")
+RECIPIENTS = ("willproudler@gmail.com",)
 PREVIEW_MESSAGE = "Your request was saved, but email delivery is unavailable. Please try again later."
 SENT_MESSAGE = "Thank you. Your access request has been sent. We'll get back to you by email."
 FAILED_MESSAGE = "Your request was saved, but we could not deliver the email. Please try again."
@@ -215,6 +215,10 @@ class AccessRequestService:
         return 503, {**self._response(False, FAILED_MESSAGE), "ok": False}
 
     def _send(self, name: str, email: str, request_id: str, recipients: list[str]) -> dict:
+        if any(address not in RECIPIENTS for address in recipients):
+            raise ValueError("Email can only be sent to the configured access-request recipients.")
+        if not recipients:
+            return {}
         configuration = self.smtp
         if not configuration:
             raise ValueError("Email delivery is not configured.")
