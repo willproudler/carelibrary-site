@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
+from .access_requests import _email, _has_controls
+
 
 def inside(path: Path, directory: Path) -> bool:
     try:
@@ -59,6 +61,7 @@ class Settings:
     public_origin: str
     origins: frozenset[str]
     trusted_proxies: tuple
+    site_admin_emails: frozenset[str] = frozenset()
 
     @classmethod
     def from_env(cls, env=None):
@@ -90,4 +93,13 @@ class Settings:
             if network.prefixlen == 0:
                 raise ValueError("Trusting every proxy address is forbidden.")
             proxies.append(network)
-        return cls(web_root, database, public_origin, origins, tuple(proxies))
+        admins = values.get("CARE_SITE_ADMIN_EMAILS", "")
+        if not isinstance(admins, str) or len(admins) > 4096 or _has_controls(admins):
+            raise ValueError("CARE_SITE_ADMIN_EMAILS must contain explicit email addresses.")
+        try:
+            admin_emails = frozenset(_email(item) for item in admins.split(",")) if admins.strip() else frozenset()
+        except ValueError:
+            raise ValueError("CARE_SITE_ADMIN_EMAILS must contain explicit email addresses.") from None
+        if len(admin_emails) > 32 or any("*" in email for email in admin_emails):
+            raise ValueError("CARE_SITE_ADMIN_EMAILS must contain at most 32 explicit email addresses.")
+        return cls(web_root, database, public_origin, origins, tuple(proxies), admin_emails)

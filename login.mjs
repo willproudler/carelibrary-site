@@ -1,10 +1,10 @@
-import {session, postJSON, libraryDestination} from './auth.mjs';
+import {session, postJSON, postLoginDestination} from './auth.mjs';
 
 const form = document.querySelector('#login-form');
 const button = form.querySelector('[type=submit]');
 const status = document.querySelector('#form-status');
 const password = form.elements.password;
-const destination = libraryDestination(new URLSearchParams(location.search).get('next') || '/library.html', location.hash);
+const destination = postLoginDestination(new URLSearchParams(location.search).get('next') || '/library.html', location.hash);
 const show = message => { status.textContent = message; status.hidden = !message; };
 
 document.querySelector('[data-toggle-password]').addEventListener('click', event => {

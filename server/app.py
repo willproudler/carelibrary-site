@@ -21,12 +21,14 @@ from starlette.routing import Route
 from .access_requests import AccessRequestService
 from .auth import AuthStore, SESSION_SECONDS, client_key
 from .config import Settings, inside
+from .site_settings import MAX_REVISION, SiteSettingsConflict, SiteSettingsStore
 
 
 COOKIE_NAME = "__Host-care_session"
 MAX_BODY_BYTES = 4096
+OWNER_FILES = frozenset({"site-settings.html", "site-settings.mjs"})
 PUBLIC_FILES = frozenset({
-    "index.html", "about.html", "welcome.html", "login.html", "request-access.html",
+    "index.html", "discover.html", "about.html", "welcome.html", "login.html", "request-access.html",
     "auth.mjs", "login.mjs", "landing.mjs", "legacy-landing.mjs", "request-access.mjs",
     "auth.css", "styles.css", "discover.css", "discover-atlas.css",
     "discover-experiments.css", "brand-header.css", "site.webmanifest",
@@ -162,7 +164,14 @@ async def body(request: Request):
     if expected is not None and len(encoded) != expected:
         raise HTTPException(400, "Invalid request body.")
     try:
-        value = json.loads(encoded.decode("utf-8"))
+        def unique_fields(pairs):
+            result = {}
+            for key, item in pairs:
+                if key in result:
+                    raise ValueError("Duplicate request fields.")
+                result[key] = item
+            return result
+        value = json.loads(encoded.decode("utf-8"), object_pairs_hook=unique_fields)
     except (ValueError, UnicodeError):
         raise HTTPException(400, "Invalid request body.") from None
     if not isinstance(value, dict):
@@ -182,7 +191,39 @@ def set_cookie(response, value, lifetime=SESSION_SECONDS):
 
 async def session(request):
     user = await run_in_threadpool(request.app.state.auth.session, token(request))
-    return json_response({"authenticated": True, "user": user} if user else {"authenticated": False})
+    configuration = await run_in_threadpool(request.app.state.site_settings.get)
+    payload = {"authenticated": True, "user": user} if user else {"authenticated": False}
+    return json_response({**payload, "beta_enabled": configuration["beta_enabled"],
+                          "can_manage_site": is_owner(request, user)})
+
+
+def is_owner(request, user):
+    return bool(user and user["email"] in request.app.state.settings.site_admin_emails)
+
+
+async def require_owner(request):
+    user = await run_in_threadpool(request.app.state.auth.session, token(request))
+    if not user:
+        raise HTTPException(401, "Log in to manage the website.")
+    if not is_owner(request, user):
+        raise HTTPException(403, "Only the website owner can manage these settings.")
+    return user
+
+
+async def site_settings(request):
+    value = await body(request) if request.method == "POST" else None
+    await require_owner(request)
+    store = request.app.state.site_settings
+    if value is None:
+        return json_response(await run_in_threadpool(store.get))
+    if (set(value) != {"beta_enabled", "revision"} or type(value["beta_enabled"]) is not bool
+            or type(value["revision"]) is not int or not 0 <= value["revision"] <= MAX_REVISION):
+        raise HTTPException(400, "Invalid site settings.")
+    try:
+        updated = await run_in_threadpool(store.update, value["beta_enabled"], value["revision"])
+    except SiteSettingsConflict:
+        return json_response({"error": "The settings changed. Reload them before saving again."}, 409)
+    return json_response(updated)
 
 
 async def login(request):
@@ -235,6 +276,7 @@ async def health(request):
 
 
 async def ready(request):
+    await run_in_threadpool(request.app.state.site_settings.get)
     enabled = await run_in_threadpool(request.app.state.auth.has_enabled_users)
     available = enabled and request.app.state.access_requests.config()["email_delivery_ready"]
     return json_response({"status": "ready" if available else "not_ready"}, 200 if available else 503)
@@ -254,25 +296,39 @@ def resource_path(root, relative):
 async def static_file(request):
     relative = request.url.path.lstrip("/") or "index.html"
     parts = Path(relative).parts
+    if relative != "/".join(parts):
+        raise HTTPException(404, "Not found.")
+    # Keep owner resources private even on case-insensitive filesystems.
+    if relative.casefold() in OWNER_FILES and relative not in OWNER_FILES:
+        raise HTTPException(404, "Not found.")
     suffix = Path(relative).suffix.lower()
     public = relative in PUBLIC_FILES or relative in PUBLIC_BRANDING
-    permitted = (public or relative == "library.html"
+    owner_only = relative in OWNER_FILES
+    permitted = (public or owner_only or relative == "library.html"
                  or (len(parts) == 1 and suffix in {".mjs", ".js", ".css"})
                  or (parts[0] == "native" and suffix in {".mjs", ".js", ".css", ".html", ".json"})
                  or (parts[0] == "data" and suffix in {".json", ".jsonpart"})
                  or (parts[:2] == ("assets", "covers") and suffix in IMAGE_SUFFIXES))
     if not permitted:
         raise HTTPException(404, "Not found.")
-    if not public:
+    configuration = await run_in_threadpool(request.app.state.site_settings.get)
+    if not configuration["beta_enabled"] and relative == "index.html":
+        destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
+        return json_response({"location": destination}, 303, {"Location": destination})
+    if owner_only or (not public and configuration["beta_enabled"]):
         user = await run_in_threadpool(request.app.state.auth.session, token(request))
         if not user:
-            if relative == "library.html":
-                destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
-                return json_response({"error": "Log in to open the library."}, 303,
+            message = "Log in to manage the website." if owner_only else "Log in to open the library."
+            if relative in {"library.html", "site-settings.html"}:
+                destination = "/" + relative + ("?" + request.url.query if request.url.query else "")
+                return json_response({"error": message}, 303,
                                      {"Location": "/login.html?next=" + quote(destination, safe="")})
-            return json_response({"error": "Log in to open the library."}, 401)
+            return json_response({"error": message}, 401)
+        if owner_only and not is_owner(request, user):
+            raise HTTPException(403, "Only the website owner can manage these settings.")
     root = request.app.state.settings.web_root
-    path = resource_path(root, relative)
+    resource = "index.html" if relative == "discover.html" else relative
+    path = resource_path(root, resource)
     media_type = ("application/json" if suffix in {".json", ".jsonpart"}
                   else "text/javascript" if suffix in {".mjs", ".js"}
                   else mimetypes.guess_type(str(path))[0] or "application/octet-stream")
@@ -282,7 +338,7 @@ async def static_file(request):
     # Built gzip copies are served only after the same authorization checks.
     accepted = request.headers.get("accept-encoding", "")
     if any(item.strip().lower() == "gzip" for item in accepted.split(",")) and Path(str(path) + ".gz").exists():
-        path = resource_path(root, relative + ".gz")
+        path = resource_path(root, resource + ".gz")
         headers["Content-Encoding"] = "gzip"
     return FileResponse(path, media_type=media_type, headers=headers)
 
@@ -300,6 +356,7 @@ def create_app(*, env=None, settings=None, access_service=None):
     values = dict(os.environ if env is None else env)
     settings = Settings.from_env(values) if settings is None else settings
     auth = AuthStore(settings.database_path, settings.web_root)
+    site_configuration = SiteSettingsStore(auth)
     access = access_service or AccessRequestService(settings.database_path, env=values)
     routes = [
         Route("/healthz", health, methods=["GET", "HEAD"]),
@@ -307,6 +364,7 @@ def create_app(*, env=None, settings=None, access_service=None):
         Route("/api/session", session, methods=["GET", "HEAD"]),
         Route("/api/login", login, methods=["POST"]),
         Route("/api/logout", logout, methods=["POST"]),
+        Route("/api/site-settings", site_settings, methods=["GET", "HEAD", "POST"]),
         Route("/api/access-requests/config", access_config, methods=["GET", "HEAD"]),
         Route("/api/access-requests", access_request, methods=["POST"]),
         Route("/{path:path}", static_file, methods=["GET", "HEAD"]),
@@ -315,6 +373,7 @@ def create_app(*, env=None, settings=None, access_service=None):
                     middleware=[Middleware(SecurityBoundary, settings=settings)],
                     exception_handlers={HTTPException: http_error, Exception: unexpected_error})
     app.state.settings, app.state.auth, app.state.access_requests = settings, auth, access
+    app.state.site_settings = site_configuration
     # On the initial 512 MB host at most two 32 MiB scrypt operations run at once.
     app.state.hash_limiter = anyio.CapacityLimiter(2)
     app.state.mail_limiter = anyio.CapacityLimiter(2)

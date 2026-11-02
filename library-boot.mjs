@@ -1,14 +1,22 @@
-import {session, loginURL, bindLogout, watchSession, prepareAccountStorage} from './auth.mjs';
+import {session, loginURL, bindLogout, watchSession, prepareAccountStorage, preparePublicStorage, showSessionNavigation} from './auth.mjs';
 
 try {
   const current = await session();
-  if (!current.authenticated) {
+  if (!current.authenticated && current.beta_enabled !== false) {
     location.replace(loginURL(location.pathname + location.search + location.hash));
   } else {
-    document.documentElement.dataset.careAccount = current.user.email;
-    prepareAccountStorage(current.user.email);
+    if (current.authenticated) {
+      document.documentElement.dataset.careAccount = current.user.email;
+      delete document.documentElement.dataset.carePublicMode;
+      prepareAccountStorage(current.user.email);
+    } else {
+      delete document.documentElement.dataset.careAccount;
+      document.documentElement.dataset.carePublicMode = 'true';
+      preparePublicStorage();
+    }
+    showSessionNavigation(current);
     bindLogout();
-    watchSession(current.user.email);
+    watchSession(current, {library:true});
     await import('./boot.mjs?v=b831bfdb675f0225');
   }
 } catch (error) {

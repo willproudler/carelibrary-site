@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#0d1015"><meta name="robots" content="noindex,nofollow">
+<title>Website settings — CARE Library</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/styles.css?v=20261010"><link rel="stylesheet" href="/brand-header.css?v=c47c12affb3ca81e"><link rel="stylesheet" href="/auth.css?v=20261102-beta">
+<script type="module" src="/site-settings.mjs?v=20261102-beta"></script>
+</head>
+<body class="auth-page">
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header"><div class="shell header-inner"><a class="wordmark" href="/" aria-label="CARE Library home"><img class="brand-mark" src="/assets/care-header-mark.svg" alt="" aria-hidden="true"><span class="brand-name"><strong>CARE</strong> Library</span><small>Beta</small></a><nav class="beta-nav" aria-label="Main navigation"><a class="beta-nav-link" href="/library.html">Open library</a><button class="beta-nav-link" data-logout>Log out</button></nav></div></header>
+<main id="main" class="site-settings-layout">
+<section class="auth-card" aria-labelledby="settings-title">
+<p class="beta-eyebrow">Owner controls</p><h1 id="settings-title">Website settings</h1>
+<p class="auth-lead">Choose how visitors enter CARE Library.</p>
+<form id="site-settings-form" novalidate>
+<label class="beta-setting-switch" for="beta-enabled"><span>Beta mode</span><input id="beta-enabled" name="beta_enabled" type="checkbox" role="switch" aria-describedby="mode-explanation saved-mode" hidden disabled></label>
+<p id="mode-explanation" class="auth-note">On: visitors land on Discover and log in to enter the library. Off: anyone opens the library directly, without logging in.</p>
+<p id="saved-mode" class="auth-note" role="status">Loading the current setting…</p>
+<p id="settings-error" class="form-status" role="alert" hidden></p>
+<p id="settings-success" class="settings-success" role="status" aria-live="polite" hidden></p>
+<button id="save-settings" class="auth-submit" type="submit" disabled>Save changes</button>
+<button id="refresh-settings" class="settings-refresh" type="button" hidden>Refresh current setting</button>
+<a id="settings-login" class="beta-text-link" href="/login.html?next=%2Fsite-settings.html" hidden>Log in again</a>
+</form>
+<noscript><p class="auth-note">Please enable JavaScript to manage this setting.</p></noscript>
+</section>
+</main>
+<div id="notice" class="notice" role="status" hidden></div>
+</body>
+</html>

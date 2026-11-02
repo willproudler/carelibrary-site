@@ -20,6 +20,7 @@ library.css library.html llms.txt login.html login.mjs public-app.css public-app
 public-fields.mjs public-library.mjs public-reader-adapter.mjs quick-start.pdf
 reading-workspace.mjs request-access.html request-access.mjs resource-loader.mjs
 robots.txt saved-library.mjs saved-translations.mjs site.js site.webmanifest
+site-settings.html site-settings.mjs
 sitemap.xml styles.css welcome.html
 """.split()
 ASSET_DIRECTORIES = ("assets", "data", "native")

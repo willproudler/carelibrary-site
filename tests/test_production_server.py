@@ -6,6 +6,7 @@ delivery method with a fake, so these tests cannot send email.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
 import json
 import os
@@ -31,6 +32,7 @@ from server.app import create_app
 
 ORIGIN = "https://care.example.test"
 EMAIL = "reader@example.test"
+OWNER_EMAIL = "owner@example.test"
 PASSWORD = "An explicit production test password!"
 COOKIE_NAME = "__Host-care_session"
 SMTP_ENV = {
@@ -66,6 +68,8 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
             "landing.mjs": "public landing interface",
             "login.mjs": "public login interface",
             "request-access.mjs": "public access request interface",
+            "site-settings.html": "Private owner settings",
+            "site-settings.mjs": "private owner settings module",
             "auth.css": "public login styles",
             "assets/care-header-mark.svg": "<svg>public branding</svg>",
             "assets/favicon-32.png": "public icon",
@@ -91,6 +95,9 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
             target = self.web / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(contents)
+        for relative in ("data/chunks/work-123.json", "site-settings.mjs"):
+            source = self.web / relative
+            Path(str(source) + ".gz").write_bytes(gzip.compress(source.read_bytes()))
         for provider in ("smtplib.SMTP", "smtplib.SMTP_SSL"):
             mocked = patch(provider, side_effect=AssertionError("Tests must never open SMTP connections"))
             mocked.start()
@@ -103,9 +110,10 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         for client in self.clients:
             await client.aclose()
 
-    def new_client(self, app=None, ip="203.0.113.10", base_url=ORIGIN):
+    def new_client(self, app=None, ip="203.0.113.10", base_url=ORIGIN, raise_app_exceptions=True):
         client = httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app or self.app, client=(ip, 12345)),
+            transport=httpx.ASGITransport(app=app or self.app, client=(ip, 12345),
+                                         raise_app_exceptions=raise_app_exceptions),
             base_url=base_url,
             follow_redirects=False,
         )
@@ -134,6 +142,26 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
 
     def assert_no_store(self, response):
         self.assertIn("no-store", response.headers.get("cache-control", ""))
+
+    def assert_anonymous_session(self, response, beta_enabled=True):
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"authenticated": False,
+                         "beta_enabled": beta_enabled, "can_manage_site": False})
+
+    async def owner_context(self):
+        application = create_app(env={**self.env, "CARE_SITE_ADMIN_EMAILS": OWNER_EMAIL})
+        await self.add_user(email=OWNER_EMAIL, name="Owner", app=application)
+        owner = self.new_client(app=application, ip="203.0.113.60")
+        response = await self.login(email=OWNER_EMAIL, client=owner)
+        self.assertEqual(response.status_code, 200, response.text)
+        return application, owner
+
+    def persisted_account_state(self):
+        with sqlite3.connect(self.database) as db:
+            return {
+                table: db.execute("SELECT * FROM " + table + " ORDER BY 1").fetchall()
+                for table in ("users", "sessions", "access_requests")
+            }
 
     def inherited_setgid(self, directory):
         # Some macOS filesystems strip SGID when chmod is applied. Present the
@@ -232,7 +260,7 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stat.S_IMODE(database.stat().st_mode), 0o600)
         self.assertFalse(application.state.auth.has_enabled_users())
         response = await self.new_client(app=application).get("/api/session")
-        self.assertEqual(response.json(), {"authenticated": False})
+        self.assert_anonymous_session(response)
 
     async def test_private_directory_repairs_only_service_owned_access_permissions(self):
         private = self.root / "setgid-insecure"
@@ -264,7 +292,7 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(self.database) as db:
             db.execute("UPDATE sessions SET expires_at = ?", (time.time() - 1,))
             count = db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
-        self.assertEqual((await self.client.get("/api/session")).json(), {"authenticated": False})
+        self.assert_anonymous_session(await self.client.get("/api/session"))
         self.assertEqual((await self.client.get("/data/library.json")).status_code, 401)
         with sqlite3.connect(self.database) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], count)
@@ -273,7 +301,7 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         await self.authenticated()
         updated = "A different explicit test password!"
         await asyncio.to_thread(self.app.state.auth.reset_password, EMAIL, updated)
-        self.assertEqual((await self.client.get("/api/session")).json(), {"authenticated": False})
+        self.assert_anonymous_session(await self.client.get("/api/session"))
         self.assertEqual((await self.login()).status_code, 401)
         self.assertEqual((await self.login(password=updated)).status_code, 200)
         await asyncio.to_thread(self.app.state.auth.disable_user, EMAIL)
@@ -578,6 +606,205 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(legacy) as db:
             self.assertEqual(db.execute("SELECT email FROM users").fetchone()[0], "local@example.test")
             self.assertEqual(db.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='care_metadata'").fetchone()[0], 0)
+
+    async def test_site_owner_is_explicit_and_settings_stay_private_in_both_modes(self):
+        await self.authenticated()
+        regular_session = (await self.client.get("/api/session")).json()
+        self.assertTrue(regular_session["authenticated"])
+        self.assertTrue(regular_session["beta_enabled"])
+        self.assertFalse(regular_session["can_manage_site"])
+        self.assertEqual((await self.client.get("/api/site-settings")).status_code, 403)
+        app, owner = await self.owner_context()
+        outsider = self.new_client(app=app)
+        regular = self.new_client(app=app)
+        self.assertEqual((await self.login(client=regular)).status_code, 200)
+        for beta_enabled in (True, False):
+            configuration = (await owner.get("/api/site-settings")).json()
+            self.assertEqual(configuration["beta_enabled"], beta_enabled)
+            self.assertEqual((await owner.get("/api/session")).json(), {
+                "authenticated": True, "user": {"email": OWNER_EMAIL, "name": "Owner"},
+                "beta_enabled": beta_enabled, "can_manage_site": True})
+            self.assert_anonymous_session(await outsider.get("/api/session"), beta_enabled)
+            self.assertEqual((await outsider.get("/api/site-settings")).status_code, 401)
+            self.assertEqual((await self.post("/api/site-settings", {
+                "beta_enabled": not beta_enabled, "revision": configuration["revision"]}, client=regular)).status_code, 403)
+            html = await outsider.get("/site-settings.html?section=access")
+            self.assertEqual(html.status_code, 303)
+            self.assertEqual(httpx.URL(html.headers["location"]).params["next"],
+                             "/site-settings.html?section=access")
+            for method in ("GET", "HEAD"):
+                for path in ("/site-settings.html", "/site-settings.mjs"):
+                    self.assertEqual((await regular.request(method, path)).status_code, 403)
+                    self.assertEqual((await owner.request(method, path)).status_code, 200)
+                self.assertEqual((await outsider.request(method, "/site-settings.mjs",
+                    headers={"Accept-Encoding": "gzip"})).status_code, 401)
+            for path in ("/site-settings.html/", "/site-settings.mjs/", "/site-settings.mjs//",
+                         "/site-settings.mjs%2f", "/SITE-SETTINGS.MJS", "/SITE-SETTINGS.HTML",
+                         "/site-settings.mjs.gz"):
+                self.assertEqual((await outsider.get(path)).status_code, 404, path)
+            if beta_enabled:
+                result = await self.post("/api/site-settings", {
+                    "beta_enabled": False, "revision": configuration["revision"]}, client=owner)
+                self.assertEqual(result.status_code, 200, result.text)
+        await asyncio.to_thread(app.state.auth.disable_user, OWNER_EMAIL)
+        self.assertEqual((await owner.get("/api/site-settings")).status_code, 401)
+        self.assert_anonymous_session(await owner.get("/api/session"), False)
+
+    async def test_beta_switch_off_and_on_preserves_private_records_and_survives_restart(self):
+        app, owner = await self.owner_context()
+        await self.add_user(app=app)
+        ordinary = self.new_client(app=app)
+        self.assertEqual((await self.login(client=ordinary)).status_code, 200)
+        request = await self.post("/api/access-requests", {
+            "name": "Saved applicant", "email": "saved@example.test", "website": ""}, client=owner)
+        self.assertEqual(request.status_code, 503)
+        self.assertTrue(request.json()["saved"])
+        original = self.persisted_account_state()
+        initial = await owner.get("/api/site-settings")
+        self.assertEqual(initial.json(), {"beta_enabled": True, "revision": 0})
+        changed = await self.post("/api/site-settings", {"beta_enabled": False, "revision": 0}, client=owner)
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertEqual(changed.json(), {"beta_enabled": False, "revision": 1})
+        # This client belongs to the app created before the switch: requests
+        # must read current durable settings rather than a startup snapshot.
+        self.assert_anonymous_session(await self.client.get("/api/session"), False)
+        for path in ("/library.html", "/data/library.json", "/data/library-parts/part.jsonpart",
+                     "/native/reading-views.mjs", "/public-app.mjs", "/boot.mjs",
+                     "/assets/covers/book.jpg", "/assets/covers/web/cover-123.webp"):
+            response = await self.client.get(path)
+            self.assertEqual(response.status_code, 200, path)
+            self.assert_no_store(response)
+        compressed = await self.client.get("/data/chunks/work-123.json", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(compressed.status_code, 200)
+        self.assertEqual(compressed.headers["content-encoding"], "gzip")
+        self.assertEqual(compressed.json(), {"private": "reading chunk"})
+        for path in ("/?view=books&query=one%20two", "/index.html?mode=read"):
+            response = await self.client.get(path)
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/library.html?" + path.partition("?")[2])
+        for path in ("/.env", "/README.md", "/credentials.json", "/accounts.sqlite3",
+                     "/unknown.mjs", "/data/missing.json", "/server/app.py", "/tools/config.py",
+                     "/tests/test.py", "/.git/config", "/data/%2e%2e/auth.mjs"):
+            self.assertEqual((await self.client.get(path)).status_code, 404, path)
+        self.assertEqual(self.persisted_account_state(), original)
+        reloaded = create_app(env={**self.env, "CARE_SITE_ADMIN_EMAILS": OWNER_EMAIL})
+        restart_owner = self.new_client(app=reloaded)
+        restart_owner.cookies.update(owner.cookies)
+        self.assertEqual((await restart_owner.get("/api/site-settings")).json(),
+                         {"beta_enabled": False, "revision": 1})
+        self.assertEqual(self.persisted_account_state(), original)
+        restored = await self.post("/api/site-settings", {"beta_enabled": True, "revision": 1},
+                                   client=restart_owner)
+        self.assertEqual(restored.status_code, 200, restored.text)
+        self.assertEqual(restored.json(), {"beta_enabled": True, "revision": 2})
+        self.assertEqual((await self.client.get("/")).status_code, 200)
+        self.assertEqual((await self.client.get("/library.html")).status_code, 303)
+        self.assertEqual((await self.client.get("/data/library.json")).status_code, 401)
+        self.assertEqual((await ordinary.get("/data/library.json")).status_code, 200)
+        self.assertEqual(self.persisted_account_state(), original)
+
+    async def test_site_settings_enforce_origin_types_duplicate_fields_and_stale_revisions(self):
+        app, owner = await self.owner_context()
+        baseline = {"beta_enabled": True, "revision": 0}
+        desired = {"beta_enabled": False, "revision": 0}
+        self.assertEqual((await self.post("/api/site-settings", desired, client=owner,
+            headers={"Origin": "https://evil.example.test"})).status_code, 403)
+        self.assertEqual((await owner.post("/api/site-settings", json=desired)).status_code, 403)
+        self.assertEqual((await self.post("/api/site-settings", desired, client=owner,
+            headers={"Content-Type": "text/plain"})).status_code, 415)
+        for payload in ({}, {"beta_enabled": False}, {"revision": 0},
+                        {"beta_enabled": "false", "revision": 0},
+                        {"beta_enabled": 0, "revision": 0},
+                        {"beta_enabled": False, "revision": True},
+                        {"beta_enabled": False, "revision": -1},
+                        {"beta_enabled": False, "revision": 2**63 - 1},
+                        {"beta_enabled": False, "revision": 0.0},
+                        {"beta_enabled": False, "revision": 0, "owner": True}):
+            self.assertEqual((await self.post("/api/site-settings", payload, client=owner)).status_code, 400, repr(payload))
+        duplicate = await owner.post("/api/site-settings", content=
+            b'{"beta_enabled":true,"beta_enabled":false,"revision":0}',
+            headers={"Origin": ORIGIN, "Content-Type": "application/json"})
+        self.assertEqual(duplicate.status_code, 400)
+        self.assertEqual((await owner.get("/api/site-settings")).json(), baseline)
+        self.assertEqual((await self.post("/api/site-settings", desired, client=owner)).status_code, 200)
+        stale = await self.post("/api/site-settings", {"beta_enabled": True, "revision": 0}, client=owner)
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual((await owner.get("/api/site-settings")).json(), {"beta_enabled": False, "revision": 1})
+
+    async def test_concurrent_site_settings_updates_accept_only_one_matching_revision(self):
+        _, owner = await self.owner_context()
+        responses = await asyncio.gather(
+            self.post("/api/site-settings", {"beta_enabled": False, "revision": 0}, client=owner),
+            self.post("/api/site-settings", {"beta_enabled": True, "revision": 0}, client=owner),
+        )
+        self.assertEqual(sorted(response.status_code for response in responses), [200, 409])
+        winning = next(response.json() for response in responses if response.status_code == 200)
+        self.assertEqual(winning["revision"], 1)
+        self.assertEqual((await owner.get("/api/site-settings")).json(), winning)
+
+    async def test_site_settings_read_write_and_corruption_fail_closed(self):
+        app, owner = await self.owner_context()
+        owner_errors = self.new_client(app=app, raise_app_exceptions=False)
+        owner_errors.cookies.update(owner.cookies)
+        anonymous = self.new_client(app=app, raise_app_exceptions=False)
+        self.assertEqual((await self.post("/api/site-settings", {
+            "beta_enabled": False, "revision": 0}, client=owner)).status_code, 200)
+        with patch.object(app.state.site_settings, "get", side_effect=sqlite3.DatabaseError("private-database-detail")):
+            for client, path in ((anonymous, "/"), (anonymous, "/library.html"),
+                                 (anonymous, "/data/library.json"), (anonymous, "/native/reading-views.mjs"),
+                                 (anonymous, "/api/session"), (owner_errors, "/api/site-settings"),
+                                 (owner_errors, "/site-settings.html"), (anonymous, "/readyz")):
+                response = await client.get(path)
+                self.assertEqual(response.status_code, 503, path)
+                self.assertNotIn("private-database-detail", response.text)
+                self.assert_no_store(response)
+        with patch.object(app.state.site_settings, "update", side_effect=sqlite3.DatabaseError("private-write-detail")):
+            failed = await self.post("/api/site-settings", {"beta_enabled": True, "revision": 1}, client=owner_errors)
+            self.assertEqual(failed.status_code, 503)
+            self.assertNotIn("private-write-detail", failed.text)
+        self.assertEqual((await owner.get("/api/site-settings")).json(), {"beta_enabled": False, "revision": 1})
+        for mutate in ("UPDATE site_settings SET beta_enabled=2 WHERE singleton=1",
+                       "DELETE FROM site_settings WHERE singleton=1"):
+            with sqlite3.connect(self.database) as db:
+                db.execute("PRAGMA ignore_check_constraints=ON")
+                db.execute(mutate)
+            self.assertEqual((await anonymous.get("/data/library.json")).status_code, 503)
+            self.assertEqual((await owner_errors.get("/api/site-settings")).status_code, 503)
+            self.assertEqual((await self.post("/api/site-settings", {
+                "beta_enabled": True, "revision": 1}, client=owner_errors)).status_code, 503)
+
+    async def test_discover_alias_remains_public_in_both_modes_without_changing_the_homepage(self):
+        _, owner = await self.owner_context()
+        self.assertFalse((self.web / "discover.html").exists())
+        discover = await self.client.get("/discover.html?view=topics")
+        self.assertEqual(discover.status_code, 200)
+        self.assertEqual(discover.text, self.files["index.html"])
+        self.assert_no_store(discover)
+        self.assertEqual((await self.client.get("/")).text, discover.text)
+        changed = await self.post("/api/site-settings", {
+            "beta_enabled": False, "revision": 0}, client=owner)
+        self.assertEqual(changed.status_code, 200)
+        for path in ("/", "/index.html"):
+            response = await self.client.get(path + "?view=topics")
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(response.headers["location"], "/library.html?view=topics")
+        (self.web / "index.html.gz").write_bytes(gzip.compress(self.files["index.html"].encode()))
+        for encoding in ("identity", "gzip"):
+            response = await self.client.get("/discover.html", headers={"Accept-Encoding": encoding})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.text, discover.text)
+            self.assert_no_store(response)
+            if encoding == "gzip":
+                self.assertEqual(response.headers["content-encoding"], "gzip")
+        self.assertEqual((await self.client.get("/discover.html/")).status_code, 404)
+        self.assertEqual((await self.client.get("/discover.html.gz")).status_code, 404)
+
+    async def test_site_admin_allowlist_rejects_wildcards_malformed_and_empty_entries(self):
+        for value in ("*", "*@example.test", "owner@*.test", "not-an-email", "owner@example.test,",
+                      ",owner@example.test", "owner@example.test,,other@example.test",
+                      "Owner <owner@example.test>", "owner@example.test\nother@example.test"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                create_app(env={**self.env, "CARE_SITE_ADMIN_EMAILS": value})
 
 
 if __name__ == "__main__":

@@ -172,6 +172,8 @@ class ProductionBuildTests(unittest.TestCase):
             "landing.mjs": "import {session} from './auth.mjs'; await import('./discover-reader.mjs?v=old');",
             "library.html": '<script type="module" src="/library-boot.mjs?v=old"></script>',
             "library-boot.mjs": "import {session} from './auth.mjs'; await import('./boot.mjs?v=old');",
+            "site-settings.html": '<script type="module" src="/site-settings.mjs?v=old"></script>',
+            "site-settings.mjs": "import {session, postJSON} from './auth.mjs';",
             "boot.mjs": "import('./public-app.mjs?v=old');",
             "public-app.mjs": "import mount from './native/reader.mjs?v=old';",
             "native/reader.mjs": "import './internal-reader.mjs?v=reviewed'; export const reader = 'reviewed';",
@@ -192,6 +194,7 @@ class ProductionBuildTests(unittest.TestCase):
             ("library.html", "/library-boot.mjs"), ("library-boot.mjs", "./boot.mjs"),
             ("library-boot.mjs", "./auth.mjs"), ("boot.mjs", "./public-app.mjs"),
             ("public-app.mjs", "./native/reader.mjs"),
+            ("site-settings.html", "/site-settings.mjs"), ("site-settings.mjs", "./auth.mjs"),
         ):
             match = re.search(re.escape(target) + r"\?v=([a-f0-9]{16})['\"]", (dist / name).read_text())
             self.assertIsNotNone(match, (name, target))

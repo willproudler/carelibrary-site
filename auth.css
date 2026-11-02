@@ -48,3 +48,14 @@
 @media(prefers-reduced-motion:reduce){.auth-page *{scroll-behavior:auto}}
 
 .beta-nav button.beta-nav-link{background:none;border:0;padding:0;cursor:pointer}
+.site-settings-layout{max-width:620px;margin:0 auto;padding:64px 24px}
+.site-settings-layout h1{font:400 30px/1.2 Georgia,serif;letter-spacing:-.025em;margin:0 0 16px}
+.beta-setting-switch{display:flex;align-items:center;justify-content:space-between;gap:24px;font:500 16px/1.6 system-ui,sans-serif;cursor:pointer}
+.beta-setting-switch input{appearance:none;width:46px;height:26px;border:1px solid #657276;border-radius:20px;background:#303b42;position:relative;cursor:pointer;flex:none}
+.beta-setting-switch input::before{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#e6ebe7}
+.beta-setting-switch input:checked{background:#9bc1b7;border-color:#9bc1b7}.beta-setting-switch input:checked::before{left:23px;background:#142523}
+.beta-setting-switch input:focus-visible{outline:2px solid #9bc1b7;outline-offset:4px}.beta-setting-switch input:disabled{opacity:.55;cursor:wait}
+.settings-success{color:#b8d8cf;font:13px/1.7 system-ui,sans-serif;margin-top:20px}
+.settings-refresh{display:block;margin:18px auto 0;border:0;background:transparent;color:#c7d6cf;font:13px/1.6 system-ui,sans-serif;cursor:pointer;text-decoration:underline;text-underline-offset:4px}
+#settings-login{display:block;text-align:center;margin-top:18px}
+@media(max-width:640px){.app-header nav:has([data-owner-only]:not([hidden])){grid-template-columns:repeat(8,minmax(0,1fr))}.site-settings-layout{padding:36px 20px}}
