@@ -27,41 +27,45 @@ Materialization changes `data/library.json` from its committed split-file manife
 
 ## Production hosting
 
-GitHub Pages cannot run the login server. `render.yaml` prepares a single Python web service in Frankfurt with a 1 GB persistent disk. Hosting creation requires the owner's cost and workspace approval. No account or email password is committed. The service is prepared with automatic deployment off until the cutover is verified.
+The beta runs on the existing Render service `carelibrary-beta` in Frankfurt with a 1 GB persistent disk. The approved base hosting cost is $7.25 per month. `render.yaml` targets `main`, with deployments triggered manually and automatic deployment disabled. Preserve this service and its disk through future releases. No account or email password is committed. GitHub Pages cannot run the login server.
 
 Required settings:
 
 | Setting | Value |
 | --- | --- |
 | `CARE_PUBLIC_ORIGIN` | `https://carelibrary.org` |
-| `CARE_ADDITIONAL_ORIGINS` | Defaults at startup to Render's exact `RENDER_EXTERNAL_URL`; explicitly include it and `https://www.carelibrary.org` if attaching www |
+| `CARE_ADDITIONAL_ORIGINS` | `https://carelibrary-beta.onrender.com,https://www.carelibrary.org` |
 | `CARE_WEB_ROOT` | Absolute path to the built `dist` directory; supplied by the start command |
 | `CARE_DATABASE_PATH` | `/var/data/care/accounts.sqlite3` on the persistent disk |
-| `CARE_TRUSTED_PROXY_CIDRS` | Verified Render reverse-proxy ranges; confirm the staging chain before cutover |
+| `CARE_TRUSTED_PROXY_CIDRS` | Explicit Render reverse-proxy ranges in `render.yaml`; recheck the proxy chain if the hosting network changes |
 
 Start with the command in `render.yaml`: one Uvicorn worker, proxy parsing disabled in Uvicorn, and the application's explicit trusted-proxy handling enabled. Do not serve the repository with a static server or deploy it to Pages. `/healthz` is a process health check. `/readyz` also requires a configured mail sender and an enabled account; it is not an SMTP delivery test.
 
 ### Email and accounts
 
-Set the Gmail app password privately in Render's environment settings as `CARE_BETA_SMTP_PASSWORD`. The blueprint supplies Gmail SSL on port 465, with `willproudler@gmail.com` as the sender and username. Google requires an eligible account with two-step verification. Never paste a password into chat, source code, or a shell command. Recipients are fixed in the server, not supplied by the applicant.
+The Gmail app password is configured privately in Render's environment settings as `CARE_BETA_SMTP_PASSWORD`. The blueprint supplies Gmail SSL on port 465, with `willproudler@gmail.com` as the sender and username. Login and a real access-request email to Will have been verified at the Render URL. Access requests go only to **willproudler@gmail.com**; adding another recipient requires an explicit decision. Google requires an eligible account with two-step verification. Never paste a password into chat, source code, or a shell command. Recipients are fixed in the server, not supplied by the applicant.
 
-Create the first fresh production account from the service's private shell:
+An enabled production account already exists. Manage accounts from the service's private shell. For a newly approved applicant, replace the example details below with their name and email:
 
 ```sh
-CARE_WEB_ROOT="$PWD/dist" python -m server.manage add-user --email willproudler@gmail.com --name "Will Proudler"
+CARE_WEB_ROOT="$PWD/dist" python -m server.manage add-user --email reader@example.com --name "Approved Reader"
 ```
 
 The command asks for the password privately. Use `reset-password` or `disable-user` for ongoing management. These actions invalidate existing sessions. Invite approved applicants manually; no automatic access is granted by the form. Do not copy local preview accounts into production.
 
 The database contains account password hashes, hashed sessions, rate limits, and access requests. Keep it on the persistent disk, restrict administrative access, and back it up before changes. This SQLite configuration is for one instance; do not add replicas against separate copies. Browser bookmarks stay on the browser/device and are scoped to the signed-in account. Existing anonymous bookmarks are retained but not assigned to another person's account.
 
-### Domain cutover
+### Domain status and deployment
 
-1. Create the reviewed Render service after approval, with its persistent disk and private email settings. The start command allows its actual Render HTTPS URL for staging and health checks.
-2. Create an enabled account. Verify login/logout, rejected anonymous file requests, access-request delivery, and the proxy/IP handling at the Render URL. An unavailable mail service must never report that a message was sent.
-3. Add `carelibrary.org` (and `www` if used) in Render. Change only the website records at Namecheap to the exact targets Render supplies; preserve mail and verification records. Wait for domain verification and TLS.
-4. Verify the same behavior at the custom domain, then disable the former GitHub Pages site so its alternate URL cannot bypass login. Merge this release's workflow change before resuming normal publishing. The installed `.github/workflows/pages.yml` verifies the app and never uploads protected files to Pages. Keep this verification-only workflow when merging the release into main.
-5. Once the migration is verified, select the intended deployment branch and enable automatic deployments if desired. Keep the persistent database through future releases.
+The migration completed on 2 November 2026. The Namecheap website records were verified publicly: the apex A record points to `216.24.57.1`, and `www` is a CNAME for `carelibrary-beta.onrender.com`. Both Render custom domains have working TLS, with `www` redirecting to `https://carelibrary.org`. The former GitHub Pages site is unpublished. The existing Render service now deploys `main` manually, with automatic deployment off and the same persistent disk.
+
+At the custom domain, `/healthz`, `/readyz`, `/api/session`, and `/api/access-requests/config` returned 200; the anonymous session was unauthenticated and email configuration was ready. Anonymous requests to `/library.html` redirected to login, and catalogue and native-reader files returned 401. The `www` redirect passed normal TLS verification. The successful account login and real Will-only email test were performed at the Render URL.
+
+For future releases:
+
+1. Keep `.github/workflows/pages.yml` as a verification-only workflow. It verifies the app and never uploads protected files to Pages; keep GitHub Pages unpublished.
+2. Review changes and let checks pass on `main`, then trigger deployment manually on the existing Render service. Preserve the persistent database and private email settings.
+3. Recheck HTTPS, the `www` redirect, Discover, login/logout, anonymous library-file protection, and the access-request form after deployment. An unavailable mail service must never report that a message was sent.
 
 This protects the hosted beta going forward. Previously published readings remain in this repository's public history; login cannot retroactively make those copies confidential. Do not change repository visibility or remove publication history without a separate decision by the owner.
 

@@ -1,15 +1,19 @@
-# Create this service only after approving the hosting cost and workspace.
+# Existing approved service: carelibrary-beta in Frankfurt, with a 1 GB private disk.
+# Deploy main manually; preserve the service and its disk through future releases.
 # Configure the Gmail app password privately in Render, never in this repository.
 services:
   - type: web
     name: carelibrary-beta
     runtime: python
     repo: https://github.com/willproudler/carelibrary-site
-    branch: release/beta-login-20261102
+    branch: main
     region: frankfurt
     plan: 0.5c-512mb
     numInstances: 1
     autoDeployTrigger: "off"
+    domains:
+      - carelibrary.org
+      - www.carelibrary.org
     buildCommand: pip install -r requirements-server.txt -r requirements-build.txt && python tools/build-production-site.py
     startCommand: CARE_ADDITIONAL_ORIGINS="${CARE_ADDITIONAL_ORIGINS:-$RENDER_EXTERNAL_URL}" CARE_WEB_ROOT="$PWD/dist" python -m uvicorn server.app:create_app --factory --host 0.0.0.0 --port "$PORT" --workers 1 --no-proxy-headers --limit-concurrency 32 --timeout-keep-alive 5 --no-access-log
     healthCheckPath: /healthz
@@ -24,9 +28,11 @@ services:
         value: "24"
       - key: CARE_PUBLIC_ORIGIN
         value: https://carelibrary.org
+      - key: CARE_ADDITIONAL_ORIGINS
+        value: https://carelibrary-beta.onrender.com,https://www.carelibrary.org
       - key: CARE_DATABASE_PATH
         value: /var/data/care/accounts.sqlite3
-      # Check these against the actual Render proxy chain before domain cutover.
+      # Recheck the trusted proxy chain if the hosting network changes.
       - key: CARE_TRUSTED_PROXY_CIDRS
         value: 127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       - key: CARE_BETA_SMTP_HOST
