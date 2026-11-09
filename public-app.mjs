@@ -13,9 +13,11 @@ import {createStudioWorkspace} from './studio-workspace.mjs';
 import mountDocumentPicker,{pickerMarkup} from './native/writing-studio-picker.mjs';
 import {mountStudySets} from './study-sets.mjs';
 import {mountBetaSpotlight} from './native/beta-spotlight.mjs';
+import {mountNumogramHeaderSearch} from './native/numogram-header-search.mjs';
 import {openFeaturePreview} from './native/feature-previews.mjs';
 
 const $ = selector => document.querySelector(selector);
+const loadNumogram=()=>import('./native/numogram-atlas.mjs');
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Public mode uses the original browser collection; accounts have separate saves.
 const storageKey = key => readingStorageKey(key,document.documentElement.dataset);
@@ -81,7 +83,8 @@ async function start(){
   }).catch(error=>{fieldPromise=null;throw error;});
   return fieldPromise;
  }
- let state={workId:(data.works[0]?.id||''),routeMode:'incoming',outlineUnits:[]},view='library',cleanup,savedCleanup,viewerCleanup,numoCleanup;
+ let state={workId:(data.works[0]?.id||''),routeMode:'incoming',outlineUnits:[]},view='library',cleanup,savedCleanup,viewerCleanup,numoWorkspace;
+ let numoHeader,pendingNumoAQ;
  let opened=[],history=[],historyIndex=-1;
  const manuscriptTabs=new Map();
  let draftId='',lastDraftId='';
@@ -247,6 +250,8 @@ async function start(){
   if(storageNotice.hidden)storageNotice.open=false;
   const currentPage=view==='workspace'?'library':view;
   document.body.dataset.workbenchView=currentPage;
+  numoHeader?.setActive(view==='numogram');
+  $('.workbench-search').hidden=view==='numogram';
   const markup=opened.map(key=>{
    const {document,work,isSaved,isNumo,kind,style,title,href}=tabDetails(key),active=inTab&&keyNow===key;
    return `<span class="open-tab ${active?'active':''}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${esc(href)}"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span>${document?`<small data-tab-role>${style.label}</small>`:''}</a>${!work&&!document&&!isSaved&&!isNumo?`<button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button>`:''}<button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
@@ -364,7 +369,7 @@ async function start(){
   studioHost.hidden=!isManuscript()&&!studio.besideOpen;
   setsHost.hidden=view!=='study-sets';
   numoHost.hidden=view!=='numogram';
-  if(numoHost.hidden&&numoCleanup){numoCleanup();numoCleanup=null;}
+  if(numoHost.hidden&&numoWorkspace){numoWorkspace.unmount();numoWorkspace=null;}
   if(view==='saved'){syncTabMenus('');cleanup?.();cleanup=null;viewerCleanup?.();viewerCleanup=null;viewerHost.hidden=true;paintSaved();return;}
   savedCleanup?.();savedCleanup=null;
   if(host.hidden){syncTabMenus('');cleanup?.();cleanup=null;viewerCleanup?.();viewerCleanup=null;viewerHost.hidden=true;return;}
@@ -626,15 +631,17 @@ async function start(){
    }
    if(nextView==='numogram'){
     view='numogram';paint();
-    if(!numoCleanup){
+    if(!numoWorkspace){
      setLoadStatus('Opening CARE Numogram…');
-     const {default:mountNumogramAtlas}=await import('./native/numogram-atlas.mjs');
+     const {default:mountNumogramAtlas}=await loadNumogram();
      if(request!==routeRequest)return;
-     numoCleanup=mountNumogramAtlas(numoHost,{openSource:href=>{
+     numoWorkspace=mountNumogramAtlas(numoHost,{focusHeaderAQ:()=>numoHeader?.open(),openSource:href=>{
       const source=new URL(href,location.href);
       const params=new URLSearchParams(source.hash.slice(1));
       if(source.origin===location.origin&&source.pathname==='/library.html'&&(params.has('book')||params.has('lateral')))location.hash=source.hash;
      }});
+     if(pendingNumoAQ)numoWorkspace.openAQ(pendingNumoAQ);
+     pendingNumoAQ=null;
      setLoadStatus();
     }
     return;
@@ -782,6 +789,23 @@ async function start(){
   input.select();
  });
  $('.workbench-saved').onclick=()=>{if(location.hash==='#view=saved')routeFromURL();else location.hash='view=saved';};
+ numoHeader=mountNumogramHeaderSearch({
+  host:$('[data-numo-header-search]'),
+  getCalculator:()=>loadNumogram().then(module=>module.instrumentAQInput),
+  onOpenNumogram(target){
+   if(numoWorkspace)numoWorkspace.openAQ(target);
+   else pendingNumoAQ=target;
+  },
+  onSearchCare:query=>spotlight.open(query,{expanded:true}),
+ });
+ document.addEventListener('keydown',event=>{
+  if(view!=='numogram'||event.defaultPrevented||event.isComposing||event.altKey||event.shiftKey||
+    !(event.metaKey||event.ctrlKey)||event.key.toLowerCase()!=='k'||
+    document.querySelector('dialog[open], .csp-overlay[open]'))return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  numoHeader.open();
+ },true);
  const spotlight=mountBetaSpotlight({
   works:data.works,fields,
   workspaceTitle(){

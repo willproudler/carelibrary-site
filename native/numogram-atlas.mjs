@@ -1,9 +1,11 @@
-import mountInstrument, {arithmetic, css, html} from './numogram-instrument.mjs?v=a6115a6c18b615aa';
+import mountInstrument, {arithmetic, css, html, instrumentAQInput} from './numogram-instrument.mjs?v=a786a5d3f8126c86';
 import reference from './numogram-reference.mjs';
 
 const aqEndpoint = '/api/numo/aq';
 
-export default function mountNumogramAtlas(host, {openSource} = {}) {
+export {instrumentAQInput};
+
+export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ} = {}) {
   host.setAttribute('data-care-numo-surface', '');
   const shadow = host.shadowRoot ?? host.attachShadow({mode: 'open'});
   shadow.innerHTML = `<style>:host{overflow:auto}${css}</style>${html}`;
@@ -17,7 +19,7 @@ export default function mountNumogramAtlas(host, {openSource} = {}) {
     })),
   };
 
-  let acceptAQ, pending;
+  let acceptAQ, openAQ, pending;
   async function receiveAction(_key, {kind, total, id, match_kind = 'all', sort = 'variety', offset = 0}) {
     if (kind === 'instrument_aq_source') {
       const href = world.instrument_aq_match?.record?.source_href;
@@ -57,15 +59,21 @@ export default function mountNumogramAtlas(host, {openSource} = {}) {
       aq_collection_write: false,
       aq_scroll_url: aqEndpoint,
       bindAQResponse: receive=>{ acceptAQ = receive; },
+      bindAQOpen: open=>{ openAQ = open; },
+      focusHeaderAQ,
       instrument_font_prefix: new URL('./numo-', import.meta.url).href,
     },
     setTriggerValue: receiveAction,
   });
-  return () => {
-    acceptAQ = null;
-    pending?.abort();
-    unmount?.();
-    shadow.replaceChildren();
-    host.removeAttribute('data-care-numo-surface');
+  return {
+    openAQ: target=>openAQ?.(target),
+    unmount() {
+      acceptAQ = null;
+      openAQ = null;
+      pending?.abort();
+      unmount?.();
+      shadow.replaceChildren();
+      host.removeAttribute('data-care-numo-surface');
+    },
   };
 }

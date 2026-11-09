@@ -1,0 +1,179 @@
+@font-face {
+  font-family: "CARE NUMO Header Mono";
+  src: url("./numo-IBMPlexMono-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "CARE NUMO Header Serif";
+  src: url("./numo-EBGaramond.ttf") format("truetype");
+  font-display: swap;
+}
+
+.numo-header-search {
+  --numo-aq-ink: #f0e5ce;
+  --numo-aq-accent: #e7b96f;
+  --numo-aq-muted: #c0ac88;
+  --numo-aq-line: #634f31;
+  --numo-aq-field: #242019;
+  --numo-aq-panel: #1b1915;
+  --numo-aq-mono: "CARE NUMO Header Mono", "IBM Plex Mono", monospace;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  width: min(100%, 34rem);
+  min-width: 0;
+  margin-inline: auto;
+  color: var(--numo-aq-ink);
+}
+.numo-header-search[hidden], .numo-header-search [hidden] { display: none !important; }
+.numo-header-search button, .numo-header-search input { font: inherit; }
+.numo-header-search button { cursor: pointer; }
+.numo-header-search button:disabled { cursor: default; opacity: .45; }
+.numo-header-search button:focus-visible { outline: 2px solid var(--numo-aq-accent); outline-offset: 2px; }
+.numo-header-search svg { width: 1rem; height: 1rem; flex: none; vertical-align: middle; }
+.numo-header-surface { position: relative; flex: 1 1 auto; min-width: 0; }
+.numo-header-field {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 2.4rem;
+  padding: 0 .55rem;
+  border: 1px solid var(--numo-aq-line);
+  border-radius: .65rem;
+  color: var(--numo-aq-accent);
+  background: var(--numo-aq-field);
+}
+.numo-header-field:focus-within { border-color: var(--numo-aq-accent); box-shadow: 0 0 0 1px #e7b96f32; }
+.numo-header-field input {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: .45rem 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--numo-aq-ink);
+  font: 400 .78rem/1.3 var(--numo-aq-mono);
+}
+.numo-header-field input::placeholder { color: var(--numo-aq-muted); opacity: 1; }
+.numo-header-total {
+  flex: none;
+  padding: .2rem .35rem;
+  border: 1px solid #765931;
+  border-radius: .27rem;
+  background: #372a17;
+  color: var(--numo-aq-accent);
+  font: 500 .67rem/1 var(--numo-aq-mono);
+  white-space: nowrap;
+}
+.numo-header-search .numo-header-care, .numo-header-search .numo-header-compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+  flex: none;
+  min-height: 2.4rem;
+  padding: 0 .55rem;
+  border: 1px solid #5c4e36;
+  border-radius: .65rem;
+  background: #232018;
+  color: var(--numo-aq-ink);
+  font-size: .72rem;
+  white-space: nowrap;
+}
+.numo-header-search .numo-header-care:hover, .numo-header-search .numo-header-compact:hover { border-color: var(--numo-aq-accent); color: var(--numo-aq-accent); }
+.numo-header-search .numo-header-compact, .numo-header-search .numo-header-close { display: none; }
+.numo-header-panel {
+  position: absolute;
+  z-index: 950;
+  top: calc(100% + .45rem);
+  inset-inline-start: 0;
+  width: max(100%, 22rem);
+  max-width: min(34rem, calc(100vw - 1.25rem));
+  max-height: min(27rem, 65dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--numo-aq-line) transparent;
+  border: 1px solid var(--numo-aq-line);
+  border-radius: .75rem;
+  background: var(--numo-aq-panel);
+  box-shadow: 0 .75rem 2rem #0009;
+}
+.numo-header-results-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .7rem .8rem;
+}
+.numo-header-kicker { color: var(--numo-aq-accent); font: 500 .64rem/1.35 var(--numo-aq-mono); letter-spacing: .09em; }
+.numo-header-status { margin-top: .18rem; color: var(--numo-aq-muted); font-size: .79rem; line-height: 1.3; }
+.numo-header-search .numo-header-open, .numo-header-results-foot button {
+  padding: .48rem .58rem;
+  border: 1px solid var(--numo-aq-line);
+  border-radius: .36rem;
+  background: #34281a;
+  color: var(--numo-aq-accent);
+  font-size: .74rem;
+}
+.numo-header-open { flex: none; }
+.numo-header-search .numo-header-open:hover:not(:disabled), .numo-header-results-foot button:hover { border-color: var(--numo-aq-accent); }
+.numo-header-results { margin: 0; padding: 0; list-style: none; }
+.numo-header-results li { border-top: 1px solid #413522; }
+.numo-header-results button {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: .5rem 2.1rem .53rem .8rem;
+  border: 0;
+  background: transparent;
+  color: var(--numo-aq-ink);
+  text-align: start;
+}
+.numo-header-results button::after { position: absolute; inset: .59rem .8rem auto auto; color: var(--numo-aq-accent); content: "↗"; }
+.numo-header-results button:hover { background: #32271a; }
+.numo-header-results button:focus-visible { outline-offset: -2px; }
+.numo-header-results button span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font: 400 1.06rem/1.17 "CARE NUMO Header Serif", Georgia, serif;
+}
+.numo-header-results button small { display: block; margin-top: .15rem; color: var(--numo-aq-muted); font: .62rem/1.3 var(--numo-aq-mono); }
+.numo-header-results-foot { display: flex; justify-content: flex-end; padding: .52rem .75rem; border-top: 1px solid #413522; }
+.numo-header-results-foot button svg { width: .8rem; height: .8rem; }
+
+@media (max-width: 980px) {
+  .numo-header-search .numo-header-care span { display: none; }
+}
+@media (max-width: 740px) {
+  .numo-header-search { justify-content: center; width: fit-content; }
+  .numo-header-search .numo-header-compact { display: flex; min-width: 44px; min-height: 44px; color: var(--numo-aq-accent); font-family: var(--numo-aq-mono); }
+  .numo-header-search .numo-header-care { min-width: 44px; min-height: 44px; }
+  .numo-header-surface { display: none; }
+  .numo-header-search[data-aq-expanded] .numo-header-surface {
+    position: fixed;
+    z-index: 950;
+    top: var(--numo-aq-tray-top, 3rem);
+    inset-inline: .55rem;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - var(--numo-aq-tray-top, 3rem) - max(.55rem, env(safe-area-inset-bottom)));
+    overflow: hidden;
+    border: 1px solid var(--numo-aq-line);
+    border-radius: .75rem;
+    background: var(--numo-aq-panel);
+    box-shadow: 0 .75rem 2rem #0009;
+  }
+  .numo-header-field { flex: none; min-height: 44px; border: 0; border-bottom: 1px solid var(--numo-aq-line); border-radius: 0; }
+  .numo-header-field input { font-size: 16px; }
+  .numo-header-search .numo-header-close { display: block; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--numo-aq-accent); font-size: 1.25rem; }
+  .numo-header-panel { position: static; flex: 1 1 auto; width: 100%; min-height: 0; max-width: none; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+  .numo-header-search .numo-header-open, .numo-header-results-foot button { min-height: 44px; }
+}
+@media (max-width: 460px) {
+  .numo-header-search .numo-header-care, .numo-header-compact span { display: none; }
+  .numo-header-results-top { gap: .45rem; padding-inline: .55rem; }
+  .numo-header-search .numo-header-open { max-width: 7.25rem; white-space: normal; }
+}
