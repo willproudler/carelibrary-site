@@ -60,25 +60,12 @@ def export_workspace_strip(workspace):
          f'{rail} .open-tab:is([data-kind="studio"],[data-kind="reader"]) .reading-kind'),
         (".workspace-project-badge", f"{rail} [data-tab-role]"),
         (".workspace-close", f"{rail} [data-close-book]"),
-        (".workspace-file-trigger", f"{rail} .studio-tab-file summary"),
-        (".workspace-file-trigger::after", f"{rail} .studio-tab-file summary::after"),
     )
     rules = []
     for source, target in selectors:
         style = declarations(css, source).replace("var(--st-font,ui-sans-serif,system-ui,sans-serif)", "var(--care-web-sans)")
         rules.append(f"  {target} {{ {style} }}")
-    label = declarations(css, ".workspace-label")
-    trigger = declarations(css, ".workspace-books-trigger")
-    chevron = declarations(css, ".workspace-books-trigger::after")
-    expanded = declarations(css, '.workspace-books-trigger[aria-expanded="true"]')
-    rules.extend((
-        f"  {rail} .open-books {{ min-height: 0; background: transparent; }}",
-        f"  {rail} .open-label {{ {label}; {trigger}; background: transparent; }}",
-        f"  {rail} .open-label::after {{ {chevron}; margin-inline-start: 0; }}",
-        f'  {rail} .open-label[aria-expanded="true"] {{ {expanded} }}',
-        f"  {rail} .studio-tab-file summary {{ height: auto; }}",
-        f'  {rail} .studio-tab-file summary [aria-hidden="true"] {{ display: none; }}',
-    ))
+    rules.append(f"  {rail} .open-books {{ min-height: 0; background: transparent; }}")
     return "\n" + scroll_styles + "\n@media (min-width: 641px) and (pointer: fine) {\n" + "\n".join(rules) + "\n}\n"
 
 
@@ -251,9 +238,6 @@ html[data-care-toolbar-labels="true"] {SHELL} .workbench-switch {{
 }}
 @media (pointer: coarse) and (min-width: 451px) {{
   {SHELL} .workbench-history button {{ width: 40px; }}
-}}
-@media (max-width: 365px) {{
-  {SHELL} .brand {{ display: none; }}
 }}
 @container workspace-search (max-width: 5.5rem) {{
   {SHELL} .workbench-search {{

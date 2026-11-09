@@ -34,11 +34,24 @@ const menuIcons = {
   view:'M2.5 5h15v10h-15zm5 0v10',
 };
 
-// Reuse the renderer's own menus and keyboard handling from the tab strip.
-export function createTabMenus(host) {
+export function updateLibraryMenu(menu, view) {
+  const manuscript = view === 'studio' || view === 'reader';
+  const numogram = view === 'numogram';
+  for (const group of menu.querySelectorAll('[data-file-group]')) {
+    const scope = group.dataset.fileGroup;
+    group.hidden = scope === 'numogram' ? !numogram : numogram || (scope === 'library' && manuscript);
+  }
+  for (const command of menu.querySelectorAll('[data-studio-editor-only],[data-file-manuscript-only]')) {
+    command.hidden = command.hasAttribute('data-studio-editor-only') ? view !== 'studio' : !manuscript;
+  }
+}
+
+// Keep the reader's own menu panels and keyboard handling. The brand remains
+// available as their anchor after its command dropdown closes.
+export function createTabMenus(host, {compactAnchor, beforeOpen = () => {}} = {}) {
   const window = host.ownerDocument.defaultView;
   let scope, release, active, signature, anchors;
-  return function sync(nextScope) {
+  function sync(nextScope) {
     if(scope===nextScope)return;
     const bridge=window[Symbol.for('care.context-menus/1')];
     if(!bridge)return;
@@ -65,19 +78,26 @@ export function createTabMenus(host) {
           path.setAttribute('d',menuIcons[id]||'M4 6h12M4 10h12M4 14h12');icon.append(path);
           const text=host.ownerDocument.createElement('span');text.textContent=label;
           button.append(icon,text);
-          button.onclick=()=>reading.toggle(id,{toggle:true,focus:true});
+          button.onclick=()=>{
+            beforeOpen();
+            reading.toggle(id,{toggle:true,focus:true});
+          };
           button.onkeydown=event=>{
             if(!['ArrowDown','ArrowUp','Escape'].includes(event.key))return;
             if(event.key==='Escape'&&button.getAttribute('aria-expanded')!=='true')return;
             event.preventDefault();
+            if(event.key!=='Escape')beforeOpen();
             reading.toggle(id,event.key==='Escape'?{close:true}:{focus:true,last:event.key==='ArrowUp'});
           };
           anchors.set(id,button);host.append(button);
         }
+        if(compactAnchor)anchors.set('$compact',compactAnchor);
         return anchors;
       },
     });
-  };
+  }
+  sync.dismiss=()=>active?.dismiss?.();
+  return sync;
 }
 
 // One layer above each reader's own axiom-route history. New hash entries

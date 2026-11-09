@@ -98,9 +98,6 @@ html[data-care-toolbar-labels="true"] .app-header.beta-workbench .workbench-swit
 @media (pointer: coarse) and (min-width: 451px) {
   .app-header.beta-workbench .workbench-history button { width: 40px; }
 }
-@media (max-width: 365px) {
-  .app-header.beta-workbench .brand { display: none; }
-}
 @container workspace-search (max-width: 5.5rem) {
   .app-header.beta-workbench .workbench-search {
     width: 36px;
@@ -224,7 +221,5 @@ body[data-care-vibrant-view="true"] .app-header.beta-workbench .brand .brand-mar
   .reading-tabbar .open-tab:is([data-kind="studio"],[data-kind="reader"]) .reading-kind { width:.82rem;height:.82rem }
   .reading-tabbar [data-tab-role] { flex:none;padding:.18rem .27rem;border:1px solid color-mix(in srgb,var(--workspace-accent) 24%,transparent);border-radius:.22rem;color:var(--workspace-accent);font:650 .47rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em;text-transform:uppercase }
   .reading-tabbar [data-close-book] { flex:none;width:1.55rem;height:1.55rem;font-size:1rem;color:#929ca6;border-radius:4px }
-  .reading-tabbar .studio-tab-file { margin-inline-start:0 }
   .reading-tabbar .open-books { min-height: 0; background: transparent; }
-  .reading-tabbar .open-label { display:inline-flex;font:750 .47rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em }
 }
