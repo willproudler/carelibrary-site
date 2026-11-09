@@ -252,8 +252,11 @@ async function start(){
  }
  const tabStrip=$('#reading-tabbar'),tabRail=$('#open-books'),tabScroll=$('#reading-tab-scroll'),splitWorkspace=$('#main');
  const fileMenu=$('.studio-tab-file');
+ const isShelf=()=>['library','laterals','corpuses'].includes(view);
  let fileView;
  function updateFileMenu(){
+  fileMenu.hidden=isShelf()&&!opened.some(key=>adapter.workFor(key)||fieldFor(key)||key===data.lateral.id);
+  if(fileMenu.hidden)fileMenu.open=false;
   if(fileView===view)return;
   fileView=view;
   fileMenu.open=false;
@@ -347,7 +350,7 @@ async function start(){
     else if(tab.right>rail.right)tabRail.scrollLeft+=tab.right-rail.right;
    }
   }
-  document.body.toggleAttribute('data-workbench-shelf',['library','laterals','corpuses'].includes(view));
+  document.body.toggleAttribute('data-workbench-shelf',isShelf());
   paintRoomChrome();
   $('#workbench-search-title').textContent=isManuscript()?(manuscriptTabs.get(keyNow)?.title||'Untitled'):view==='workspace'?tabDetails(keyNow).title||'Search':'Search';
   const openDraft=isManuscript()?draftId:lastDraftId;
@@ -1082,7 +1085,7 @@ async function start(){
   if(action==='demons')numoWorkspace?.openReference({kind:'matrix'});
   if(action==='aq')numoHeader?.open();
   if(action==='find'){
-   const input=['library','laterals','corpuses'].includes(view)&&shadow.querySelector('[data-shelf-input="query"]');
+   const input=isShelf()&&shadow.querySelector('[data-shelf-input="query"]');
    if(input){input.focus();input.select();}
    else spotlight.open('',{expanded:true});
   }

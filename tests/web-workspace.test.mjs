@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {createTabMenus,createWorkspaceHistory,findCatalogue,manuscriptHash} from '../web-workspace.mjs';
 
@@ -61,4 +62,38 @@ test('the tab bar anchors the real File and Go menus and leaves the shelf clear'
   sync('');
   assert.equal(host.hidden,true);
   assert.deepEqual(host.children,[]);
+});
+
+test('the shelf File menu closes with the last reading, even with a draft or NUMO tab open', () => {
+  const source=readFileSync(new URL('../public-app.mjs',import.meta.url),'utf8');
+  const fileMenu={open:false,querySelectorAll:()=>[],querySelector:()=>({})};
+  const setup=new Function('fileMenu','adapter','fieldFor','data',`
+    let view, opened;
+    const isManuscript=()=>view==='studio'||view==='reader';
+    ${source.slice(source.indexOf(' const isShelf='),source.indexOf(' const splitTools='))}
+    return (nextView, nextOpened)=>{
+      view=nextView;
+      opened=nextOpened;
+      updateFileMenu();
+    };
+  `);
+  const update=setup(fileMenu,{workFor:key=>key==='kant'},key=>key==='field',{lateral:{id:'lateral'}});
+  update('library',[]);
+  assert.equal(fileMenu.hidden,true);
+  update('library',['kant','draft:1','room:numogram']);
+  assert.equal(fileMenu.hidden,false);
+  fileMenu.open=true;
+  update('library',['draft:1','room:numogram']);
+  assert.equal(fileMenu.hidden,true);
+  assert.equal(fileMenu.open,false);
+  for(const view of ['laterals','corpuses']){
+    update(view,[]);
+    assert.equal(fileMenu.hidden,true);
+    update(view,[view==='laterals'?'lateral':'field']);
+    assert.equal(fileMenu.hidden,false);
+  }
+  for(const view of ['workspace','studio','reader','numogram']){
+    update(view,[]);
+    assert.equal(fileMenu.hidden,false);
+  }
 });

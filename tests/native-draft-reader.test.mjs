@@ -23,6 +23,18 @@ test('the private copy embeds the exact versioned Reader assets', () => {
   assert.match(html, /<script nonce="test-secret">/);
 });
 
+test('the beta Reader offers page layout next to zoom and keeps review in the Librarian', () => {
+  const html = draftReaderHtml({title: 'Draft', documents: []}, {token: 'test-secret'});
+  const tools = html.match(/<div[^>]+id="reader-zoom"[^>]*>(.*?)<\/details>\s*<\/div>/s)?.[1];
+  assert.match(tools, /data-zoom-level="fit"/);
+  assert.match(tools, /id="reader-format"/);
+  assert.match(tools, /data-reader-layout="paper"/);
+  assert.match(tools, /data-reader-layout="continuous"/);
+  const librarian = html.match(/<div[^>]+id="reader-tools"[^>]*>(.*?)<\/header>/s)?.[1];
+  assert.match(librarian, /id="toggle-margin"/);
+  assert.match(librarian, /id="download"/);
+});
+
 test('a manuscript cannot add executable markup to its Reader copy', () => {
   const payload = `</script><script>window.parent.stolen = true</script><img src="x" onerror="alert(1)">`;
   const packet = {title: payload, documents: [{title: payload, blocks: [{html: payload, text: payload}]}]};
