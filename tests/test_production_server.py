@@ -236,19 +236,24 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("max-age=0", logout.headers["set-cookie"].lower())
         self.assertEqual((await self.client.get("/data/library.json", headers={"Cookie": cookie})).status_code, 401)
 
-    async def test_only_the_library_companion_can_be_framed_by_the_same_origin(self):
+    async def test_only_workspace_companions_can_be_framed_by_the_same_origin(self):
         query = "?view=library&care_studio_embed=1&care_studio_pane_reading=1&care_studio_request=companion-token"
+        split = ("?care_studio_embed=1&care_studio_split_document=1&care_studio_request=companion-token"
+                 "&care_studio_split_draft=draft-123")
         guest = await self.client.get("/library.html" + query)
         self.assertEqual(guest.status_code, 303)
         self.assertEqual(guest.headers["x-frame-options"], "DENY")
         await self.authenticated()
-        companion = await self.client.get("/library.html" + query)
-        self.assertEqual(companion.status_code, 200)
-        self.assertEqual(companion.headers["x-frame-options"], "SAMEORIGIN")
-        self.assertIn("frame-ancestors 'self'", companion.headers["content-security-policy"])
+        for options in (query, split):
+            companion = await self.client.get("/library.html" + options)
+            self.assertEqual(companion.status_code, 200)
+            self.assertEqual(companion.headers["x-frame-options"], "SAMEORIGIN")
+            self.assertIn("frame-ancestors 'self'", companion.headers["content-security-policy"])
         for path in ("/library.html", "/library.html" + query + "&care_studio_embed=1",
                      "/library.html" + query.replace("companion-token", "x"),
-                     "/login.html" + query, "/api/studio/drafts" + query):
+                     "/library.html" + split.replace("draft-123", "invalid%2Fdraft"),
+                     "/library.html" + split + "&care_studio_pane_reading=1",
+                     "/login.html" + query, "/api/studio/drafts" + split):
             response = await self.client.get(path)
             self.assertEqual(response.headers["x-frame-options"], "DENY", path)
             self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"], path)

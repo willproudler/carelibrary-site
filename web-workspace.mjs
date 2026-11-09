@@ -85,27 +85,49 @@ export function createTabMenus(host) {
 export function createWorkspaceHistory(history, windowLocation, onChange) {
   const session = Math.random().toString(36).slice(2);
   let cursor = 0, end = 0, lastHash = windowLocation.hash;
+  const visits = new Map();
   const stamp = () => history.replaceState({...history.state, careWorkspace: {session, cursor}}, '');
   stamp();
+  function remember(metadata = {}) {
+    const entry = history.state?.careWorkspace;
+    if (entry?.session !== session || entry.cursor !== cursor) return;
+    const hash = windowLocation.hash, previous = visits.get(cursor);
+    visits.set(cursor, {...(previous?.hash === hash ? previous : {}), ...metadata, hash});
+    lastHash = hash;
+  }
   function observe() {
     const entry = history.state?.careWorkspace;
     if (entry?.session === session) cursor = entry.cursor;
     else if (windowLocation.hash !== lastHash) {
+      for (const index of visits.keys()) if (index > cursor) visits.delete(index);
       end = ++cursor;
       stamp();
     }
-    lastHash = windowLocation.hash;
+    remember();
     onChange({back:cursor > 0, forward:cursor < end});
   }
+  const validOffset = step => Number.isInteger(step) && step !== 0 && cursor + step >= 0 && cursor + step <= end;
   observe();
   return {
     observe,
+    remember,
+    recent(limit = 60) {
+      const entries = [];
+      for (let offset = -1; cursor + offset >= 0 && entries.length < limit; offset--) {
+        const entry = visits.get(cursor + offset);
+        if (entry) entries.push({...entry, offset});
+      }
+      return entries;
+    },
+    destination(step) {
+      return validOffset(step) ? visits.get(cursor + step)?.hash : undefined;
+    },
     replace(url) {
       history.replaceState(history.state, '', url);
-      lastHash = windowLocation.hash;
+      remember();
     },
     move(step) {
-      if (step === -1 && cursor > 0 || step === 1 && cursor < end) history.go(step);
+      if (validOffset(step)) history.go(step);
     },
   };
 }

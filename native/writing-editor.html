@@ -385,19 +385,26 @@
           </button>
         </div>
       </header>
-      <button type="button" class="librarian-library" data-action="history-library" title="Browse the Library beside your draft">
-        <svg class="icon librarian-library-book" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 5.3C7.7 3.7 4.7 3.2 2.5 4v11c2.3-.8 5.3-.3 7.5 1.3 2.2-1.6 5.2-2.1 7.5-1.3V4c-2.2-.8-5.2-.3-7.5 1.3ZM10 5.3v11"/></svg>
-        <span><strong>Open Library</strong><small>Browse beside your draft</small></span>
-        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
-      </button>
+      <div class="librarian-destinations">
+        <button type="button" class="librarian-library" data-action="history-library" title="Browse the Library beside your draft">
+          <svg class="icon librarian-library-book" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 5.3C7.7 3.7 4.7 3.2 2.5 4v11c2.3-.8 5.3-.3 7.5 1.3 2.2-1.6 5.2-2.1 7.5-1.3V4c-2.2-.8-5.2-.3-7.5 1.3ZM10 5.3v11"/></svg>
+          <span><strong>Open Library</strong><small>Browse beside your draft</small></span>
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
+        </button>
+        <button type="button" class="librarian-library librarian-numo" data-action="numogram-companion" title="Explore NUMO beside your draft">
+          <svg class="icon librarian-library-book" aria-hidden="true" viewBox="0 0 20 20"><circle cx="10" cy="4.5" r="2.5"/><circle cx="4.5" cy="14" r="2.5"/><circle cx="15.5" cy="14" r="2.5"/><path d="m8.6 6.6-2.8 5.2m5.6-5.2 2.8 5.2M7 14h6"/></svg>
+          <span><strong>Open NUMO</strong><small>Explore beside your draft</small></span>
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
+        </button>
+      </div>
       <button type="button" class="librarian-peer-review" data-peer-review-menu aria-controls="care-writing-peer-review" hidden>
         <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 4.5h14v9.25H8.5L5 16.5v-2.75H3V4.5Z M6.5 8h7m-7 2.75h4"/></svg>
         <span>Reader review</span>
         <span class="peer-review-unread" data-peer-review-menu-unread aria-hidden="true" hidden></span>
       </button>
       <div class="research-tabs" role="group" aria-label="Librarian views">
-        <button type="button" data-tab="history" aria-pressed="false" aria-controls="care-librarian-history">History</button>
         <button type="button" data-tab="suggestions" aria-pressed="true" aria-controls="care-writing-search">Find</button>
+        <button type="button" data-tab="history" aria-pressed="false" aria-controls="care-librarian-history">History</button>
         <button type="button" data-tab="references" aria-pressed="false">References <span data-ref-count></span></button>
         <button type="button" data-tab="reading" aria-pressed="false" hidden>Reading</button>
       </div>

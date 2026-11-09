@@ -9633,6 +9633,10 @@ function setup(root, api) {
     const isolated = records.length && records.every(record => record.type === "characterData" && record.target === edit.node);
     return {typing: true, textBlock: isolated ? edit.block : null};
   }
+  root.ownerDocument.addEventListener("care:numogram-draft-scan", event => {
+    if (runtime.compact || !runtime.docId || !root.isConnected) return;
+    event.detail.receive(runtime.paper);
+  }, {signal: runtime.controller.signal});
   runtime.controller.signal.addEventListener("abort", () => nativeTextObserver.disconnect(), {once: true});
   on(runtime.paper, "beforeinput", event => {
     finishNativeTextEdit();
@@ -10078,9 +10082,20 @@ function setup(root, api) {
     }
     if (action === "panel") togglePane(runtime, "research");
     if (action === "peek-research") togglePane(runtime, "research");
+    if (["history-library", "library-shelf", "resume-library"].includes(action)) {
+      const doc = runtime.root.ownerDocument;
+      doc.dispatchEvent(new doc.defaultView.CustomEvent("care:library-companion-open"));
+    }
     if (action === "history-library" || action === "library-shelf") {
       if (action === "history-library" && setLibraryMinimized(runtime, false)) return;
       send(runtime, "history-open", {kind: "library", beside: !runtime.compact});
+    }
+    if (action === "numogram-companion") {
+      setLibraryMinimized(runtime, true);
+      runtime.activePane = "";
+      renderPanel(runtime);
+      const doc = runtime.root.ownerDocument;
+      doc.dispatchEvent(new doc.defaultView.CustomEvent("care:numogram-companion-open"));
     }
     if (action === "review-draft") reviewWritingDraft(runtime);
     if (action === "review-poll") pollWritingDraftReview(runtime);
@@ -10127,7 +10142,7 @@ export default function(component) {
       installWritingBinder(runtime);
       installWritingZoom(runtime);
       installWritingPeerReview(runtime);
-      selectTab(runtime, "history");
+      selectTab(runtime, "suggestions");
       observeLibraryShell(runtime);
       try {
         runtime.continuous = localStorage.getItem("care-writing-layout") === "continuous";

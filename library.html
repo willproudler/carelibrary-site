@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="/study-sets.css">
 <link rel="stylesheet" href="/numo-header-skin.css">
 <link rel="stylesheet" href="/native/numogram-header-search.css">
+<link rel="stylesheet" href="/native/numogram-companion.css">
 <meta name="robots" content="noindex,nofollow">
 </head><body class="care-library-shell">
 <a class="skip-link" href="#reader">Skip to the library</a>
@@ -104,18 +105,31 @@
  <details class="studio-tab-file">
   <summary>File <span aria-hidden="true">⌄</span></summary>
   <div class="workbench-menu">
-   <button type="button" data-studio-command="new">New draft</button>
-   <button type="button" data-document-picker="studio">Open Drafts…</button>
-   <button type="button" data-document-picker="reader">Open CARE Reader…</button>
-   <button type="button" data-studio-command="binder" data-studio-editor-only>Project Binder</button>
-   <button type="button" data-studio-command="save" data-studio-editor-only>Save draft</button>
-   <button type="button" data-studio-command="find">Find in document</button>
-   <button type="button" data-studio-command="format" data-studio-editor-only>Format</button>
-   <button type="button" data-studio-command="manual-footnote" data-studio-editor-only>Insert footnote</button>
-   <button type="button" data-studio-command="footnote-style" data-studio-editor-only>Footnote style</button>
-   <button type="button" data-studio-command="export">Download draft</button>
-   <button type="button" data-studio-command="import">Import manuscript…</button>
-   <button type="button" data-studio-command="remove">Move draft to Trash…</button>
+   <div class="workspace-file-group" data-file-group="library">
+    <button type="button" data-workspace-file-action="find">Find in Library</button>
+    <a href="/library.html" data-workspace-file-action="library">Open Library</a>
+    <a href="#view=preparation">Add to Library…</a>
+    <a href="#view=saved">Saved Library</a>
+   </div>
+   <div class="workspace-file-group" data-file-group="numogram" hidden>
+    <button type="button" data-workspace-file-action="map">Numogram map</button>
+    <button type="button" data-workspace-file-action="demons">Periodic table of demons</button>
+    <button type="button" data-workspace-file-action="aq">Search NUMO / AQ</button>
+   </div>
+   <div class="workspace-file-group" data-file-group="documents">
+    <button type="button" data-studio-command="new">New draft</button>
+    <button type="button" data-document-picker="studio">Open Drafts…</button>
+    <button type="button" data-document-picker="reader">Open CARE Reader…</button>
+    <button type="button" data-studio-command="binder" data-studio-editor-only>Project Binder</button>
+    <button type="button" data-studio-command="save" data-studio-editor-only>Save draft</button>
+    <button type="button" data-studio-command="find" data-file-manuscript-only>Find in document</button>
+    <button type="button" data-studio-command="format" data-studio-editor-only>Format</button>
+    <button type="button" data-studio-command="manual-footnote" data-studio-editor-only>Insert footnote</button>
+    <button type="button" data-studio-command="footnote-style" data-studio-editor-only>Footnote style</button>
+    <button type="button" data-studio-command="export" data-file-manuscript-only>Download draft</button>
+    <button type="button" data-studio-command="import">Import manuscript…</button>
+    <button type="button" data-studio-command="remove" data-file-manuscript-only>Move draft to Trash…</button>
+   </div>
   </div>
  </details>
  <button type="button" class="open-label" data-open-readings aria-haspopup="menu" aria-expanded="false">Open readings</button>
@@ -149,6 +163,7 @@
   </div>
  </section>
  <section id="studio-workspace" hidden aria-label="Document workspace"></section>
+ <div id="numo-companion" hidden></div>
  <section id="study-sets-view" hidden aria-label="Study sets"></section><section class="saved-library" data-saved-library hidden aria-label="Saved library"></section><div id="reader" tabindex="-1"><p class="loading" role="status"><img class="loading-mark" src="/assets/care-mark.svg" alt=""><span class="loading-name"><strong>CARE</strong> Library <small><span data-nosnippet>Beta</span></small></span></p></div></main>
 <div id="notice" class="notice" role="status" hidden></div>
 <dialog class="workbench-feature" id="workbench-feature" aria-labelledby="workbench-feature-title">

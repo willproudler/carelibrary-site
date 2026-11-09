@@ -444,9 +444,14 @@ async def static_file(request):
     if not permitted:
         raise HTTPException(404, "Not found.")
     companion_id = request.query_params.getlist("care_studio_request")
+    split_draft = request.query_params.getlist("care_studio_split_draft")
+    reading_companion = request.query_params.getlist("care_studio_pane_reading") == ["1"]
+    document_companion = (request.query_params.getlist("care_studio_split_document") == ["1"]
+                          and len(split_draft) == 1
+                          and bool(re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", split_draft[0])))
     companion = (relative == "library.html"
                  and request.query_params.getlist("care_studio_embed") == ["1"]
-                 and request.query_params.getlist("care_studio_pane_reading") == ["1"]
+                 and (reading_companion != document_companion)
                  and len(companion_id) == 1
                  and bool(re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", companion_id[0])))
     configuration = await run_in_threadpool(request.app.state.site_settings.get)
@@ -473,7 +478,7 @@ async def static_file(request):
     headers = {"Vary": "Cookie, Accept-Encoding"}
     if not public:
         headers["X-Robots-Tag"] = "noindex"
-    # The Library companion follows the same access rules as the main Library.
+    # The workspace companions follow the same access rules as the main Library.
     # The draft, login and settings endpoints retain the anti-framing headers.
     if companion:
         request.scope["care_library_companion"] = True

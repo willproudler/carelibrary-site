@@ -1,11 +1,11 @@
-import mountInstrument, {arithmetic, css, html, instrumentAQInput} from './numogram-instrument.mjs?v=68473c49ae7c86ac';
+import mountInstrument, {arithmetic, css, html, instrumentAQInput, calculateInstrumentAQ} from './numogram-instrument.mjs?v=803cc9861198f881';
 import reference from './numogram-reference.mjs';
 
 const aqEndpoint = '/api/numo/aq';
 
-export {instrumentAQInput};
+export {instrumentAQInput, calculateInstrumentAQ};
 
-export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ} = {}) {
+export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ, companion = false} = {}) {
   host.setAttribute('data-care-numo-surface', '');
   const shadow = host.shadowRoot ?? host.attachShadow({mode: 'open'});
   shadow.innerHTML = `<style>:host{overflow:auto}${css}</style>${html}`;
@@ -54,6 +54,7 @@ export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ} = {
     parentElement: shadow,
     data: {
       world,
+      companion,
       public_reference: true,
       instrument_write: false,
       aq_collection_write: false,

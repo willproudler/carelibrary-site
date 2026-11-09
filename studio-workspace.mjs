@@ -1,3 +1,4 @@
+import {mountNumogramDraftMargins,numogramDraftLines} from './native/numogram-draft-lines.mjs';
 import {loginURL} from './auth.mjs';
 import {searchPublished, searchReadingHref} from './native/beta-search.mjs';
 import {openFeaturePreview} from './native/feature-previews.mjs';
@@ -638,6 +639,7 @@ export function createStudioWorkspace({
     if (host.hidden || fragment === null) return false;
     if (reader) return reader.openLibrary(fragment);
     if (!mounted || !active) return false;
+    doc.dispatchEvent(new win.CustomEvent('care:library-companion-open'));
     const resume = mounted.root.querySelector('[data-action="resume-library"]');
     if (!fragment && resume && !resume.hidden) {
       resume.click();
@@ -646,6 +648,23 @@ export function createStudioWorkspace({
       renderEditor();
     }
     return true;
+  }
+
+  function minimizeLibrary() {
+    if (reader) reader.minimizeLibrary();
+    else mounted?.root.querySelector('[data-library-dock]:not([hidden]) [data-action="minimize-library"]')?.click();
+  }
+
+  function draftPaper() {
+    return reader?.draftPaper() || mounted?.root.querySelector('[data-paper]');
+  }
+
+  function draftLines() {
+    return numogramDraftLines(draftPaper());
+  }
+
+  function showAQMargins(calculate) {
+    return mountNumogramDraftMargins(draftPaper(),calculate);
   }
 
   function dockDestination() {
@@ -1198,7 +1217,7 @@ export function createStudioWorkspace({
   const initialAccount = account;
   account = null;
   setAccount(initialAccount, {useLocal: guestDrafts});
-  return {show, hide, showBeside, closeBeside, syncBesideRoute, setAccount, command, deferNavigation, openLibrary, loadDraftIndex, pickerData,
+  return {show, hide, showBeside, closeBeside, syncBesideRoute, setAccount, command, deferNavigation, openLibrary, minimizeLibrary, draftLines, showAQMargins, loadDraftIndex, pickerData,
     get canWriteBeside() { return Boolean(store); },
     get besideOpen() { return Boolean(besideRequest); },
     get besideRequest() { return besideRequest; },

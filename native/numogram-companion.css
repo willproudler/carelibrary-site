@@ -1,0 +1,57 @@
+.numo-companion[hidden], .numo-companion [hidden] { display: none !important; }
+#main:has(.numo-companion:not([hidden])) { position: relative; }
+.numo-companion { position: absolute; inset: 0; pointer-events: none; --numo-pane-edge: #345442; --numo-pane-ink: #b7e8c9; }
+.numo-companion-panel {
+  pointer-events: auto; container-type: inline-size;
+  position: absolute; z-index: 54; inset: .65rem .7rem .7rem auto;
+  display: flex; flex-direction: column; width: clamp(24rem, 45vw, 52rem);
+  min-height: 0; overflow: hidden; border: 1px solid var(--numo-pane-edge);
+  border-radius: 13px; background: #000; box-shadow: 0 12px 40px #0008;
+}
+.numo-companion-top {
+  display: flex; flex: none; align-items: center; gap: .25rem; padding: .4rem;
+  border-bottom: 1px solid var(--numo-pane-edge); color: #3dff8c;
+}
+.numo-companion-top strong { margin-inline: .4rem auto; font: 500 .72rem/1.2 ui-monospace, monospace; letter-spacing: .09em; white-space: nowrap; }
+.numo-companion :is(button,input) { color: var(--numo-pane-ink); background: #050a07; border: 1px solid var(--numo-pane-edge); border-radius: 6px; }
+.numo-companion-top button { min-height: 32px; padding: .25rem .5rem; font: 600 .7rem/1.2 system-ui, sans-serif; white-space: nowrap; }
+.numo-companion button:is(:hover,[aria-pressed=true]) { border-color: #69b986; color: #e4f9e9; }
+.numo-companion-instrument, .numo-companion-draft { flex: 1; min-height: 0; overflow: auto; }
+.numo-companion-draft { padding: .85rem; color: var(--numo-pane-ink); }
+.numo-companion-draft form { display: flex; flex-wrap: wrap; gap: .4rem; }
+.numo-companion-draft input { flex: 1 1 8rem; min-width: 0; padding: .5rem; color: #ffb547; }
+.numo-companion-draft form button { padding: .45rem .65rem; }
+.numo-companion-draft ol { list-style: none; margin: 0; padding: 0; }
+.numo-companion-draft li + li { margin-top: .4rem; }
+.numo-companion-draft li button { display: grid; gap: .3rem; width: 100%; padding: .6rem; text-align: start; }
+.numo-companion-draft li button:disabled { cursor: default; }
+.numo-companion-draft li small { color: #ffb547; font: 500 .67rem ui-monospace, monospace; }
+.numo-companion-draft li span { overflow-wrap: anywhere; font: 1rem/1.35 Georgia, serif; }
+.numo-companion .numo-companion-resume {
+  pointer-events: auto;
+  position: absolute; z-index: 52; right: 1rem; bottom: calc(7rem + var(--care-safe-bottom,0px));
+  padding: .45rem .7rem; border-radius: 999px; color: #3dff8c; font-size: .74rem;
+}
+@media (max-width: 720px) {
+  .numo-companion-panel { inset: auto .35rem .35rem; width: auto; height: 78%; }
+  .numo-companion-top button { min-height: 40px; }
+}
+.numo-companion-top { flex-wrap: nowrap; background: #000; }
+.numo-companion-top strong { margin-inline: .25rem auto; }
+.numo-companion-search {
+  flex: 1 1 5rem;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid #655128;
+  border-radius: 6px;
+  color: #f4b951;
+  background: #080604;
+}
+.numo-companion-search label { display: flex; flex: 1; align-items: center; gap: .5rem; min-width: 0; padding-inline-start: .5rem; font: .74rem ui-monospace, monospace; }
+.numo-companion-search input { flex: 1; min-width: 0; width: 100%; padding: .35rem 0; border: 0; color: inherit; background: transparent; font: inherit; }
+.numo-companion-search button { border: 0; color: inherit; background: transparent; }
+@container (max-width: 33rem) {
+  .numo-companion-top strong { display: none; }
+  .numo-companion-top button { padding-inline: .35rem; font-size: .66rem; }
+}

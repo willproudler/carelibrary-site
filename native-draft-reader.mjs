@@ -191,6 +191,9 @@ export function mountNativeDraftReader(host, {
     if (stopped || !frame || event.origin !== view.location.origin || event.source !== frame.contentWindow ||
         data?.token !== token) return;
     if (data.type === 'care-reader-ready') started();
+    if (['care:numogram-companion-open','care:library-companion-open'].includes(data.type)) {
+      document.dispatchEvent(new view.CustomEvent(data.type));
+    }
     if (data.type === 'care-reader-search') onSearch?.(typeof data.query === 'string' ? data.query.slice(0, 500) : '');
     if (data.type === 'care-reader-action' && typeof data.action === 'string' && Object.hasOwn(callbacks, data.action)) {
       // The Reader already gave the writer a chance to keep pending marks.
@@ -241,6 +244,11 @@ export function mountNativeDraftReader(host, {
       return approved || readerEvent('care-reader-before-navigation');
     },
     find: () => !readerEvent('care-reader-find'),
+    draftPaper: () => frame?.contentDocument?.querySelector('#folio'),
+    minimizeLibrary() {
+      const button = frame?.contentDocument?.querySelector('#library-pane:not([hidden]) #library-minimize');
+      button?.click();
+    },
     openLibrary(fragment) {
       if (!active || !library) return false;
       frame.contentWindow.postMessage({type: 'care-reader-library', token, fragment}, view.location.origin);
