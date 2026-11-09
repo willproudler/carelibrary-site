@@ -27,7 +27,7 @@ Materialization changes `data/library.json` from its committed split-file manife
 
 ## Production hosting
 
-The beta runs on the existing Render service `carelibrary-beta` in Frankfurt with a 1 GB persistent disk. The approved base hosting cost is $7.25 per month. `render.yaml` targets `main`, with deployments triggered manually and automatic deployment disabled. Preserve this service and its disk through future releases. No account or email password is committed. GitHub Pages cannot run the login server.
+The beta runs on the existing Render service `carelibrary-beta` in Frankfurt with a 1 GB persistent disk. The approved base hosting cost is $7.25 per month. `render.yaml` targets `main`. A change to `data/library.json` deploys after the GitHub checks pass. Preserve this service and its disk through future releases. No account or email password is committed. GitHub Pages cannot run the login server.
 
 Required settings:
 
@@ -73,14 +73,14 @@ Returning to beta mode blocks subsequent guest requests. It cannot recall readin
 
 ### Domain status and deployment
 
-The migration completed on 2 November 2026. The Namecheap website records were verified publicly: the apex A record points to `216.24.57.1`, and `www` is a CNAME for `carelibrary-beta.onrender.com`. Both Render custom domains have working TLS, with `www` redirecting to `https://carelibrary.org`. The former GitHub Pages site is unpublished. The existing Render service now deploys `main` manually, with automatic deployment off and the same persistent disk.
+The migration completed on 2 November 2026. The Namecheap website records were verified publicly: the apex A record points to `216.24.57.1`, and `www` is a CNAME for `carelibrary-beta.onrender.com`. Both Render custom domains have working TLS, with `www` redirecting to `https://carelibrary.org`. The former GitHub Pages site is unpublished. The Render service still uses the same persistent disk.
 
 At the custom domain, `/healthz`, `/readyz`, `/api/session`, and `/api/access-requests/config` returned 200; the anonymous session was unauthenticated and email configuration was ready. Anonymous requests to `/library.html` redirected to login, and catalogue and native-reader files returned 401. The `www` redirect passed normal TLS verification. The successful account login and real Will-only email test were performed at the Render URL.
 
 For future releases:
 
 1. Keep `.github/workflows/pages.yml` as a verification-only workflow. It verifies the app and never uploads protected files to Pages; keep GitHub Pages unpublished.
-2. Review changes and let checks pass on `main`, then trigger deployment manually on the existing Render service. Preserve the persistent database and private email settings.
+2. For catalogue releases, let checks pass on `main` and verify the automatic deploy on the existing Render service. For releases that leave the catalogue file untouched, trigger deployment manually after checks pass. Preserve the persistent database and private email settings.
 3. Recheck HTTPS, the `www` redirect, the homepage and anonymous access for the current beta setting, login/logout, owner-only settings, and the access-request form after deployment. Keep the saved mode unchanged during production checks. An unavailable mail service must never report that a message was sent.
 
 This protects the hosted beta going forward. Previously published readings remain in this repository's public history; login cannot retroactively make those copies confidential. Do not change repository visibility or remove publication history without a separate decision by the owner.

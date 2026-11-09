@@ -1,5 +1,5 @@
 # Existing approved service: carelibrary-beta in Frankfurt, with a 1 GB private disk.
-# Deploy main manually; preserve the service and its disk through future releases.
+# Deploy catalogue updates after checks pass. Preserve the service and disk.
 # Configure the Gmail app password privately in Render, never in this repository.
 services:
   - type: web
@@ -10,7 +10,10 @@ services:
     region: frankfurt
     plan: 0.5c-512mb
     numInstances: 1
-    autoDeployTrigger: "off"
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - data/library.json
     domains:
       - carelibrary.org
       - www.carelibrary.org
