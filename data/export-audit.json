@@ -2,10 +2,10 @@
   "works": [
     {
       "slug": "kant",
-      "seal": "SEAL_BA94_D478443A55A558525B9C",
-      "sections": 94,
-      "units": 137,
-      "items": 12444
+      "seal": "SAVED_C0D57A33E341AF7234FF116A",
+      "sections": 93,
+      "units": 135,
+      "items": 12224
     },
     {
       "slug": "hume",
@@ -101,8 +101,8 @@
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 114697493,
-  "sha256": "1fcc0642478a2c1351ebb4f07aa2ccef682903868fd04e349600b413dcef6bc9",
+  "bytes": 113409768,
+  "sha256": "f3d6eb12e8defe5994471f605712c083ffa395f3062a67bbe6736106119a01f1",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",

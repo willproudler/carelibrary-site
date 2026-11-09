@@ -9,7 +9,7 @@
   "assets": {
     "study-desk.css": "6e503b560db8595ad3082f776e2ee6a9854ab9604c532bb3ffd837e11e36b772",
     "study-desk.mjs": "b8faf68e93106c34cccf9c03ca588e98f9ca8bbabe7a681b246d7a9304b4b5c2",
-    "reading-views.mjs": "a11a60ccd6c2a530e11ed4a5bd1e6a70a8b3f9e23b199ffa01b5aa1b828d400f"
+    "reading-views.mjs": "5f229f64abfb04c69c02e59017fbff28739c32e620a74ebaeebd8cbb1d947194"
   },
   "reading_presentation": "care-item-presentation/7",
   "source_typography": "care-study-desk/2.74"
