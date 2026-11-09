@@ -60,10 +60,24 @@ async function start(){
  const localPreview=document.documentElement.dataset.careLocalPreview==='true';
  const localAddress=location.protocol==='http:'&&['127.0.0.1','localhost'].includes(location.hostname);
  const guestDrafts=!account&&!localPreview&&!localAddress&&!libraryCompanion&&document.documentElement.dataset.carePublicMode==='true';
- const workspaceHistory=createWorkspaceHistory(window.history,location,({back,forward})=>{
+ let pageHistory={back:false,forward:false},numoHistory={back:false,forward:false},historyInNumo=false;
+ function paintHistoryButtons(){
+  const {back,forward}=historyInNumo?numoHistory:pageHistory;
   document.querySelectorAll('[data-history]').forEach(button=>{
-   button.disabled=Number(button.dataset.history)<0?!back:!forward;
+   const backwards=Number(button.dataset.history)<0;
+   button.disabled=backwards?!back:!forward;
+   const label=historyInNumo?(backwards?'Previous chamber':'Next chamber'):(backwards?'Go back':'Go forward');
+   button.setAttribute('aria-label',label);
+   button.title=label;
   });
+ }
+ const workspaceHistory=createWorkspaceHistory(window.history,location,history=>{
+  pageHistory=history;
+  if(!historyInNumo)paintHistoryButtons();
+ });
+ document.addEventListener('care:numo-history',event=>{
+  numoHistory=event.detail;
+  if(historyInNumo)paintHistoryButtons();
  });
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise;
@@ -250,7 +264,9 @@ async function start(){
   if(storageNotice.hidden)storageNotice.open=false;
   const currentPage=view==='workspace'?'library':view;
   document.body.dataset.workbenchView=currentPage;
-  numoHeader?.setActive(view==='numogram');
+  historyInNumo=view==='numogram';
+  paintHistoryButtons();
+  numoHeader?.setActive(historyInNumo);
   $('.workbench-search').hidden=view==='numogram';
   $('[data-numo-tools]').hidden=view!=='numogram';
   const markup=opened.map(key=>{
@@ -732,7 +748,11 @@ async function start(){
   if(isManuscript()&&link.matches('[data-page=library]')&&studio.openLibrary())return;
   if(location.hash)location.hash='';else{view='library';paint();}
  }));
- for(const button of document.querySelectorAll('[data-history]'))button.onclick=()=>workspaceHistory.move(Number(button.dataset.history));
+ for(const button of document.querySelectorAll('[data-history]'))button.onclick=()=>{
+  const step=Number(button.dataset.history);
+  if(historyInNumo)document.dispatchEvent(new CustomEvent('care:numo-history-step',{detail:{step}}));
+  else workspaceHistory.move(step);
+ };
  addEventListener('popstate',()=>workspaceHistory.observe());
  const settingsMenu=$('#workbench-settings'),roomsMenu=$('#workbench-rooms'),labels=$('#workbench-labels');
  const toolbarMenus=[roomsMenu,settingsMenu];

@@ -1852,6 +1852,17 @@ export default function ({parentElement, data, setTriggerValue}) {
     return instrumentSelectionName(current)?state.instrument.trail.concat(current).filter(spot=>instrumentSelectionName(spot)).slice(-5):[];
   }
   const instrumentCanGoBack=()=>state.instrument.trail.length>0 || Boolean(instrumentSelectionName(instrumentSnapshot()));
+  function syncHeaderHistory() {
+    if(!headerAQ || !frameWindow?.document)return;
+    const detail={back:instrumentCanGoBack(),forward:state.instrument.forward.length>0};
+    frameWindow.careNumoHistory=detail;
+    frameWindow.document.dispatchEvent(new frameWindow.CustomEvent('care:numo-history',{detail}));
+  }
+  function headerHistoryStep(event) {
+    if(state.mode!=='instrument')return;
+    const step=event.detail?.step;
+    if(step===-1 || step===1)instrumentHistoryStep(step<0?'back':'forward');
+  }
   function instrumentHistoryControls() {
     const arrow=(direction,label,enabled,path)=>`<button type="button" data-instrument-history="${direction}" aria-label="${label}" title="${label}"${enabled?'':' disabled'}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="${path}" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
     return `<nav class="nl-instrument-history" aria-label="Chamber history">${arrow('back','Previous chamber',instrumentCanGoBack(),'M10 3.5 5.5 8l4.5 4.5M6 8h7')}${arrow('forward','Next chamber',state.instrument.forward.length,'M6 3.5 10.5 8 6 12.5M3 8h7')}</nav>`;
@@ -3402,6 +3413,7 @@ export default function ({parentElement, data, setTriggerValue}) {
     });
     instrumentObserveAQFeed();
     persist();
+    syncHeaderHistory();
   }
   function render() {
     clearTimeout(timer);
@@ -3720,6 +3732,7 @@ export default function ({parentElement, data, setTriggerValue}) {
   }
   function openHeaderReference({kind,id}) {
     state.mode='instrument';
+    state.instrument.deck='';
     instrumentOpenSubject(kind,id,{repaint:false});
   }
   if(data.reference_focus)openHeaderReference(data.reference_focus);
@@ -3733,11 +3746,17 @@ export default function ({parentElement, data, setTriggerValue}) {
     render();
   });
   data.bindToolsOpen?.(showHeaderTools);
-  if(headerAQ)frameWindow?.document?.addEventListener?.('pointerdown',dismissHeaderTools);
+  if(headerAQ){
+    frameWindow?.document?.addEventListener?.('pointerdown',dismissHeaderTools);
+    frameWindow?.document?.addEventListener?.('care:numo-history-step',headerHistoryStep);
+  }
   render();
   if(data.open_tools)showHeaderTools();
   return () => {
-    if(headerAQ)frameWindow?.document?.removeEventListener?.('pointerdown',dismissHeaderTools);
+    if(headerAQ){
+      frameWindow?.document?.removeEventListener?.('pointerdown',dismissHeaderTools);
+      frameWindow?.document?.removeEventListener?.('care:numo-history-step',headerHistoryStep);
+    }
     clearTimeout(timer);clearTimeout(mapClickTimer);clearTimeout(instrumentAQTimer);
     instrumentPauseAQFeed();
     stopInstrumentCurrents();
