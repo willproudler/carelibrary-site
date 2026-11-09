@@ -5899,6 +5899,12 @@ function selectTab(runtime, tab) {
 function renderPanel(runtime) {
   const hidePanes = runtime.focus && runtime.compact;
   runtime.panel.hidden = runtime.activePane !== "research" || hidePanes;
+  const librarianOpen = !runtime.panel.hidden;
+  if (!runtime.compact && runtime.librarianOpen !== librarianOpen) {
+    runtime.librarianOpen = librarianOpen;
+    const doc = runtime.root.ownerDocument;
+    doc.dispatchEvent(new doc.defaultView.CustomEvent("care:librarian-visibility", {detail:{open:librarianOpen}}));
+  }
   scheduleWritingSearchPoll(runtime);
   if (!runtime.panel.hidden) runtime.peerReview?.close();
   if (runtime.compact) runtime.outline.hidden = runtime.activePane !== "outline" || hidePanes;
@@ -5989,6 +5995,12 @@ function updateLibraryDockVisibility(runtime) {
   runtime.root.classList.toggle("library-open", hasLibrary && !minimized);
   runtime.root.classList.toggle("library-minimized", minimized);
   if (runtime.libraryResume) runtime.libraryResume.hidden = !minimized;
+  const open = hasLibrary && !minimized;
+  if (!runtime.compact && runtime.libraryDockOpen !== open) {
+    runtime.libraryDockOpen = open;
+    const doc = runtime.root.ownerDocument;
+    doc.dispatchEvent(new doc.defaultView.CustomEvent("care:library-companion-visibility", {detail:{open}}));
+  }
 }
 
 function setLibraryMinimized(runtime, minimized) {

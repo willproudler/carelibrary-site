@@ -1,4 +1,4 @@
-import mountInstrument, {arithmetic, css, html, instrumentAQInput, calculateInstrumentAQ} from './numogram-instrument.mjs?v=49206fc74da938ad';
+import mountInstrument, {arithmetic, css, html, instrumentAQInput, calculateInstrumentAQ} from './numogram-instrument.mjs?v=69774fc105c98fa9';
 import reference from './numogram-reference.mjs';
 
 const aqEndpoint = '/api/numo/aq';

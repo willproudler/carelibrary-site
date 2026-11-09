@@ -33,7 +33,7 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   const panel = $('aside'), resume = $('[data-action="resume"]');
   const map = $('.numo-companion-instrument'), finder = $('.numo-companion-draft');
   const input = finder.querySelector('input'), output = $('[data-numo-lines]'), status = $('[data-numo-status]');
-  let surface = 'map', phase = 'closed', visible = false, instrument, module, opening;
+  let surface = 'map', phase = 'closed', visible = false, libraryOpen = false, librarianOpen = false, instrument, module, opening;
   const marginToggle = $('[data-action="margins"]');
   let generation = 0, clearMargins, draftKey;
   function hideMargins() {
@@ -45,7 +45,7 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   function paint() {
     host.hidden = !visible || phase === 'closed';
     panel.hidden = phase !== 'open';
-    resume.hidden = phase !== 'minimized';
+    resume.hidden = phase !== 'minimized' || libraryOpen || librarianOpen;
     map.hidden = surface === 'draft';
     finder.hidden = surface !== 'draft';
     for (const button of host.querySelectorAll('[data-view]')) {
@@ -181,11 +181,21 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
     open,
     minimize() { if (phase === 'open') setPhase('minimized'); },
     close() { setPhase('closed'); },
+    setLibraryOpen(value) {
+      libraryOpen = value;
+      if (libraryOpen && phase === 'open') setPhase('minimized');
+      else paint();
+    },
+    setLibrarianOpen(value) {
+      librarianOpen = value;
+      if (librarianOpen && phase === 'open') setPhase('minimized');
+      else paint();
+    },
     setVisible(value, key) {
       if (draftKey !== key) { draftKey = key; hideMargins(); }
       if (visible === value) return;
       visible = value;
-      if (!visible) stop();
+      if (!visible) { libraryOpen = librarianOpen = false; stop(); }
       paint();
       if (visible && phase === 'open') void showMap();
     },

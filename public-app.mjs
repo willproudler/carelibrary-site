@@ -168,6 +168,8 @@ async function start(){
  }
  document.addEventListener('care:numogram-companion-open',openNumoCompanion);
  document.addEventListener('care:library-companion-open',()=>numoCompanion.minimize());
+ document.addEventListener('care:library-companion-visibility',event=>numoCompanion.setLibraryOpen(event.detail.open===true));
+ document.addEventListener('care:librarian-visibility',event=>numoCompanion.setLibrarianOpen(event.detail.open===true));
  const pickerRoot=$('[data-studio-picker]');
  pickerRoot.insertAdjacentHTML('beforeend',pickerMarkup);
  let pickerCleanup,pickerController,pickerSignature;
