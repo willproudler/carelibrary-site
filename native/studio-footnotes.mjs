@@ -51,7 +51,7 @@ export function linkStudioFootnote(draft, action, source, id) {
   return {id, location: [block, offset, order], note: '', source: sourceClaim(source)};
 }
 
-export async function copyStudioFootnotes(draft, action, loadDraft) {
+export async function copyStudioFootnotes(draft, action, loadDraft, {local = false} = {}) {
   const loaded = new Map([[draft.id, Promise.resolve(draft)]]);
   return Promise.all((action.pasted_footnotes || []).map(async entry => {
     const {source_document_id: documentId, source_reference_id: referenceId} = entry;
@@ -63,7 +63,7 @@ export async function copyStudioFootnotes(draft, action, loadDraft) {
     const copied = (await loaded.get(documentId)).footnotes?.find(note => note.id === referenceId);
     if (!copied) throw new Error('A copied footnote could not be found. Copy it again from the source draft.');
     return {id: entry.id, location: entry.location, note: entry.note ?? copied.note,
-      ...(copied.source ? {source: sourceClaim(copied.source)} : {})};
+      ...(copied.source ? {source: local ? copied.source : sourceClaim(copied.source)} : {})};
   }));
 }
 

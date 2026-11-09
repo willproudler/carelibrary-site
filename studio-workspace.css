@@ -78,6 +78,54 @@
 }
 .studio-web button:hover { background: #293b3c; }
 .studio-web__close { float: right; }
+
+.studio-web[data-mode="beside"] {
+  --notes-edge: clamp(.5rem, 1.1vw, 1rem);
+  position: absolute;
+  inset: var(--notes-edge) var(--notes-edge) var(--notes-edge) auto;
+  inline-size: var(--write-beside-width, clamp(21rem, 44vw, 41rem));
+  min-inline-size: min(21rem, calc(100% - 2 * var(--notes-edge)));
+  max-inline-size: min(56rem, 76vw, calc(100% - 2 * var(--notes-edge)));
+  z-index: 30;
+  border: 1px solid #80c9a54d;
+  border-radius: .95rem;
+  background: #101917;
+  box-shadow: -.65rem 1rem 2.4rem #05090859;
+}
+.studio-web[data-mode="beside"] > [data-studio-native] {
+  overflow: hidden;
+  border-radius: inherit;
+}
+.studio-web[data-mode="beside"] [data-care-write-beside-resize] {
+  position: absolute;
+  inset: .75rem auto .75rem -.4rem;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  inline-size: .8rem;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.studio-web[data-mode="beside"] [data-care-write-beside-resize]::after {
+  content: "";
+  inline-size: .18rem;
+  block-size: 2.4rem;
+  border-radius: 1rem;
+  background: #80c9a580;
+}
+.studio-web[data-mode="beside"] [data-care-write-beside-resize]:is(:hover, :focus-visible, [data-dragging])::after {
+  background: #b8ead0;
+}
+.studio-web[data-mode="beside"] .studio-web__message { width: max-content; }
+@media (max-width: 42rem) {
+  .studio-web[data-mode="beside"] {
+    inset-inline: var(--notes-edge);
+    inline-size: auto;
+    min-inline-size: 0;
+    max-inline-size: none;
+  }
+  .studio-web[data-mode="beside"] [data-care-write-beside-resize] { display: none; }
+}
 /* The desktop Library dock hosts the reviewed beta workspace in its own
    frame. Keep a shelf return and Spotlight without duplicating the shell. */
 [data-library-companion] .beta-workbench {

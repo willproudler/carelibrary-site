@@ -88,14 +88,14 @@ export function createPublicReaderAdapter(data) {
   const linksFor = (node, work) => incoming(node).filter(link => inScope(index.nodes.get(link.id), work));
   const usesFor = (id, work) => array(index.outgoing.get(id)).filter(link => inScope(index.nodes.get(link.id), work));
 
-  function nativeItem(item, section, position, unit) {
+  function nativeItem(item, section, position, unit, renditionType) {
     const display = publicReadingText(item);
     return {
       id:item.id, local_id:item.id.split(':').slice(1).join(':'), text:item.text,
       reading_html:inline(display), reading_block_html:block(display), reading_text:display,
       section_number:text(section.number), section_name:section.name,
       address:`${unit.layer}.${section.number}.${String(position + 1).padStart(2,'0')}`,
-      position:position + 1, layer:unit.layer,
+      position:position + 1, layer:unit.layer, rendition_type:renditionType,
       trace_type:item.trace_type || '', evidence_class:'',
       source_trace:array(item.refs), deep_source_trace:array(item.deep_refs), matrix_trace:[],
       passage_trace_ids:array(item.passages).map(passage => passage.id),
@@ -107,6 +107,7 @@ export function createPublicReaderAdapter(data) {
     const original = index.units.get(id);
     if (!original || original.layer === 'SOURCE') throw new Error('This CARE sheet is not in the public collection.');
     const variant = selectedVariant(original, original.work, state), reading = variant || original;
+    const renditionType = variant ? variant.rendition_type || 'machine' : 'canonical';
     const showOriginalLabels = !variant && originalLabels(original,original.work,state), title = paneTitle(original,original.work,state);
     const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${showOriginalLabels}`;
     if (unitCache.has(cacheKey)) return unitCache.get(cacheKey);
@@ -119,7 +120,7 @@ export function createPublicReaderAdapter(data) {
       sections:array(reading.sections).map(section => {
         const displayed = showOriginalLabels ? {...section,name:section.original_name || section.name} : section;
         return {number:text(displayed.number),name:displayed.name,
-          items:array(displayed.items).map((item, position) => nativeItem(item, displayed, position, original))};
+          items:array(displayed.items).map((item, position) => nativeItem(item, displayed, position, original, renditionType))};
       }),
       identity:{kicker:original.layer === 'CH' ? `CHAPTER ${original.order}` : ({CL:'CLUSTER',MC:'META-CLUSTER',WB:'WHOLE BOOK',XR:'LATERAL'}[original.layer] || original.layer),
         context:original.work ? bookTitle(original.work,state) : `${lateralWorks.map(work => bookTitle(work,state)).join(' × ')} · Saved diagnostic reading`,...paneIdentity(original,original.work,state),title},
@@ -133,6 +134,7 @@ export function createPublicReaderAdapter(data) {
     const source = index.units.get(id);
     if (!source || source.layer !== 'SOURCE') throw new Error('This source chapter is not in the public collection.');
     const variant = selectedVariant(source,source.work,state), reading = variant || source;
+    const renditionType = variant ? variant.rendition_type || 'machine' : 'canonical';
     const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${originalLabels(source,source.work,state)}`;
     if (chapterCache.has(cacheKey)) return chapterCache.get(cacheKey);
     const rows = array(reading.paragraphs), canonicalPassages = new Map(array(source.paragraphs).map(row=>[row.id,row]));
@@ -141,7 +143,7 @@ export function createPublicReaderAdapter(data) {
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
       sequence_number:source.order, ...paneReadingTitle(source,source.work,state), label:paneTitle(source,source.work,state),
-      source_rendition_type:variant?.rendition_type || (variant ? 'machine' : 'original'),
+      source_rendition_type:renditionType,
       ...(sourceTypesetting.chapter || {}),
       passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
       passages:rows.map((passage, position) => {
@@ -155,7 +157,7 @@ export function createPublicReaderAdapter(data) {
           && [canonical.text, passage.text].every(value => typeof value === 'string'
             && value.startsWith(prefix + '\n\n') && value.slice(prefix.length + 2).trim()) ? prefix : '';
         return {
-        id:passage.id, text:passage.text, reading_text:display,
+        id:passage.id, text:passage.text, reading_text:display, rendition_type:renditionType,
         ...(omitPrefix ? {beautiful_omit_prefix:omitPrefix} : {}),
         ...(sourceDetail ? {beautiful_source_detail:sourceDetail} : {}),
         ...(sourceTypesetting.passages?.[passage.id] || {}),

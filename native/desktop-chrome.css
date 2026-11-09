@@ -108,6 +108,13 @@ html[data-care-toolbar-labels="true"] .app-header.beta-workbench .workbench-swit
     padding: 0 !important;
   }
 }
+body[data-workbench-room="studio"] { --room-accent: #c2c7d3; --room-surface: #252632; --room-active: #2f6f68; }
+body[data-workbench-room="reader"] { --room-accent: #a8c9b7; --room-surface: #20342b; --room-active: #2a5445; }
+body[data-workbench-room="laterals"] { --room-accent: #b49ac9; --room-surface: #211b2a; --room-active: #563d6b; }
+body[data-workbench-room="dialogues"] { --room-accent: #9cbee2; --room-surface: #172333; --room-active: #315376; }
+body[data-workbench-room="corpuses"] { --room-accent: #dab37c; --room-surface: #2a2117; --room-active: #6a492b; }
+body[data-workbench-room="numogram"] { --room-accent: #91d1a7; --room-surface: #14271e; --room-active: #285f48; }
+body[data-workbench-room="store"] { --room-accent: #d9a88c; --room-surface: #2a1d19; --room-active: #70442f; }
 .app-header.beta-workbench .workbench-history {
   display:flex; align-items:center; width:max-content; margin-inline-start:.15rem;
   border:1px solid #34444a; border-radius:9px;

@@ -110,7 +110,25 @@
   </div>
   <div class="writing-zoom" data-writing-zoom role="group" aria-label="Document zoom" hidden>
     <button type="button" data-zoom-out title="Zoom out" aria-label="Zoom out">−</button>
-    <button type="button" data-zoom-reset title="Reset document zoom to 100%">100%</button>
+    <details class="writing-zoom-choices" data-zoom-choices>
+      <summary title="Choose a zoom level" aria-label="Document zoom 100%. Choose a zoom level">
+        <span data-zoom-percent>100%</span>
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 8 5 5 5-5"/></svg>
+      </summary>
+      <div class="writing-zoom-options" role="group" aria-label="Zoom presets">
+        <button type="button" data-zoom-level="fit" title="Fit a page in view, or fit the width in continuous view">Fit size</button>
+        <button type="button" data-zoom-level="70">70%</button>
+        <button type="button" data-zoom-level="80">80%</button>
+        <button type="button" data-zoom-level="90">90%</button>
+        <button type="button" data-zoom-level="100">100%</button>
+        <button type="button" data-zoom-level="110">110%</button>
+        <button type="button" data-zoom-level="120">120%</button>
+        <button type="button" data-zoom-level="130">130%</button>
+        <button type="button" data-zoom-level="140">140%</button>
+        <button type="button" data-zoom-level="150">150%</button>
+        <button type="button" data-zoom-level="160">160%</button>
+      </div>
+    </details>
     <button type="button" data-zoom-in title="Zoom in" aria-label="Zoom in">+</button>
   </div>
   <div class="workspace" data-workspace hidden>

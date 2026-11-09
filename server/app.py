@@ -23,7 +23,7 @@ from .access_requests import AccessRequestService
 from .auth import AuthStore, SESSION_SECONDS, client_key
 from .config import Settings, inside
 from .library_search import MAX_REQUEST_BYTES as SEARCH_REQUEST_BYTES
-from .library_search import LibrarySearchError, PublishedLibrarySearch, search_options
+from .library_search import LibrarySearchError, PublishedLibrarySearch, aq_options, search_options
 from .site_settings import MAX_REVISION, SiteSettingsConflict, SiteSettingsStore
 from .studio_binder import MAX_REQUEST_BYTES as BINDER_REQUEST_BYTES, StudioBinderStore
 from .studio_drafts import DRAFT_ID, MAX_REQUEST_BYTES as STUDIO_REQUEST_BYTES, MAX_REVISION as STUDIO_MAX_REVISION
@@ -268,6 +268,32 @@ async def library_search(request):
         return json_response({"error": "Library search is temporarily unavailable."}, 503)
 
 
+async def numo_aq(request):
+    state = request.app.state
+    configuration = await run_in_threadpool(state.site_settings.get)
+    if configuration["beta_enabled"] and not await run_in_threadpool(state.auth.session, token(request)):
+        raise HTTPException(401, "Log in to browse published AQ matches.")
+    if len(request.scope["query_string"]) > 1024:
+        raise HTTPException(400, "Invalid AQ lookup.")
+    try:
+        options = aq_options(request.query_params.multi_items())
+        if request.method == "HEAD":
+            return Response(media_type="application/json", headers=SECURITY_HEADERS)
+        with anyio.fail_after(2):
+            await state.search_limiter.acquire()
+        try:
+            result = await run_in_threadpool(state.library_search.aq, options)
+        finally:
+            state.search_limiter.release()
+        return json_response(result)
+    except LibrarySearchError as error:
+        raise HTTPException(400, str(error)) from None
+    except TimeoutError:
+        return json_response({"error": "AQ matches are busy. Please try again."}, 429, {"Retry-After": "2"})
+    except (OSError, ValueError, KeyError):
+        return json_response({"error": "Published AQ matches are temporarily unavailable."}, 503)
+
+
 async def studio_drafts(request):
     store = request.app.state.studio_drafts
     draft_id = request.path_params.get("draft_id")
@@ -427,7 +453,7 @@ async def static_file(request):
     if not configuration["beta_enabled"] and relative == "index.html":
         destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
         return json_response({"location": destination}, 303, {"Location": destination})
-    if owner_only or companion or (not public and configuration["beta_enabled"]):
+    if owner_only or (not public and configuration["beta_enabled"]):
         user = await run_in_threadpool(request.app.state.auth.session, token(request))
         if not user:
             message = "Log in to manage the website." if owner_only else "Log in to open the library."
@@ -447,8 +473,8 @@ async def static_file(request):
     headers = {"Vary": "Cookie, Accept-Encoding"}
     if not public:
         headers["X-Robots-Tag"] = "noindex"
-    # Only the reviewed Library companion can be framed. The draft, login and
-    # settings endpoints retain the standard anti-framing headers.
+    # The Library companion follows the same access rules as the main Library.
+    # The draft, login and settings endpoints retain the anti-framing headers.
     if companion:
         request.scope["care_library_companion"] = True
     # Built gzip copies are served only after the same authorization checks.
@@ -482,6 +508,7 @@ def create_app(*, env=None, settings=None, access_service=None):
         Route("/api/logout", logout, methods=["POST"]),
         Route("/api/site-settings", site_settings, methods=["GET", "HEAD", "POST"]),
         Route("/api/library/search", library_search, methods=["POST"]),
+        Route("/api/numo/aq", numo_aq, methods=["GET", "HEAD"]),
         Route("/api/studio/drafts", studio_drafts, methods=["GET", "HEAD", "POST"]),
         Route("/api/studio/drafts/{draft_id}", studio_drafts, methods=["GET", "HEAD", "PUT", "DELETE"]),
         Route("/api/studio/binder", studio_binder, methods=["GET", "HEAD", "POST"]),

@@ -20,6 +20,8 @@ test('public languages list exactly the saved English Bergson panes with origina
   assert.deepEqual(projected.sections.flatMap(section=>section.items.map(item=>item.text)),(variant||original).sections.flatMap(section=>section.items.map(item=>item.text)));
   assert.equal(projected.sheet_versions.can_translate,false);assert.deepEqual(projected.sheet_versions.language_options,[]);
   assert.equal(projected.sheet_versions.selected_id,variant?.id||'original');
+  assert.ok(projected.sections.flatMap(section=>section.items).every(item=>
+   item.rendition_type===(variant?.rendition_type||(variant?'machine':'canonical'))));
  }
  for(const source of bergson.sources)assert.deepEqual(a.chapter(source.id).passages.map(row=>row.text),source.paragraphs.map(row=>row.text));
  for(const work of data.works.filter(work=>!['sources','units'].some(key=>work[key].some(row=>row.translations?.length))))assert.equal(a.bookLanguages(work.id,state).options.length,1);
@@ -101,6 +103,8 @@ test('saved English source text is projected in panes, expanded chapters and can
  assert.deepEqual(route.route_edges.map(row=>[row.source_id,row.target_id]),[['RAW_FRENCH:P0001','CH_FRENCH:AS1']]);
  const original=a.reduce(state,'version_action',{kind:'source',work_id:work.id,unit_id:source.id,variant_id:'original'});
  assert.equal(a.chapter(source.id,original).passages[0].text,'Le texte original.');
+ assert.equal(a.chapter(source.id,original).source_rendition_type,'canonical');
+ assert.equal(a.chapter(source.id,original).passages[0].rendition_type,'canonical');
  assert.equal(a.bookLanguages(work.id,original).selected,'mixed');
  const reset=a.reduce(original,'public_reading_language',{work_id:work.id,language_code:'en'});
  assert.equal(a.chapter(source.id,reset).passages[0].text,'The English source text.');

@@ -1,7 +1,9 @@
 <!doctype html>
 <html lang="en-GB"><head>
 <meta charset="utf-8">
-<meta name="color-scheme" content="dark"><style>html,body{background:#0d1015;color:#ece8df;color-scheme:dark}</style><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><style>html,body{background:#0d1015;color:#ece8df;color-scheme:dark}</style><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>CARE Library</title>
 <meta name="description" content="Open Kant, Hume and Bergson in CARE Library. Read the source, explore CARE’s layered readings, and follow their saved connections. Available to invited CARE Library beta readers.">
 <meta name="theme-color" content="#0d1015"><link rel="canonical" href="https://carelibrary.org/library.html">
@@ -15,7 +17,7 @@
 <link rel="icon" href="/assets/favicon-light-128.png?v=20261022-transparent" type="image/png" sizes="128x128" media="(prefers-color-scheme: light)">
 <link rel="icon" href="/favicon.svg?v=20261022-transparent" type="image/svg+xml" sizes="any">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=20261021-opened-cube" sizes="180x180">
-<link rel="manifest" href="/site.webmanifest?v=20261021-opened-cube">
+<link rel="manifest" href="/site.webmanifest?v=20261109-standalone">
 <link rel="stylesheet" href="/public-app.css?v=20261023-simple-search"><script type="module" src="/library-boot.mjs?v=20261102-beta"></script>
 <link rel="stylesheet" href="/brand-header.css?v=c47c12affb3ca81e">
 <link rel="stylesheet" href="/auth.css?v=20261102-beta">
@@ -29,11 +31,11 @@
 <link rel="stylesheet" href="/native/preparation-preview.css">
 <link rel="stylesheet" href="/study-sets.css">
 <meta name="robots" content="noindex,nofollow">
-</head><body>
+</head><body class="care-library-shell">
 <a class="skip-link" href="#reader">Skip to the library</a>
 <header class="app-header beta-workbench">
  <div class="workbench-identity">
-  <a class="brand" href="/library.html" aria-label="CARE Library Beta home"><img class="brand-mark" src="/assets/care-header-mark.svg" alt=""><span class="brand-name"><strong>CARE</strong> <span id="workspace-name">Library</span></span><small data-nosnippet>Beta</small></a>
+  <a class="brand" href="/library.html" aria-label="CARE Library Beta home"><img class="brand-mark" src="/assets/care-header-mark.svg" alt=""><svg class="mobile-care-mark" viewBox="-112 -112 224 224" aria-hidden="true"><path fill="currentColor" stroke="none" d="M86.6 -50 0 -100 -86.6 -50 -86.6 50 0 100 86.6 50 86.6 26.9 0 76.9 -66.6 38.45 -66.6 -38.45 0 -76.9 86.6 -26.9Z"/><circle cx="0" cy="0" r="13" fill="#d78d5d" stroke="none"/></svg><span class="mobile-library-label" aria-hidden="true">Library</span><span class="brand-name"><strong>CARE</strong> <span id="workspace-name">Library</span></span><small data-nosnippet>Beta</small></a>
   <div class="workbench-history" aria-label="Reading history">
    <button type="button" data-history="-1" aria-label="Go back" title="Go back" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 10h-11m5-5-5 5 5 5"/></svg></button>
    <button type="button" data-history="1" aria-label="Go forward" title="Go forward" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10h11m-5-5 5 5-5 5"/></svg></button>
@@ -72,8 +74,12 @@
   <button class="workbench-desktop-tool" type="button" data-full-feature="Run Room" aria-label="Run Room, available in the full version" title="Run Room · Full version"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#downloading"/></svg><span class="nav-label">Run Room</span></button>
   <button class="workbench-saved" type="button" data-page="saved" aria-label="Saved readings" title="Saved on this device"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#bookmark"/></svg><span class="nav-label">Saved</span></button>
   <details class="workbench-settings" id="workbench-settings">
-   <summary aria-label="View and website settings" title="View and website settings"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#settings"/></svg><span class="nav-label">View</span></summary>
+   <summary aria-label="View and website settings" title="View and website settings"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#settings"/></svg><svg class="mobile-more-mark" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg><span class="nav-label">View</span><span class="mobile-more-label" aria-hidden="true">More</span></summary>
    <div class="workbench-menu">
+    <div class="mobile-history" aria-label="Reading history" role="group">
+     <button type="button" data-history="-1" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 10h-11m5-5-5 5 5 5"/></svg>Back</button>
+     <button type="button" data-history="1" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10h11m-5-5 5 5-5 5"/></svg>Forward</button>
+    </div>
     <label><input type="checkbox" id="workbench-labels"> Show toolbar labels</label>
     <label><input type="checkbox" id="workbench-arrows"> Show slider arrows</label>
     <a href="#view=preparation">Add to Library · Preview</a>
@@ -115,6 +121,15 @@
   <button type="button" data-tab-scroll="1" aria-label="Scroll tabs right" title="Scroll tabs right"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 5 5 5-5 5"/></svg></button>
  </div>
  <div class="reading-tab-menus" id="reading-tab-menus" role="group" aria-label="Reading menus" hidden></div>
+ <button class="write-beside-toggle" type="button" data-write-beside hidden aria-controls="studio-workspace" aria-expanded="false" aria-label="Write beside" title="Write beside">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5h17v13h-17zm8.5 0v13m3-9h3m-3 3h3"/></svg><span>Write beside</span>
+ </button>
+ <details class="studio-storage-notice" data-guest-draft-storage hidden>
+  <summary>This browser</summary>
+  <div class="workbench-menu">
+   <p>Drafts save to this browser on this device. Use <strong>File → Download draft</strong> to keep a backup or move your work. Clearing site data can remove local drafts.</p>
+  </div>
+ </details>
 </div>
 <div id="load-status" class="load-status" role="status" aria-live="polite" hidden></div>
 <main id="main">

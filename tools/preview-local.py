@@ -54,9 +54,10 @@ def make_preview(web_root: Path, database: Path):
         studio = path in {"/api/studio/drafts", "/api/studio/binder"} or path.startswith("/api/studio/drafts/")
         search = path == "/api/library/search"
         writing = scope["method"] not in {"GET", "HEAD"}
+        aq = path == "/api/numo/aq" and not writing
         origins = [value for key, value in scope["headers"] if key == b"origin"]
         if (writing and (not (studio or search) or origins != [LOCAL_ORIGIN])
-                or path.startswith("/api/") and not (studio or search) and path != "/api/session"):
+                or path.startswith("/api/") and not (studio or search or aq) and path != "/api/session"):
             await JSONResponse({"error": "Account actions are unavailable in the local preview."}, 403)(scope, receive, send)
             return
         if path in ACCOUNT_PAGES:

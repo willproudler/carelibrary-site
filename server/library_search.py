@@ -1,12 +1,16 @@
 """Adapt the reviewed browser catalogue to the desktop's Studio search engine."""
 from __future__ import annotations
 
+from collections import defaultdict, deque
 from dataclasses import dataclass
+from functools import lru_cache
 from hashlib import sha256
 import json
+from math import isqrt
 from pathlib import Path
 import re
 from threading import Lock
+from unicodedata import normalize
 from urllib.parse import urlencode
 
 from .writing_search import MAX_QUERY_CHARS, DeepSearchIndex, fold, stem, words
@@ -23,9 +27,58 @@ _CHUNK = re.compile(r"(work|lateral)-([0-9a-f]{24})\.json")
 _EXACT_ID = re.compile(r"(?:RAW|CH|CL|MC|WB|XR|XS|SC|XA|NUMO)_[\w.:-]+:[\w.:-]+", re.IGNORECASE)
 _PHRASE_WORD = re.compile(r"[^\W_]+", re.UNICODE)
 
+AQ_PAGE_SIZE = 24
+AQ_MAX_OFFSET = 4_800
+_AQ_KINDS = {"all", "text", "word", "phrase", "sentence", "title", "research"}
+_AQ_SORTS = {"variety", "alphabetical", "source", "shortest", "longest"}
+_AQ_FIELDS = {"total", "match_kind", "sort", "offset", "id"}
+_AQ_ID = re.compile(r"AQPUB_[0-9a-f]{24}")
+_AQ_SYMBOLS = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_AQ_VALUES = bytes.maketrans(_AQ_SYMBOLS, bytes(range(len(_AQ_SYMBOLS))))
+_AQ_NON_SYMBOL = re.compile(r"[^A-Z0-9]+")
+_AQ_HAS_LETTERS = re.compile(r"[A-Z]")
+_AQ_WORD = re.compile(r"[^\W_]+(?:['’][^\W_]+)*", re.UNICODE)
+_AQ_PARAGRAPH = re.compile(r"\S(?:.*?\S)?(?=\n[ \t]*\n|\Z)", re.DOTALL)
+_AQ_SENTENCE_END = re.compile(r"[.!?][\"'’”)\]}]*(?=\s|$)")
+_AQ_MAX_RECORDS = 600_000
+_AQ_MAX_MATCH_CHARS = 16_384
+_AQ_SOURCE_TYPES = {
+    "work_title": ("work", "Work title", "title"),
+    "raw_title": ("raw_title", "Source title", "title"),
+    "care_title": ("care_unit", "CARE sheet title", "title"),
+    "passage": ("raw_phrase", "Source passage", "passage"),
+    "sentence": ("raw_phrase", "Source sentence", "sentence"),
+    "word": ("raw_word", "Source word", "token"),
+    "axiom": ("care_item", "CARE axiom", "text"),
+    "axiom_word": ("axiom_word", "CARE axiom word", "token"),
+}
+
 
 class LibrarySearchError(ValueError):
     """The request is valid JSON but does not describe a bounded search."""
+
+
+@dataclass(frozen=True, slots=True)
+class AQRequest:
+    total: int
+    match_kind: str
+    sort: str
+    offset: int
+    identity: str
+
+
+def aq_options(parameters):
+    values = dict(parameters)
+    total = values.get("total", "")
+    match_kind, sort = values.get("match_kind", "text"), values.get("sort", "variety")
+    offset, identity = values.get("offset", "0"), values.get("id", "")
+    if (len(values) != len(parameters) or values.keys() - _AQ_FIELDS
+            or not re.fullmatch(r"[0-9]{1,12}", total)
+            or match_kind not in _AQ_KINDS or sort not in _AQ_SORTS
+            or not re.fullmatch(r"[0-9]{1,4}", offset) or int(offset) > AQ_MAX_OFFSET
+            or "id" in values and (not _AQ_ID.fullmatch(identity) or "offset" in values)):
+        raise LibrarySearchError("Invalid AQ lookup.")
+    return AQRequest(int(total), match_kind, sort, int(offset), identity)
 
 
 def search_options(value):
@@ -239,12 +292,197 @@ def _classic(index, query, *, work_id, exclude, limit, depth):
     return found
 
 
+def _aq_normalized(text):
+    # The desktop CCRU AQ rules use NFKD, upper case, and ASCII 0–9/A–Z.
+    return _AQ_NON_SYMBOL.sub("", normalize("NFKD", text).upper())
+
+
+def _aq_sentences(text):
+    for paragraph in _AQ_PARAGRAPH.finditer(text):
+        start = paragraph.start()
+        for boundary in _AQ_SENTENCE_END.finditer(text, start, paragraph.end()):
+            while start < boundary.end() and text[start].isspace():
+                start += 1
+            yield start, boundary.end()
+            start = boundary.end()
+        while start < paragraph.end() and text[start].isspace():
+            start += 1
+        if start < paragraph.end():
+            yield start, paragraph.end()
+
+
+def _aq_factors(total):
+    remainder, factors, prime = total, [], 2
+    while prime <= isqrt(remainder):
+        exponent = 0
+        while remainder % prime == 0:
+            remainder //= prime
+            exponent += 1
+        if exponent:
+            factors.append({"prime": prime, "exponent": exponent})
+        prime = 3 if prime == 2 else prime + 2
+    if remainder > 1:
+        factors.append({"prime": remainder, "exponent": 1})
+    return factors
+
+
+@dataclass(frozen=True, slots=True)
+class _AQMatch:
+    source_id: str
+    document: _Document
+    origin: str
+    match_kind: str
+    start: int
+    end: int
+    readable: bool
+
+    @property
+    def id(self):
+        material = f"{self.origin}\0{self.source_id}\0{self.start}\0{self.end}\0{self.text}"
+        return "AQPUB_" + sha256(material.encode("utf-8")).hexdigest()[:24]
+
+    @property
+    def text(self):
+        if self.origin == "work_title":
+            return self.document.work_title
+        if self.match_kind == "title":
+            return self.document.unit_title
+        return self.document.text[self.start:self.end]
+
+    def card(self, total, *, full=False):
+        source_type, source_label, source_field = _AQ_SOURCE_TYPES[self.origin]
+        document, text = self.document, self.text
+        provenance = {"work_id": document.work_id, "sample_title": document.unit_title}
+        if self.origin in {"raw_title", "passage", "sentence", "word"}:
+            provenance["raw_unit_id"] = document.unit_id
+            if self.origin != "raw_title":
+                provenance["passage_id"] = self.source_id
+        elif self.origin != "work_title":
+            provenance["care_unit_id"] = document.unit_id
+            if self.origin != "care_title":
+                provenance["care_item_id"] = self.source_id
+                provenance["section_name"] = document.title
+        if self.match_kind in {"word", "sentence"}:
+            provenance.update(character_start=self.start, character_end=self.end)
+        reduction = (total - 1) % 9 + 1 if total else 0
+        result = {
+            "id": self.id, "source_type": source_type, "source_label": source_label,
+            "source_id": self.source_id, "source_field": source_field, "match_kind": self.match_kind,
+            "text": text if full else text[:480], "text_truncated": not full and len(text) > 480,
+            "aq_total": total, "digital_reduction": reduction, "zone": reduction % 9,
+            "zone_label": "9/0" if reduction == 9 else str(reduction), "rules_version": "ccru-aq/1.0",
+            "work_id": document.work_id, "work_title": document.work_title, "author": document.author,
+            "provenance": provenance, "collection_available": False,
+        }
+        if full:
+            normalized = _aq_normalized(text)
+            factors = _aq_factors(total)
+            route = {"book": document.slug} if document.slug else {"lateral": document.unit_id}
+            if self.origin != "work_title":
+                route["ref"] = self.source_id
+            result.update(
+                normalized_text=normalized, total_digits=str(total), digit_signature="".join(sorted(str(total))),
+                prime_status="zero" if total == 0 else "unit" if total == 1 else (
+                    "prime" if factors == [{"prime": total, "exponent": 1}] else "composite"),
+                factorization=factors, source_sha256=sha256(text.encode("utf-8")).hexdigest(),
+                normalization_version="care-aq-normalization/1.0", mapping_version="ccru-decimal-alphanumeric/1.0",
+                character_values=[{"symbol": symbol, "value": value}
+                                  for symbol, value in zip(normalized, normalized.encode("ascii").translate(_AQ_VALUES))],
+                can_open_source=True, source_href="/library.html#" + urlencode(route),
+            )
+        return result
+
+
+class _PublishedAQIndex:
+    """Keep compact, bounded span references into the reviewed search records."""
+
+    def __init__(self, records):
+        self.totals = defaultdict(list)
+        self.size = 0
+        titles = set()
+        seen_words = {"word": set(), "axiom_word": set()}
+        normalize_word = lru_cache(maxsize=32_768)(_aq_normalized)
+        for document_kind, documents in records.items():
+            is_passage = document_kind == "passage"
+            for source_id, document in documents.items():
+                if document.work_id and document.work_id not in titles:
+                    self._add(document, document.work_id, "work_title", "title", document.work_title)
+                    titles.add(document.work_id)
+                if document.unit_id not in titles:
+                    self._add(document, document.unit_id, "raw_title" if is_passage else "care_title", "title", document.unit_title)
+                    titles.add(document.unit_id)
+                text = document.text
+                self._add(document, source_id, document_kind, "phrase", text)
+                if is_passage:
+                    for start, end in _aq_sentences(text):
+                        self._add(document, source_id, "sentence", "sentence", text[start:end], start)
+                word_origin = "word" if is_passage else "axiom_word"
+                seen = seen_words[word_origin]
+                for token in _AQ_WORD.finditer(text):
+                    surface = token.group()
+                    normalized = normalize_word(surface)
+                    if not normalized or normalized in seen:
+                        continue
+                    seen.add(normalized)
+                    self._add(document, source_id, word_origin, "word", surface, token.start(), normalized=normalized)
+
+    def _add(self, document, source_id, origin, kind, text, start=0, *, normalized=None):
+        if len(text) > _AQ_MAX_MATCH_CHARS:
+            return
+        if normalized is None:
+            normalized = _aq_normalized(text)
+        if not normalized:
+            return
+        if self.size >= _AQ_MAX_RECORDS:
+            raise ValueError("Published AQ catalogue exceeds its record limit.")
+        end = start + len(text)
+        total = sum(normalized.encode("ascii").translate(_AQ_VALUES))
+        readable = (bool(_AQ_HAS_LETTERS.search(normalized))
+                    and not (origin == "raw_title" and text == source_id and source_id.startswith("RAW_"))
+                    and not text.lstrip().lower().removeprefix("<!--").lstrip().startswith("care_pdf_page:"))
+        self.totals[total].append(_AQMatch(source_id, document, origin, kind, start, end, readable))
+        self.size += 1
+
+    def lookup(self, request):
+        entries = self.totals.get(request.total, ())
+        if request.identity:
+            entry = next((entry for entry in entries if entry.id == request.identity), None)
+            return {"total": request.total, "id": request.identity, "status": "ok" if entry else "not_found",
+                    "record": entry.card(request.total, full=True) if entry else None}
+        kind = request.match_kind
+        matched = [entry for entry in entries if kind == "all" or kind == "text" and entry.readable or kind == entry.match_kind]
+        if request.sort == "alphabetical":
+            matched.sort(key=lambda entry: entry.text.casefold())
+        elif request.sort in {"shortest", "longest"}:
+            matched.sort(key=lambda entry: entry.end - entry.start, reverse=request.sort == "longest")
+        elif request.sort == "variety":
+            groups = defaultdict(deque)
+            for entry in matched:
+                groups[entry.document.work_id or entry.document.unit_id].append(entry)
+            remaining = deque(groups.values())
+            matched = []
+            while remaining:
+                group = remaining.popleft()
+                matched.append(group.popleft())
+                if group:
+                    remaining.append(group)
+        end = request.offset + AQ_PAGE_SIZE
+        return {
+            "status": "ok", "request": {"instrument": True, "query": str(request.total), "match_kind": kind,
+                                        "sort": request.sort, "offset": request.offset},
+            "records": [entry.card(request.total) for entry in matched[request.offset:end]],
+            "total_count": len(matched), "index_count": len(entries), "limit": AQ_PAGE_SIZE,
+            "has_more": end < len(matched) and end <= AQ_MAX_OFFSET,
+        }
+
+
 class PublishedLibrarySearch:
     def __init__(self, web_root):
         self.root = web_root
         self.lock = Lock()
         self.catalogue = None
         self.indexes = {}
+        self.aq_index = None
 
     def _index(self, kind):
         with self.lock:
@@ -266,6 +504,14 @@ class PublishedLibrarySearch:
         if record is None:
             return None
         return {**record.target(identity, {}), "unit_title": record.unit_title}
+
+    def aq(self, options):
+        with self.lock:
+            if self.catalogue is None:
+                self.catalogue = _read_records(self.root)
+            if self.aq_index is None:
+                self.aq_index = _PublishedAQIndex(self.catalogue[0])
+        return self.aq_index.lookup(options)
 
     def search(self, options):
         query, kind, mode, work_id, depth, exclude, limit = options

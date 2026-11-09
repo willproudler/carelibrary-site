@@ -180,7 +180,7 @@ function instrumentAQFeedFooter(search) {
 }
 
 function instrumentAQBrowse(calc, {e, demons, search, samples, detail, matchId,
-    matchKind, matchSort, browseTab, collection, collectionWrite, instrumentRegion, instrumentSubjectLink}) {
+    matchKind, matchSort, browseTab, collection, collectionWrite, publicReference, instrumentRegion, instrumentSubjectLink}) {
   const {total}=calc;
   const searched=instrumentAQSameView(search,total,matchKind,matchSort);
   const completePage=searched && search.status==='ok';
@@ -194,7 +194,7 @@ function instrumentAQBrowse(calc, {e, demons, search, samples, detail, matchId,
     <button type="button" data-instrument-aq-tab="matches" aria-pressed="${!inCollection}">Browse</button>
     <button type="button" data-instrument-aq-tab="collection" aria-pressed="${inCollection}">Collection <small>${saved.length}</small></button></div>` : '';
   const filters = inCollection ? '' : `<div class="nl-iaq-filters">
-    <label class="nl-iaq-filter-select"><span>Filter</span><select data-instrument-aq-kind aria-label="Filter AQ matches">${Object.entries(instrumentAQKinds).map(([key,label])=>
+    <label class="nl-iaq-filter-select"><span>Filter</span><select data-instrument-aq-kind aria-label="Filter AQ matches">${Object.entries(instrumentAQKinds).filter(([key])=>!publicReference || key!=='research').map(([key,label])=>
       `<option value="${key}"${matchKind===key?' selected':''}>${label}</option>`).join('')}</select></label>
     <label class="nl-iaq-sort-select"><span>Sort</span><select data-instrument-aq-sort aria-label="Sort AQ matches">${Object.entries(instrumentAQSorts).map(([key,label])=>
       `<option value="${key}"${matchSort===key?' selected':''}>${label}</option>`).join('')}</select></label></div>`;
@@ -204,7 +204,8 @@ function instrumentAQBrowse(calc, {e, demons, search, samples, detail, matchId,
   return instrumentRegion(`AQ ${total} · ${inCollection?'Collection':'Matches'}`,`<div class="nl-iaq-shelf">
     <div class="nl-iaq-shelf-header">${tabs}${filters}
       <div class="nl-iaq-summary-line"><p class="nl-iaq-results-status" aria-live="polite" data-instrument-aq-count>${status}</p>
-        ${!inCollection?'<button type="button" class="nl-instrument-link adv-l nl-iaq-index-link" data-instrument-aq-index>Full index ↗</button>':''}</div></div>
+        ${publicReference?'<span class="nl-iaq-results-status">Published Library</span>':
+          !inCollection?'<button type="button" class="nl-instrument-link adv-l nl-iaq-index-link" data-instrument-aq-index>Full index ↗</button>':''}</div></div>
     ${!inCollection && matchKind==='research'?'<p class="nl-iaq-results-status">Extracts from the raw research and CARE axiom indexes.</p>':''}
     ${rows?`<ul class="nl-iaq-results">${rows}</ul>`:`<p class="empty-p">${e(empty)}</p>`}
     ${inCollection?'':`<div data-instrument-aq-feed-footer>${instrumentAQFeedFooter(searched?search:null)}</div>`}</div>`);
@@ -212,13 +213,13 @@ function instrumentAQBrowse(calc, {e, demons, search, samples, detail, matchId,
 
 export function instrumentAQReadout(calc, {e, demons = [], search, samples = [], zoneInfo, detail,
     matchId = '', matchKind = 'all', matchSort = 'variety', browseTab = 'matches',
-    collection, collectionWrite = false, arithmeticOnly = false,
+    collection, collectionWrite = false, arithmeticOnly = false, publicReference = false,
     instrumentIdentity, instrumentRegion, instrumentSubjectLink, instrumentDemonRows}) {
   if (!calc) return '';
   const identity = instrumentAQIdentityReadout(calc, {e,demons,zoneInfo,arithmeticOnly,instrumentIdentity,instrumentRegion,instrumentSubjectLink,instrumentDemonRows});
   if (arithmeticOnly) return identity;
   return identity + instrumentAQBrowse(calc, {e,demons,search,samples,detail,matchId,matchKind,matchSort,browseTab,
-    collection,collectionWrite,instrumentRegion,instrumentSubjectLink});
+    collection,collectionWrite,publicReference,instrumentRegion,instrumentSubjectLink});
 }
 
 function instrumentAQIdentityReadout(calc, {e,demons,zoneInfo,arithmeticOnly,instrumentIdentity,instrumentRegion,instrumentSubjectLink,instrumentDemonRows}) {
@@ -575,7 +576,8 @@ export default function ({parentElement, data, setTriggerValue}) {
   if (!root || !data?.world) return;
   const world = data.world, demons = world.demons || [], books = world.catalog_books || world.books || [], thinkers = world.catalog_thinkers || world.thinkers || [], hosts = world.hosts || [], runs = world.runs || [];
   const arithmeticOnly = world.arithmetic_only === true;
-  const storageKey = arithmeticOnly ? 'care-numo-instrument-beta-v1' : 'care-numo-library-v1';
+  const publicReference = data.public_reference === true;
+  const storageKey = arithmeticOnly || publicReference ? 'care-numo-instrument-beta-v1' : 'care-numo-library-v1';
   const byId = Object.fromEntries(demons.map(d=>[d.id,d]));
   const fields = new Set((data.fields || []).map(f=>f.id || f.work_id));
   const e = escapeHtml, $ = selector => root.querySelector(selector);
@@ -598,7 +600,9 @@ export default function ({parentElement, data, setTriggerValue}) {
   state.memory={path:false,coverage:'all',limit:40,...(saved.memory || {})};
   state.voices={shelf:'',id:'',query:'',group:'',...(saved.voices || {})};
   if(data.focus && byId[data.focus.mesh_id]){state.mode='chamber';state.demon=data.focus.mesh_id;const route=(world.routes || []).find(r=>r.run_id===data.focus.run_id && r.mesh_id===state.demon);state.rite=Math.max(0,(byId[state.demon].rites || []).findIndex(r=>r.rite_id===route?.rite_id || r.id===route?.rite_id));state.chamber={...state.chamber,hiddenAuthors:[],collapsedAuthors:[],authorLimits:{},tab:'encounters',query:'',author:'',from:'',to:'',run:data.focus.run_id || '',history:true,includeUndated:true,page:0};}
-  if (arithmeticOnly || !['instrument','map','study','atlas','anatomy','directory','chamber','books','thinkers','skills','runs','aq'].includes(state.mode)) state.mode='instrument';
+  const availableModes=publicReference?['instrument','atlas','anatomy','skills']:
+    ['instrument','map','study','atlas','anatomy','directory','chamber','books','thinkers','skills','runs','aq'];
+  if (arithmeticOnly || !availableModes.includes(state.mode)) state.mode='instrument';
   if (!byId[state.demon]) state.demon=demons[0]?.id || '';
   if (!books.some(b=>b.id===state.book)) state.book=books[0]?.id || '';
   if (!thinkers.some(t=>t.id===state.thinker)) state.thinker=thinkers[0]?.id || '';
@@ -1700,8 +1704,13 @@ export default function ({parentElement, data, setTriggerValue}) {
         <div class="nl-demon-support"><h3 class="lbl">Consilience</h3>${instrumentConsilience(deposits)}</div>
         ${cards?`<div class="nl-demon-linked"><h3 class="lbl">Cards &amp; skills</h3>${cards}</div>`:''}
       </div>`)
-      +instrumentDemonAppearances(deposits)
-      +instrumentRegion('',`${chamberAuditSources(demon)}<button class="nl-instrument-link adv-l" data-open-chamber="${e(demon.id)}">Full demon chamber ↗</button>`);
+      +(publicReference?instrumentRegion('Matrix record',`<dl class="nl-instrument-specs">
+        <dt>Domain</dt><dd>${e(demon.domain)}</dd>
+        ${demon.aliases?.length?`<dt>Aliases</dt><dd>${e(demon.aliases.join(' · '))}</dd>`:''}
+        ${demon.door?.name?`<dt>Door</dt><dd>${e([demon.door.name,demon.door.correspondence,demon.door.location].filter(Boolean).join(' · '))}</dd>`:''}
+        ${demon.relations?.map(row=>`<dt>${e(row.relation)}</dt><dd>${e(row.target)}</dd>`).join('') || ''}
+        </dl><p class="src">CCRU Pandemonium Matrix</p>`):instrumentDemonAppearances(deposits)
+      +instrumentRegion('',`${chamberAuditSources(demon)}<button class="nl-instrument-link adv-l" data-open-chamber="${e(demon.id)}">Full demon chamber ↗</button>`));
   }
   function instrumentStructureReadout(entity) {
     const facts=(entity.facts || []).map(fact=>`<dt>${e(fact.label)}</dt><dd>${e(fact.value)}</dd>`).join('');
@@ -1773,7 +1782,8 @@ export default function ({parentElement, data, setTriggerValue}) {
   }
   function instrumentFromHash() {
     if(arithmeticOnly)return null;
-    const raw=frameWindow?.location?.hash?.slice(1) || '';
+    const hash=frameWindow?.location?.hash?.slice(1) || '';
+    const raw=publicReference ? new URLSearchParams(hash).get('numo') || '' : hash;
     const number=/^aq-([0-9]+)$/.exec(raw);
     if(number){const address=instrumentAQAddress(Number(number[1]));return address?{aqCommitted:address}:null;}
     const zone=/^zone-([0-9])$/.exec(raw);
@@ -1794,6 +1804,14 @@ export default function ({parentElement, data, setTriggerValue}) {
     try {
       if(hash || instrumentFromHash()){
         const {pathname,search}=frameWindow.location;
+        if(publicReference){
+          const params=new URLSearchParams(frameWindow.location.hash.slice(1));
+          if(params.get('view')!=='numogram')return;
+          if(hash)params.set('numo',hash);
+          else params.delete('numo');
+          frameWindow.history.replaceState(frameWindow.history.state,'',pathname+search+'#'+params);
+          return;
+        }
         frameWindow.history.replaceState(frameWindow.history.state,'',pathname+search+(hash?'#'+hash:''));
       }
     } catch {}
@@ -2340,7 +2358,7 @@ export default function ({parentElement, data, setTriggerValue}) {
       e,demons,search:instrumentAQSearch(),samples:world.aq?.records,zoneInfo:instrumentZoneById.get(aq.zone),
       detail:world.instrument_aq_match,matchId:view.aq.match,
       matchKind:view.aq.matchKind,matchSort:view.aq.matchSort,browseTab:view.aq.browseTab,
-      collection:world.instrument_aq_collection,collectionWrite:data.aq_collection_write,arithmeticOnly,
+      collection:world.instrument_aq_collection,collectionWrite:data.aq_collection_write,arithmeticOnly,publicReference,
       instrumentIdentity,instrumentRegion,instrumentSubjectLink,instrumentDemonRows,
     }):exact?instrumentDemonReadout(exact,rite):selected.length===1?instrumentZoneReadout(selected[0]):entity?instrumentStructureReadout(entity):kind==='interval'
       ?instrumentIdentity('Zone pair',selected.join('::'))+instrumentRegion('',instrumentZoneSchematic(selected,selected.join('::'))):'');
@@ -2356,10 +2374,11 @@ export default function ({parentElement, data, setTriggerValue}) {
             <div class="nl-instrument-menu-items">
               <button type="button" data-instrument-web aria-pressed="${view.web}">Web</button>
               <button type="button" data-instrument-hetu aria-pressed="${view.hetu}">Hetu lens</button>
+              ${publicReference?'<button type="button" data-mode="atlas">Demon atlas ↗</button>':''}
               <button type="button" data-instrument-layout aria-pressed="${instrumentLayoutEditing}">${instrumentLayoutEditing?'Done moving':'Move layout'}</button>
               <button type="button" data-map-reset aria-label="Reset map layout" ${state.instrumentLayout?'':instrumentLayoutEditing?'disabled':'disabled hidden'}>Reset layout</button>
               ${landTimeline.length?`<button type="button" data-instrument-replay aria-pressed="${view.replay!==null}">Replay</button>`:''}
-              ${arithmeticOnly?'':`<button type="button" class="nl-instrument-advanced" data-mode="map">Research workspace ↗</button>`}
+              ${arithmeticOnly || publicReference?'':`<button type="button" class="nl-instrument-advanced" data-mode="map">Research workspace ↗</button>`}
             </div>
           </details>
         </div>
@@ -3354,14 +3373,16 @@ export default function ({parentElement, data, setTriggerValue}) {
     const tab=(mode,label,active=state.mode===mode)=>`<button class="nl-tab ${active?'active':''}" data-mode="${mode}" aria-pressed="${active}">${label}</button>`;
     const warnings=world.provenance?.warnings || [];
     root.innerHTML=`<div class="nl-toolbar"><nav class="nl-tabs nl-room-nav" aria-label="NUMO views">
-      ${tab('instrument','← Main Numogram')}${tab('map','Map')}${tab('atlas','Demon atlas')}${tab('directory','Chambers',inChambers)}${tab('aq','AQ traces')}${tab('study','Workbench')}
-    </nav><details class="nl-room-tools"><summary>More tools <span aria-hidden="true">⌄</span></summary><div>
+      ${tab('instrument','← Main Numogram')}
+      ${publicReference?tab('atlas','Demon atlas')+tab('anatomy','Anatomy')+tab('skills','Tarot &amp; voices'):
+        tab('map','Map')+tab('atlas','Demon atlas')+tab('directory','Chambers',inChambers)+tab('aq','AQ traces')+tab('study','Workbench')}
+    </nav>${publicReference?'':`<details class="nl-room-tools"><summary>More tools <span aria-hidden="true">⌄</span></summary><div>
       <button data-mode="anatomy">Anatomy</button><button data-mode="runs">Saved runs</button><button data-learning="">Learning studio ↗</button><button data-world>Immersive map ↗</button><button data-refresh aria-label="Refresh saved NUMO readings">Refresh readings ↻</button>
-    </div></details></div>
-    ${inChambers?`<nav class="nl-chamber-nav" aria-label="Chamber types">${tab('directory','Directory')}${tab('chamber','Demons')}${tab('thinkers','Thinkers')}${tab('books','Books')}${tab('skills','Tarot &amp; voices')}</nav>`:''}
+    </div></details>`}</div>
+    ${inChambers && !publicReference?`<nav class="nl-chamber-nav" aria-label="Chamber types">${tab('directory','Directory')}${tab('chamber','Demons')}${tab('thinkers','Thinkers')}${tab('books','Books')}${tab('skills','Tarot &amp; voices')}</nav>`:''}
     ${state.mode==='runs'?`<div class="nl-filterbar"><label class="nl-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search saved runs" placeholder="Demon, book, thinker or model…" value="${e(state.query)}"></label><label class="nl-meta"><input type="checkbox" data-history ${state.history?'checked':''}> Earlier versions</label></div>`:''}
     ${warnings.length?`<details class="nl-room-warnings"><summary>Some saved data could not be loaded</summary><div class="nl-warning">${warnings.map(e).join('<br>')}</div></details>`:''}
-    <div data-content></div><footer class="nl-footer"><span><b>●</b> Connected to your Care library · ${books.length} works available</span><span>CCRU Matrix / Saved NUMO interpretations / Source-linked readings</span></footer>`;
+    <div data-content></div><footer class="nl-footer"><span><b>●</b> ${publicReference?'Published NUMO reference':`Connected to your Care library · ${books.length} works available`}</span><span>${publicReference?'CCRU Matrix / Deck correspondences':'CCRU Matrix / Saved NUMO interpretations / Source-linked readings'}</span></footer>`;
     renderContent();
   }
   function click(event) {
@@ -3550,7 +3571,7 @@ export default function ({parentElement, data, setTriggerValue}) {
     else if('findRuns' in d){state.mode='runs';state.query=d.findRuns;state.page=0;render();}
     else if('page' in d){state.page=Number(d.page);renderContent();}
   }
-  function openChamber(id){if(!byId[id])return;state.demon=id;state.rite=0;state.mode='chamber';Object.assign(state.chamber,{query:'',author:'',from:'',to:'',run:'',page:0});render();}
+  function openChamber(id){if(!byId[id])return;if(publicReference){state.mode='instrument';instrumentOpenSubject('demon',id);render();return;}state.demon=id;state.rite=0;state.mode='chamber';Object.assign(state.chamber,{query:'',author:'',from:'',to:'',run:'',page:0});render();}
   function input(event) {
     if(event.target.matches('[data-instrument-aq-input]')){state.instrument.aq.draft=event.target.value;instrumentDrawAQ();return;}
     if(event.target.matches('[data-instrument-replay-year]')){const output=event.target.parentElement?.querySelector('output');if(output)output.value=event.target.value;return;}
@@ -3639,6 +3660,11 @@ export default function ({parentElement, data, setTriggerValue}) {
       state.mode='instrument';instrumentGo(deepLink,{repaint:false,hash:false});
     }
   }
+  data.bindAQResponse?.((field,result)=>{
+    if(field)world[field]=result;
+    aqServerPending=false;
+    renderContent();
+  });
   render();
   return () => {
     clearTimeout(timer);clearTimeout(mapClickTimer);clearTimeout(instrumentAQTimer);

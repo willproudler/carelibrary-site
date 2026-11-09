@@ -61,7 +61,7 @@ test('Reader sends the approved citation into the Library companion at the exact
   })), null);
 });
 
-test('native Library citation clipboard is enabled only on the nested companion', () => {
+test('the nested Library companion enables Studio citation clipboard', () => {
   const app = readFileSync(new URL('../public-app.mjs', import.meta.url), 'utf8');
   assert.match(app, /const libraryCompanion=window.parent!==window/);
   assert.match(app, /if\(libraryCompanion\)Object.assign\(payload,\{studio_embed:true,studio_axiom_draft_counts:\{\}\}\)/);

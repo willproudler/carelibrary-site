@@ -4,6 +4,7 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 from pathlib import Path
+import runpy
 import sys
 from tempfile import TemporaryDirectory
 import unittest
@@ -15,13 +16,13 @@ if str(SITE) not in sys.path:
     sys.path.insert(0, str(SITE))
 
 from server.app import create_app
-from server.library_search import PublishedLibrarySearch, search_options
+from server.library_search import PublishedLibrarySearch, aq_options, search_options
 
 
 ORIGIN = "https://care.example.test"
 
 
-def write_projection(root):
+def write_projection(root, extra_passages=()):
     search = root / "search"
     data = root / "data"
     search.mkdir()
@@ -32,6 +33,7 @@ def write_projection(root):
             "sources": [{"id": "RAW_FIRST", "title": "The opening", "paragraphs": [
                 ["RAW_FIRST:P0001", "First came memory, then the question."],
                 ["RAW_FIRST:P0002", "Memory does not remain unchanged."],
+                *extra_passages,
             ]}],
             "units": [{"id": "CH_FIRST", "title": "The opening", "layer": "CH", "sections": [
                 {"name": "Axioms", "items": [
@@ -78,6 +80,45 @@ class SearchTests(unittest.TestCase):
     def search(self, **values):
         return self.service.search(search_options(values))["results"]
 
+    def aq(self, **values):
+        return self.service.aq(aq_options(list(values.items())))
+
+    def test_aq_matches_open_the_exact_published_source_at_their_number(self):
+        self.assertIsNone(self.service.aq_index)
+        words = self.aq(total="143", match_kind="word")["records"]
+        raw_word = next(record for record in words if record["source_type"] == "raw_word")
+        detail = self.aq(total="143", id=raw_word["id"])["record"]
+        self.assertEqual(detail["text"], "memory")
+        self.assertEqual(detail["normalized_text"], "MEMORY")
+        self.assertEqual(detail["factorization"], [{"prime": 11, "exponent": 1}, {"prime": 13, "exponent": 1}])
+        self.assertEqual(detail["provenance"]["character_start"], 11)
+        self.assertEqual(detail["source_href"], "/library.html#book=first&ref=RAW_FIRST%3AP0001")
+        self.assertEqual(self.aq(total="144", id=raw_word["id"])["status"], "not_found")
+        for kind in ("phrase", "sentence"):
+            match, = self.aq(total="570", match_kind=kind)["records"]
+            self.assertEqual(match["text"], "Memory does not remain unchanged.")
+        work_title, = self.aq(total="117", match_kind="title")["records"]
+        self.assertEqual(work_title["work_title"], "First")
+        self.assertEqual(work_title["zone_label"], "9/0")
+        self.assertEqual(self.aq(total="143", match_kind="research")["records"], [])
+        self.assertEqual(self.aq(total="748", match_kind="phrase")["records"], [])
+        self.assertEqual(self.service.indexes, {})
+
+    def test_aq_pages_keep_normalized_matches_in_published_source_order(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            write_projection(root, [(f"RAW_FIRST:EXTRA{index}", "ÀQ!") for index in range(30)])
+            service = PublishedLibrarySearch(root)
+            request = [("total", "36"), ("match_kind", "phrase"), ("sort", "source")]
+            first = service.aq(aq_options(request))
+            second = service.aq(aq_options([*request, ("offset", "24")]))
+            self.assertEqual((first["total_count"], first["has_more"], second["has_more"]), (30, True, False))
+            self.assertEqual(first["request"], {"instrument": True, "query": "36", "match_kind": "phrase", "sort": "source", "offset": 0})
+            all_rows = first["records"] + second["records"]
+            self.assertEqual([row["source_id"] for row in all_rows], [f"RAW_FIRST:EXTRA{index}" for index in range(30)])
+            self.assertEqual(len({row["id"] for row in all_rows}), 30)
+            self.assertTrue(all(row["text"] == "ÀQ!" for row in all_rows))
+
     def test_exact_ids_phrases_scopes_and_recorded_connections(self):
         exact, = self.search(query="raw_first:p0001", kind="passage")
         self.assertEqual(exact["href"], "#book=first&ref=RAW_FIRST%3AP0001")
@@ -103,6 +144,8 @@ class SearchTests(unittest.TestCase):
         path.write_bytes(contents.replace(b"memory", b"SECRET"))
         with self.assertRaisesRegex(ValueError, "fingerprint"):
             self.search(query="memory")
+        with self.assertRaisesRegex(ValueError, "fingerprint"):
+            self.aq(total="143")
         descriptor["name"] = "../data/library.json"
         (self.root / "search" / "catalogue.json").write_text(json.dumps(self.manifest))
         with self.assertRaisesRegex(ValueError, "descriptor"):
@@ -110,6 +153,25 @@ class SearchTests(unittest.TestCase):
 
 
 class SearchRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_local_preview_can_browse_published_aq(self):
+        preview = runpy.run_path(str(SITE / "tools" / "preview-local.py"))
+        host, port = preview["HOST"], preview["PORT"]
+        origin = f"http://{host}:{port}"
+        with TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            web = base / "web"
+            web.mkdir()
+            (web / "index.html").write_text("CARE Library")
+            write_projection(web)
+            app = preview["make_preview"](web, base / "private" / "accounts.sqlite3")
+            transport = httpx.ASGITransport(app=app, client=(host, 53100))
+            async with httpx.AsyncClient(transport=transport, base_url=origin) as browser:
+                route = "/api/numo/aq?total=570&match_kind=sentence"
+                result = await browser.get(route)
+                self.assertEqual(result.status_code, 200, result.text)
+                self.assertEqual(result.json()["records"][0]["text"], "Memory does not remain unchanged.")
+                self.assertEqual((await browser.post(route, headers={"Origin": origin})).status_code, 403)
+
     async def test_requires_beta_account_and_same_origin_then_allows_open_mode(self):
         with TemporaryDirectory() as directory:
             base = Path(directory).resolve()
@@ -121,16 +183,28 @@ class SearchRouteTests(unittest.IsolatedAsyncioTestCase):
                                   "CARE_DATABASE_PATH": str(base / "private" / "accounts.sqlite3")})
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN) as browser:
                 route = "/api/library/search"
+                aq_route = "/api/numo/aq"
+                aq_params = {"total": "143", "match_kind": "word"}
                 value = {"query": "RAW_FIRST:P0001", "kind": "passage"}
                 self.assertEqual((await browser.post(route, json=value, headers={"Origin": ORIGIN})).status_code, 401)
+                self.assertEqual((await browser.get(aq_route, params=aq_params)).status_code, 401)
+                self.assertIsNone(app.state.library_search.aq_index)
                 self.assertEqual((await browser.get("/search/catalogue.json")).status_code, 404)
                 email, password = "reviewer@example.test", "A private test account password"
                 app.state.auth.add_user(email, "Reviewer", password)
                 login = await browser.post("/api/login", json={"email": email, "password": password}, headers={"Origin": ORIGIN})
                 self.assertEqual(login.status_code, 200, login.text)
                 self.assertEqual((await browser.post(route, json=value, headers={"Origin": ORIGIN})).status_code, 200)
+                aq_page = await browser.get(aq_route, params=aq_params)
+                self.assertEqual(aq_page.status_code, 200, aq_page.text)
+                self.assertEqual(aq_page.headers["Cache-Control"], "no-store")
+                self.assertEqual(aq_page.json()["records"][0]["aq_total"], 143)
                 browser.cookies.clear()
                 app.state.site_settings.update(False, 0)
+                self.assertEqual((await browser.get(aq_route, params=aq_params)).status_code, 200)
+                for params in ({"total": "143", "offset": "4801"}, {"total": "143", "id": "../local"},
+                               {"total": "-1"}, [("total", "143"), ("total", "570")]):
+                    self.assertEqual((await browser.get(aq_route, params=params)).status_code, 400)
                 self.assertEqual((await browser.post(route, json=value, headers={"Origin": "https://elsewhere.test"})).status_code, 403)
                 self.assertEqual((await browser.post(route, json={**value, "limit": 100}, headers={"Origin": ORIGIN})).status_code, 400)
                 result = await browser.post(route, json=value, headers={"Origin": ORIGIN})

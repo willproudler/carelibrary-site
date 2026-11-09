@@ -253,6 +253,32 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.headers["x-frame-options"], "DENY", path)
             self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"], path)
 
+    async def test_open_library_allows_guest_companion_and_keeps_account_routes_private(self):
+        query = "?view=library&care_studio_embed=1&care_studio_pane_reading=1&care_studio_request=guest-companion"
+        await asyncio.to_thread(self.app.state.site_settings.update, False, 0)
+        for method in ("GET", "HEAD"):
+            companion = await self.client.request(method, "/library.html" + query)
+            self.assertEqual(companion.status_code, 200)
+            self.assertEqual(companion.headers["x-frame-options"], "SAMEORIGIN")
+            self.assertIn("frame-ancestors 'self'", companion.headers["content-security-policy"])
+            self.assert_no_store(companion)
+        for path, status in (("/library.html" + query + "&care_studio_request=duplicate", 200),
+                             ("/login.html" + query, 200), ("/site-settings.html" + query, 303),
+                             ("/api/studio/drafts" + query, 401), ("/api/studio/binder" + query, 401)):
+            response = await self.client.get(path)
+            self.assertEqual(response.status_code, status, path)
+            self.assertEqual(response.headers["x-frame-options"], "DENY", path)
+            self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"], path)
+        for path, payload in (("/api/studio/drafts", {"account": EMAIL, "title": "Draft", "body": "Local prose"}),
+                              ("/api/studio/binder", {"account": EMAIL, "operation": "create-folder", "folder_name": "Guest"})):
+            denied = await self.post(path + query, payload)
+            self.assertEqual((denied.status_code, denied.json()), (401, {"error": "login_required"}))
+        await asyncio.to_thread(self.app.state.site_settings.update, True, 1)
+        closed = await self.client.get("/library.html" + query)
+        self.assertEqual(closed.status_code, 303)
+        self.assertEqual(httpx.URL(closed.headers["location"]).path, "/login.html")
+        self.assertEqual(closed.headers["x-frame-options"], "DENY")
+
     async def test_password_hashes_record_production_parameters_and_database_is_private(self):
         await self.add_user()
         with sqlite3.connect(self.database) as db:

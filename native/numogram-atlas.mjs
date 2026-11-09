@@ -1,20 +1,69 @@
-import mountInstrument, {arithmetic, css, html} from './numogram-instrument.mjs?v=94ec7566f50fa1a8';
+import mountInstrument, {arithmetic, css, html} from './numogram-instrument.mjs?v=a6115a6c18b615aa';
+import reference from './numogram-reference.mjs';
 
-export default function mountNumogramAtlas(host) {
+const aqEndpoint = '/api/numo/aq';
+
+export default function mountNumogramAtlas(host, {openSource} = {}) {
   host.setAttribute('data-care-numo-surface', '');
   const shadow = host.shadowRoot ?? host.attachShadow({mode: 'open'});
   shadow.innerHTML = `<style>:host{overflow:auto}${css}</style>${html}`;
+  const {demons} = reference;
+  const world = {
+    ...arithmetic,
+    ...reference,
+    arithmetic_only: false,
+    zones: arithmetic.zones.map(zone=>({
+      ...zone, demon_ids: demons.filter(demon=>demon.poles.includes(zone.id)).map(demon=>demon.id),
+    })),
+  };
+
+  let acceptAQ, pending;
+  async function receiveAction(_key, {kind, total, id, match_kind = 'all', sort = 'variety', offset = 0}) {
+    if (kind === 'instrument_aq_source') {
+      const href = world.instrument_aq_match?.record?.source_href;
+      if (href && world.instrument_aq_match?.id === id && world.instrument_aq_match.total === total) {
+        openSource?.(href);
+      }
+      acceptAQ?.();
+      return;
+    }
+    if (kind !== 'instrument_aq' && kind !== 'instrument_aq_match') return;
+    pending?.abort();
+    const request = new AbortController();
+    pending = request;
+    const browse = kind === 'instrument_aq';
+    const params = new URLSearchParams(browse ? {total, match_kind, sort, offset} : {total, id});
+    let result;
+    try {
+      const response = await fetch(`${aqEndpoint}?${params}`, {cache:'no-store', signal:request.signal});
+      if (!response.ok) throw Error('AQ data unavailable');
+      result = await response.json();
+    } catch {
+      result = browse
+        ? {status:'unavailable', request:{instrument:true, query:String(total), match_kind, sort, offset}}
+        : {status:'unavailable', total, id};
+    }
+    if (request.signal.aborted) return;
+    pending = null;
+    acceptAQ?.(kind, result);
+  }
+
   const unmount = mountInstrument({
     parentElement: shadow,
     data: {
-      world: arithmetic,
+      world,
+      public_reference: true,
       instrument_write: false,
       aq_collection_write: false,
+      aq_scroll_url: aqEndpoint,
+      bindAQResponse: receive=>{ acceptAQ = receive; },
       instrument_font_prefix: new URL('./numo-', import.meta.url).href,
     },
-    setTriggerValue() {},
+    setTriggerValue: receiveAction,
   });
   return () => {
+    acceptAQ = null;
+    pending?.abort();
     unmount?.();
     shadow.replaceChildren();
     host.removeAttribute('data-care-numo-surface');

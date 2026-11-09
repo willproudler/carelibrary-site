@@ -3,7 +3,7 @@
   "short_name": "CARE Library",
   "description": "Explore texts, arguments and connections with a way back to the source.",
   "start_url": "/",
-  "display": "minimal-ui",
+  "display": "standalone",
   "background_color": "#0d1015",
   "theme_color": "#0d1015",
   "icons": [

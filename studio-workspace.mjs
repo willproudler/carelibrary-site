@@ -1,6 +1,7 @@
 import {loginURL} from './auth.mjs';
 import {searchPublished, searchReadingHref} from './native/beta-search.mjs';
 import {openFeaturePreview} from './native/feature-previews.mjs';
+import {createGuestStudioStorage} from './native/studio-guest-storage.mjs';
 import {copyStudioFootnotes, footnoteSavePayload, linkStudioFootnote, nativeStudioFootnotes, studioFootnoteReference} from './native/studio-footnotes.mjs';
 
 export {nativeStudioFootnotes};
@@ -51,6 +52,7 @@ export function studioDraftApi(fetcher = globalThis.fetch) {
 }
 
 function errorCode(error) {
+  if (['guest_storage_unavailable', 'guest_storage_full'].includes(error?.code)) return error.code;
   if (error?.status === 401) return 'sign_in';
   if (error?.status === 403) return 'account_changed';
   if (error?.status === 404) return 'missing';
@@ -70,6 +72,8 @@ const messages = {
   limit: 'Your account has reached its draft limit. Remove an unused draft or download a copy.',
   conflict: 'A newer revision was saved elsewhere. Save your edits as a separate draft or download them.',
   unavailable: 'Could not connect. Your edits are still in this tab.',
+  guest_storage_unavailable: 'This browser could not save drafts. Check that site storage is enabled and try again.',
+  guest_storage_full: 'This browser is out of storage for drafts. Download a copy of your work.',
   source_not_published: 'That reading is unavailable in the published Library. Search again to choose a reference.',
   source_quote_changed: 'That quotation differs from the published source. Copy the exact passage again.',
   source_unavailable: 'Library citations are temporarily unavailable. Try again shortly.',
@@ -80,9 +84,9 @@ function makeDraft(snapshot = {}) {
     dirty: false, saving: null, removing: false, error: '', editVersion: 0, timer: null, ...snapshot};
 }
 
-// Each authenticated account has its own in-memory working copies. One request at a time
+// Each draft collection has its own in-memory working copies. One save at a time
 // advances a document revision; a late response can never overwrite edits made during a save.
-export function createStudioDraftState({api, account, change = () => {},
+export function createStudioDraftState({api, account, local = false, change = () => {},
   saved = () => {}, autoSave = true, schedule = globalThis.setTimeout, cancel = globalThis.clearTimeout}) {
   const working = new Map();
   const summaries = new Map();
@@ -182,7 +186,10 @@ export function createStudioDraftState({api, account, change = () => {},
     const previousId = draft.id;
     const atVersion = draft.editVersion;
     const payload = {title: draft.title, body: draft.body};
-    if (draft.format === 'html') Object.assign(payload, {format: 'html', footnotes: footnoteSavePayload(draft.footnotes || [])});
+    if (draft.format === 'html') {
+      const footnotes = draft.footnotes || [];
+      Object.assign(payload, {format: 'html', footnotes: local ? footnotes : footnoteSavePayload(footnotes)});
+    }
     const titleLimit = draft.format === 'html' ? MAX_HTML_TITLE : MAX_DRAFT_TITLE;
     if (copy) payload.title = `${[...titleOf(draft)].slice(0, titleLimit - 7).join('')} (copy)`;
     draft.error = '';
@@ -261,6 +268,7 @@ const template = `
     <a data-studio-signin hidden>Sign in</a>
     <button type="button" data-studio-retry hidden>Retry</button>
     <button type="button" data-studio-start hidden>Open Studio</button>
+    <button type="button" data-studio-close-beside hidden>Close Write beside</button>
   </div>
   <div class="studio-web__recovery" hidden role="alert">
     <span data-studio-error></span>
@@ -286,7 +294,7 @@ export function nativeStudioDocument(draft) {
   };
 }
 
-export async function nativeStudioImport(file) {
+export async function nativeStudioImport(file, {local = false} = {}) {
   const rich = file.name.toLowerCase().endsWith('.care-draft.json');
   if (!rich && !/\.(txt|md|markdown)$/i.test(file.name)) {
     throw new Error('Choose a Markdown, plain text or CARE draft file.');
@@ -316,7 +324,8 @@ export async function nativeStudioImport(file) {
       backup.footnotes.some(note => !note || typeof note !== 'object' || Array.isArray(note))) {
     throw new Error('Choose a draft backup downloaded from CARE Studio.');
   }
-  return {title: backup.title, body: backup.html, format: 'html', footnotes: footnoteSavePayload(backup.footnotes)};
+  return {title: backup.title, body: backup.html, format: 'html',
+    footnotes: local ? backup.footnotes : footnoteSavePayload(backup.footnotes)};
 }
 
 function downloadFile(doc, name, contents, type) {
@@ -377,7 +386,8 @@ const futureActions = {
 };
 
 export function createStudioWorkspace({
-  host, account = null, preview = false, navigate, onChange = () => {}, onSearch = () => {},
+  host, account = null, guestDrafts = false, preview = false, navigate, onChange = () => {},
+  onBesideChange = () => {}, onSearch = () => {},
   searchBooks = () => [], api = studioDraftApi(), binderApi = studioBinderApi(),
 }) {
   const doc = host.ownerDocument;
@@ -393,8 +403,14 @@ export function createStudioWorkspace({
   const importInput = find('[data-studio-import]');
   const stores = new Map();
   const initialDrafts = new WeakMap();
+  const guestStorage = guestDrafts ? createGuestStudioStorage({document: doc}) : null;
+  const localScope = Symbol('guest drafts');
+  let local = false;
+  let binderStorage = binderApi;
   let store = null;
   let mode = 'studio';
+  let besideRequest = '';
+  let besideNonce = '';
   let routeId = '';
   let active = null;
   let mounted = null;
@@ -413,6 +429,13 @@ export function createStudioWorkspace({
   let importRequest = null;
   const removedFootnotes = new Map();
 
+  function explain(code) {
+    if (local && code === 'missing') return 'This draft is not saved in this browser.';
+    if (local && code === 'limit') return 'This browser has reached its draft limit. Download drafts to keep copies, then free some space.';
+    if (local && code === 'unavailable') return messages.guest_storage_unavailable;
+    return messages[code] || messages.unavailable;
+  }
+
   function notify() {
     onChange({mode, draftId: active?.id || routeId, title: titleOf(active)});
   }
@@ -423,7 +446,7 @@ export function createStudioWorkspace({
     const state = store;
     const previousBinder = binder;
     const previousDrafts = new Map(state.entries().map(entry => [entry.id, entry]));
-    listRequest = binderApi.list(account).then(snapshot => {
+    listRequest = binderStorage.list(account).then(snapshot => {
       if (state !== store || binder !== previousBinder) return state.entries();
       binder = snapshot;
       return state.reconcile(snapshot.drafts, previousDrafts);
@@ -453,7 +476,7 @@ export function createStudioWorkspace({
       drafts, folders, recent: rows.slice(0, 5), show_readings: true,
       readings: [...recentReadings, ...rows.filter(row => !recentlyRead.has(row.id)).map(row => ({...row, recent: false}))],
       actions_unavailable: !store,
-      status: store ? (binder ? '' : 'Opening your drafts…') : 'Sign in to open your private drafts.',
+      status: store ? (binder ? (local ? 'Drafts saved on this browser' : '') : 'Opening your drafts…') : 'Sign in to open your private drafts.',
     };
   }
 
@@ -465,6 +488,7 @@ export function createStudioWorkspace({
     if (signIn) link.href = loginURL(win.location);
     find('[data-studio-retry]').hidden = !retry;
     find('[data-studio-start]').hidden = !start;
+    find('[data-studio-close-beside]').hidden = mode !== 'beside';
   }
 
   function showRecovery(text = '') {
@@ -492,10 +516,14 @@ export function createStudioWorkspace({
 
   function renderEditor(acknowledgement) {
     if (!mounted || !active) return;
-    const {mount, root} = mounted;
-    mounted.cleanup = mount({
+    const editor = mounted;
+    const {mount, root} = editor;
+    editor.cleanup = mount({
       parentElement: root,
       data: {
+        compact: mode === 'beside',
+        writing_clipboard_request: besideRequest,
+        write_beside_nonce: besideNonce,
         document: nativeStudioDocument(active),
         selected_id: active.id,
         documents: store.entries().map(entry => ({...entry, folder_id: binder?.locations[entry.id] || null})),
@@ -512,9 +540,11 @@ export function createStudioWorkspace({
         acknowledgement,
       },
       setTriggerValue(kind, action) {
-        if (kind === 'action') queueMicrotask(() => handleAction(action));
+        if (kind === 'action') queueMicrotask(() => {
+          if (editor === mounted) void handleAction(action);
+        });
       },
-      setSnapshotReader(read) { mounted.readSnapshot = read; },
+      setSnapshotReader(read) { editor.readSnapshot = read; },
     });
   }
 
@@ -527,6 +557,11 @@ export function createStudioWorkspace({
     root.innerHTML = html;
     const style = doc.createElement('style');
     style.textContent = css;
+    if (mode === 'beside') style.textContent += `
+      :host { display: flex; min-block-size: 0; flex: 1; }
+      .studio.compact { display: flex; flex: 1; flex-direction: column; min-block-size: 0; }
+      .studio.compact .workspace { flex: 1; min-block-size: 0; block-size: auto; }
+    `;
     root.prepend(style);
     surface.append(container);
     mounted = {mount, root};
@@ -534,7 +569,10 @@ export function createStudioWorkspace({
   }
 
   function measureShell() {
-    if (!host.hidden) host.style.setProperty('--library-shell-height', Math.max(0, Math.round(host.getBoundingClientRect().top)) + 'px');
+    if (!host.hidden) {
+      const top = Math.max(0, Math.round(host.getBoundingClientRect().top));
+      host.style.setProperty('--library-shell-height', `calc(${top}px + var(--care-safe-bottom, 0px))`);
+    }
   }
 
   win.addEventListener('resize', measureShell);
@@ -544,7 +582,8 @@ export function createStudioWorkspace({
   }
 
   function go(nextMode, id = '', replace = false) {
-    if (navigate) navigate(nextMode, id, {replace});
+    if (nextMode === 'beside') void show(nextMode, id);
+    else if (navigate) navigate(nextMode, id, {replace});
     else void show(nextMode, id);
   }
 
@@ -644,7 +683,8 @@ export function createStudioWorkspace({
   }
 
   function draftsDialog() {
-    openDialog('Your drafts', preview ? 'These drafts are saved in the local preview on this Mac.' : 'Drafts are private to your CARE account.',
+    openDialog('Your drafts', local ? 'Drafts are saved on this browser. Download a copy to keep a backup.' :
+      preview ? 'These drafts are saved in the local preview on this Mac.' : 'Drafts are private to your CARE account.',
       store.entries().map(entry => ({label: titleOf(entry), invoke: () => go(mode, entry.id)})));
   }
 
@@ -656,7 +696,7 @@ export function createStudioWorkspace({
     }];
     if (draft.id) entries.push({label: 'HTML reading copy', async invoke() {
       try {
-        const {ack} = await binderApi.act(account, {operation: 'read', document_ids: [draft.id]});
+        const {ack} = await binderStorage.act(account, {operation: 'read', document_ids: [draft.id]});
         if (state === store) downloadReadingCopy(doc, ack.binder_preview.html, draftFilename(draft));
       } catch (error) {
         if (state === store && active === draft) openDialog('Download draft', error.message, entries);
@@ -667,7 +707,7 @@ export function createStudioWorkspace({
 
   function chooseManuscript(destination) {
     importRequest = {state: store, opening: ticket, destination,
-      folderId: destination === 'studio' ? binder?.locations[active?.id] : null};
+      folderId: destination === 'reader' ? null : binder?.locations[active?.id]};
     importInput.click();
   }
 
@@ -679,13 +719,13 @@ export function createStudioWorkspace({
     if (!file || request?.state !== store || !store) return;
     const {state, opening, destination, folderId} = request;
     try {
-      const payload = await nativeStudioImport(file);
+      const payload = await nativeStudioImport(file, {local});
       if (state !== store) return;
       const draft = await state.newDraft({...payload, ...(folderId ? {folder_id: folderId} : {})});
       if (state === store && opening === ticket) go(destination, draft.id);
     } catch (error) {
       if (state === store && opening === ticket) {
-        openDialog('Import manuscript', error.status ? messages[errorCode(error)] : error.message);
+        openDialog('Import manuscript', error.status ? explain(errorCode(error)) : error.message);
       }
     }
   };
@@ -703,7 +743,7 @@ export function createStudioWorkspace({
         let snapshot;
         try {
           const moved = await state.remove(draft, async (owner, id, revision) => {
-            snapshot = await binderApi.act(owner, {operation: 'trash', item_kind: 'document',
+            snapshot = await binderStorage.act(owner, {operation: 'trash', item_kind: 'document',
               document_id: id, target_id: id}, revision);
           });
           if (!moved || state !== store) return;
@@ -722,6 +762,7 @@ export function createStudioWorkspace({
     const draft = active;
     const editor = mounted;
     if (!editor || !state || !draft || action.document_id !== draft.id) return;
+    const writingMode = mode === 'beside' ? 'beside' : 'studio';
     let ack = {nonce: action.nonce};
     let after;
     let added = [];
@@ -733,13 +774,25 @@ export function createStudioWorkspace({
         active = reloaded;
       } else {
         if (action.type === 'link' || action.type === 'paste-cited') {
-          const source = action.type === 'link' ? findLibraryReading(action.target_key) : {
+          let source = action.type === 'link' ? findLibraryReading(action.target_key) : {
             kind: action.source?.kind, item_id: action.source?.id,
             ...(action.source?.mode === 'passage-quote' ? {quote: action.source.quote} : {}),
           };
+          if (local && action.type === 'paste-cited' && ['passage', 'axiom'].includes(source.kind) && source.item_id) {
+            const {results} = await searchPublished({query: source.item_id, kind: source.kind, mode: 'classic', limit: 1});
+            if (state !== store || active !== draft || mounted !== editor) return;
+            const published = results.find(row => row.kind === source.kind && row.item_id === source.item_id);
+            if (!published) throw new Error(messages.source_not_published);
+            const normalized = text => text.trim().replace(/\s+/gu, ' ');
+            if (source.quote && !normalized(published.text || '').includes(normalized(source.quote))) {
+              throw new Error(messages.source_quote_changed);
+            }
+            source = {...published, ...source};
+          }
           added = [linkStudioFootnote(draft, action, source, win.crypto.randomUUID())];
+          if (local && source.href) added[0] = {...added[0], source: {...source, ...added[0].source}};
         } else if (action.type === 'clipboard-footnotes') {
-          added = await copyStudioFootnotes(draft, action, state.load);
+          added = await copyStudioFootnotes(draft, action, state.load, {local});
           if (state !== store || active !== draft || mounted !== editor) return;
         }
         const notesBefore = draft.footnotes || [];
@@ -752,7 +805,7 @@ export function createStudioWorkspace({
         if (draft.dirty) {
           if (added.length || action.type === 'manual-footnote') rejectedFootnoteEdit = notesBefore;
           editing = state.save(draft);
-          if (!(await editing)) throw new Error(messages[draft.error] || messages.unavailable);
+          if (!(await editing)) throw new Error(explain(draft.error));
           rejectedFootnoteEdit = undefined;
         }
         if (active === draft) {
@@ -784,17 +837,23 @@ export function createStudioWorkspace({
         case 'new': {
           const created = await state.newDraft({title: '', body: '', format: 'html',
             ...(action.folder_id ? {folder_id: action.folder_id} : {})});
-          after = () => go('studio', created.id);
+          after = () => go(writingMode, created.id);
           break;
         }
         case 'open':
-          if (state.entries().some(entry => entry.id === action.target_id)) after = () => go('studio', action.target_id);
+          if (state.entries().some(entry => entry.id === action.target_id)) after = () => go(writingMode, action.target_id);
+          break;
+        case 'close':
+          if (writingMode === 'beside') after = hide;
+          break;
+        case 'studio':
+          after = () => go('studio', draft.id);
           break;
         case 'files':
           after = draftsDialog;
           break;
         case 'import':
-          after = () => chooseManuscript('studio');
+          after = () => chooseManuscript(writingMode);
           break;
         case 'export':
           after = () => offerDraftDownload(draft);
@@ -829,7 +888,7 @@ export function createStudioWorkspace({
           const compile = action.type === 'compile';
           let snapshot;
           try {
-            snapshot = await binderApi.act(account, compile ? {...action, operation: 'read'} : action, draft.revision);
+            snapshot = await binderStorage.act(account, compile ? {...action, operation: 'read'} : action, draft.revision);
           } catch (error) {
             if (compile) after = () => openDialog('Compile drafts', error.message);
             else ack.binder_error = error.message;
@@ -848,7 +907,7 @@ export function createStudioWorkspace({
           const {binder_title: renamedTitle, revision: renamedRevision, ...binderAck} = snapshot.ack;
           Object.assign(ack, binderAck);
           const current = entries.find(entry => entry.id === draft.id);
-          if (!current) after = () => go('studio', entries[0]?.id || '', true);
+          if (!current) after = () => go(writingMode, entries[0]?.id || '', true);
           else if (action.target_id === draft.id && renamedTitle !== undefined && current.revision === renamedRevision) {
             Object.assign(ack, {binder_title: renamedTitle, revision: renamedRevision});
             draft.title = current.title;
@@ -862,7 +921,7 @@ export function createStudioWorkspace({
       }
     } catch (error) {
       if (state !== store || active !== draft) return;
-      const explanation = error.status ? messages[errorCode(error)] : error.message;
+      const explanation = error.status ? explain(errorCode(error)) : error.message;
       ack.error = explanation;
       if (rejectedFootnoteEdit) state.edit(draft, {footnotes: rejectedFootnoteEdit});
       showRecovery(explanation);
@@ -887,31 +946,42 @@ export function createStudioWorkspace({
     return initialDrafts.get(state);
   }
 
-  async function show(nextMode, nextId = '') {
+  async function show(nextMode, nextId = '', nonce = '') {
     const opening = ++ticket;
+    const previousMode = mode;
+    const wasBeside = Boolean(besideRequest);
+    const beside = nextMode === 'beside';
+    besideNonce = beside ? nonce : '';
     mode = nextMode;
     routeId = nextId;
     currentRoute = win.location.hash;
     host.dataset.mode = mode;
+    host.setAttribute('aria-label', beside ? 'Write beside' : 'Document workspace');
+    surface.classList.toggle('st-key-care_writing_drawer_surface', beside);
     host.hidden = false;
+    if (beside !== wasBeside) {
+      besideRequest = beside ? win.crypto.randomUUID().replaceAll('-', '') : '';
+      onBesideChange(beside);
+    }
     measureShell();
-    if (mounted && active?.id === nextId && nextMode === 'studio') {
+    if (mounted && previousMode === nextMode && active?.id === nextId && nextMode !== 'reader') {
+      if (besideNonce) renderEditor();
       notify();
       return;
     }
     clearSurface();
     active = null;
     showRecovery();
-    if (!account) {
+    if (!store) {
       setMessage(preview ? 'Restart the local preview to open drafts.' : 'Sign in to open your private drafts.', {signIn: !preview});
       return;
     }
     const state = store;
-    setMessage(mode === 'reader' ? 'Opening CARE Reader…' : 'Opening CARE Studio…');
+    setMessage(beside ? 'Opening Write beside…' : mode === 'reader' ? 'Opening CARE Reader…' : 'Opening CARE Studio…');
     try {
       const entries = await loadDraftIndex();
       if (opening !== ticket) return;
-      const id = nextId || entries[0]?.id;
+      const id = nextId && (!beside || entries.some(entry => entry.id === nextId)) ? nextId : entries[0]?.id;
       if (!id && mode === 'reader') {
         setMessage('Open a draft in Studio to read it here.', {start: true});
         return;
@@ -919,11 +989,12 @@ export function createStudioWorkspace({
       const draft = id ? await state.load(id) : await openInitialDraft(state);
       if (opening !== ticket) return;
       active = draft;
-      if (!nextId) {
+      if (beside) routeId = draft.id;
+      else if (!nextId) {
         go(mode, draft.id, true);
         if (opening !== ticket) return;
       }
-      if (mode === 'studio') {
+      if (mode !== 'reader') {
         await openEditor(opening);
       } else {
         const {mountNativeDraftReader} = await import('./native-draft-reader.mjs');
@@ -950,7 +1021,7 @@ export function createStudioWorkspace({
     } catch (error) {
       if (opening !== ticket) return;
       const loadingError = errorCode(error);
-      setMessage(messages[loadingError], {signIn: loadingError === 'sign_in', retry: true, start: loadingError === 'missing'});
+      setMessage(explain(loadingError), {signIn: loadingError === 'sign_in', retry: true, start: loadingError === 'missing'});
     }
   }
 
@@ -990,15 +1061,50 @@ export function createStudioWorkspace({
     clearSurface();
     if (dialog.open) dialog.close();
     host.hidden = true;
+    if (besideRequest) {
+      besideRequest = '';
+      besideNonce = '';
+      onBesideChange(false);
+    }
   }
 
-  function setAccount(next, {preview: isPreview = preview} = {}) {
+  function showBeside(id = '', nonce = '') {
+    if (!store) return;
+    if (!besideRequest) return show('beside', id, nonce);
+    if (!id || id === active?.id) {
+      if (nonce) {
+        besideNonce = nonce;
+        queueMicrotask(() => {
+          if (besideRequest && besideNonce === nonce) renderEditor();
+        });
+      }
+      return;
+    }
+    const open = () => show('beside', id, nonce);
+    if (!deferNavigation('write-beside:' + id, open, () => {})) return open();
+  }
+
+  function closeBeside() {
+    if (besideRequest && !deferNavigation('close:write-beside', hide, () => {})) hide();
+  }
+
+  function syncBesideRoute() {
+    if (besideRequest) currentRoute = win.location.hash;
+  }
+
+  function setAccount(next, {preview: isPreview = preview, useLocal = false} = {}) {
     preview = isPreview;
-    if (next === account && store) return;
+    useLocal = Boolean(useLocal && !next && guestStorage);
+    if (next === account && useLocal === local && store) return;
     store?.pause();
     account = next;
-    store = next ? (stores.get(next) || createStudioDraftState({api, account: next, autoSave: false})) : null;
-    if (next) stores.set(next, store);
+    local = useLocal;
+    const scope = local ? localScope : account;
+    binderStorage = local ? guestStorage.binderApi : binderApi;
+    store = scope ? stores.get(scope) || createStudioDraftState({
+      api: local ? guestStorage.api : api, account, local, autoSave: false,
+    }) : null;
+    if (scope) stores.set(scope, store);
     listRequest = null;
     binder = null;
     recentlyRead.clear();
@@ -1014,19 +1120,24 @@ export function createStudioWorkspace({
 
   function command(name, options) {
     if (futureActions[name]) return fullFeature(futureActions[name]);
-    if (!account) return;
+    if (!store) return;
     if (name === 'import' || name === 'import-reader') return chooseManuscript(name === 'import' ? 'studio' : 'reader');
     if (name === 'files' && store && !mounted) return draftsDialog();
     if (name === 'find' && reader) return reader.find();
     if (name === 'export' && reader && active) return offerDraftDownload(active);
-    if (name === 'new' && !mounted) {
-      const state = store;
-      const opening = ticket;
-      void state.newDraft({title: '', body: '', format: 'html', ...(options?.folder_id ? {folder_id: options.folder_id} : {})}).then(draft => {
-        if (state === store && opening === ticket) go('studio', draft.id);
-      }).catch(error => {
-        if (state === store && opening === ticket) setMessage(messages[errorCode(error)], {retry: true});
-      });
+    if (name === 'new' && (!mounted || besideRequest)) {
+      const create = async () => {
+        const state = store;
+        const opening = ticket;
+        try {
+          const draft = await state.newDraft({title: '', body: '', format: 'html',
+            ...(options?.folder_id ? {folder_id: options.folder_id} : {})});
+          if (state === store && opening === ticket) go('studio', draft.id);
+        } catch (error) {
+          if (state === store && opening === ticket) setMessage(explain(errorCode(error)), {retry: true});
+        }
+      };
+      if (!besideRequest || !deferNavigation('new:studio', create, () => {})) void create();
       return;
     }
     if (name === 'remove') {
@@ -1037,8 +1148,15 @@ export function createStudioWorkspace({
     fileCommand(name === 'files' ? 'binder' : name, options);
   }
 
-  find('[data-studio-start]').onclick = () => go('studio', '');
+  find('[data-studio-start]').onclick = () => go(mode === 'beside' ? 'beside' : 'studio', '');
   find('[data-studio-retry]').onclick = () => show(mode, routeId);
+  find('[data-studio-close-beside]').onclick = closeBeside;
+  win.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || event.defaultPrevented || !besideRequest || !host.contains(doc.activeElement) ||
+        dialog.open || mounted?.root.querySelector('dialog[open]')) return;
+    event.preventDefault();
+    closeBeside();
+  });
   function currentEdits(draft) {
     const snapshot = mounted?.readSnapshot?.();
     return snapshot ? {title: snapshot.title, body: snapshot.html, format: 'html',
@@ -1061,12 +1179,13 @@ export function createStudioWorkspace({
         showRecovery();
         clearSurface();
         go(mode, draft.id, true);
-      } else if (state === store) showRecovery(messages[draft.error] || messages.unavailable);
+      } else if (state === store) showRecovery(explain(draft.error));
     } finally {
       surface.inert = copyButton.disabled = false;
     }
   };
   win.addEventListener('care:account-ended', () => {
+    if (besideRequest) hide();
     stores.clear();
     setAccount(null);
   });
@@ -1078,7 +1197,10 @@ export function createStudioWorkspace({
   });
   const initialAccount = account;
   account = null;
-  setAccount(initialAccount);
-  return {show, hide, setAccount, command, deferNavigation, openLibrary, loadDraftIndex, pickerData,
+  setAccount(initialAccount, {useLocal: guestDrafts});
+  return {show, hide, showBeside, closeBeside, syncBesideRoute, setAccount, command, deferNavigation, openLibrary, loadDraftIndex, pickerData,
+    get canWriteBeside() { return Boolean(store); },
+    get besideOpen() { return Boolean(besideRequest); },
+    get besideRequest() { return besideRequest; },
     get activeDraftId() { return active?.id || ''; }};
 }

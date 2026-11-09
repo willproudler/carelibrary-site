@@ -587,6 +587,12 @@ a { color: var(--accent); }
     radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 68%),
     var(--ground);
 }
+.studio:not(.no-document) .page-well::after {
+  content: "";
+  display: block;
+  block-size: clamp(4rem, 18dvh, 10rem);
+  pointer-events: none;
+}
 .page {
   --paper-width: 51rem;
   position: relative;
@@ -2197,9 +2203,43 @@ a { color: var(--accent); }
   border-color: transparent;
   background: transparent;
 }
-.writing-zoom [data-zoom-reset] {
-  min-inline-size: 2.8rem;
+.writing-zoom-choices > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .15rem;
+  min-inline-size: 3rem;
+  min-block-size: 1.65rem;
+  border-radius: .3rem;
+  padding-inline: .2rem;
+  list-style: none;
+  cursor: pointer;
+  font-size: .78rem;
   font-variant-numeric: tabular-nums;
+}
+.writing-zoom-choices > summary::-webkit-details-marker { display: none; }
+.writing-zoom-choices > summary .icon { inline-size: .65rem; block-size: .65rem; }
+.writing-zoom-choices[open] > summary,
+.writing-zoom-choices > summary:hover { background: var(--wash); color: var(--accent); }
+.writing-zoom-options {
+  position: absolute;
+  inset: auto auto calc(100% + .35rem) 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .15rem;
+  inline-size: min(14rem, calc(100dvw - var(--writing-zoom-edge) - .75rem));
+  padding: .35rem;
+  border: 1px solid var(--rule);
+  border-radius: .55rem;
+  background: var(--rail);
+  box-shadow: 0 .55rem 1.55rem #0005;
+}
+.writing-zoom-options button { font-size: .7rem; font-variant-numeric: tabular-nums; }
+.writing-zoom-options [data-zoom-level="fit"] { grid-column: 1 / -1; text-align: start; }
+.writing-zoom-options button[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent-rule);
+  background: var(--wash);
 }
 
 /* Keep the sheet's layout width at 100% of its original size when zoomed. */

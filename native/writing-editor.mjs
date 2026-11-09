@@ -205,7 +205,7 @@ function installWritingA4(runtime) {
   stage.append(source, pages);
   runtime.footnotes.dataset.a4Original = "";
   const state = runtime.a4 = {
-    well, stage, pages, active: false, width: 0, frame: 0, typingTimer: 0,
+    well, stage, pages, active: false, width: 0, frame: 0, caretFrame: 0, typingTimer: 0,
     signature: null, document: "", followCaret: false,
   };
   const {signal} = runtime.controller;
@@ -230,6 +230,7 @@ function installWritingA4(runtime) {
   });
   signal.addEventListener("abort", () => {
     cancelAnimationFrame(state.frame);
+    cancelAnimationFrame(state.caretFrame);
     clearTimeout(state.typingTimer);
   }, {once: true});
 
@@ -250,6 +251,8 @@ function refreshWritingA4(runtime, immediate = false, followCaret = false, typin
   const state = runtime.a4;
   if (!state || runtime.composing) return;
   if (state.document !== runtime.docId) {
+    if (state.caretFrame) cancelAnimationFrame(state.caretFrame);
+    state.caretFrame = 0;
     state.document = runtime.docId;
     state.signature = null;
     state.followCaret = false;
@@ -264,13 +267,21 @@ function refreshWritingA4(runtime, immediate = false, followCaret = false, typin
   state.active = Boolean(!runtime.compact && !runtime.continuous && runtime.docId);
   state.pages.hidden = !state.active;
   state.stage.classList.toggle("writing-a4-live", state.active);
+  // Reveal a new line on the next frame, even while page layout is deferred
+  // during a burst of typing or the draft is in continuous view.
+  if (followCaret) state.followCaret = followCaret;
+  if (followCaret === "insert" && !state.caretFrame) {
+    state.caretFrame = requestAnimationFrame(() => {
+      state.caretFrame = 0;
+      if (!runtime.composing && !runtime.composingFootnote) followWritingA4Caret(runtime, !state.active);
+    });
+  }
   if (!state.active) {
     if (wasActive) stripWritingA4Layout(runtime.paper);
     state.signature = null;
-    state.followCaret = false;
+    if (state.followCaret !== "insert") state.followCaret = false;
     return;
   }
-  if (followCaret) state.followCaret = followCaret;
   const paintNextFrame = () => {
     state.frame = requestAnimationFrame(() => {
       state.frame = 0;
@@ -661,10 +672,10 @@ function writingA4CaretRect(range, afterInsertion) {
   return [...glyph.getClientRects()].find(usable);
 }
 
-function followWritingA4Caret(runtime) {
+function followWritingA4Caret(runtime, consume = true) {
   const {a4: state, paper} = runtime;
   const request = state.followCaret;
-  state.followCaret = false;
+  if (consume) state.followCaret = false;
   if (!request) return;
   if (!paper.matches(":focus")) return;
   const range = writingSelectionRange(paper);
@@ -674,7 +685,8 @@ function followWritingA4Caret(runtime) {
   const viewport = state.well.getBoundingClientRect();
   const top = viewport.top + writingViewportInset(state.well);
   const margin = 32;
-  if (caret.bottom > viewport.bottom - margin) state.well.scrollTop += caret.bottom - viewport.bottom + margin;
+  const bottomClearance = request === "insert" ? Math.max(margin, (viewport.bottom - top) * .32) : margin;
+  if (caret.bottom > viewport.bottom - bottomClearance) state.well.scrollTop += caret.bottom - viewport.bottom + bottomClearance;
   else if (caret.top < top + margin) state.well.scrollTop += caret.top - top - margin;
 }
 
@@ -3056,6 +3068,18 @@ function writingZoomPercent(value) {
     : 100;
 }
 
+function writingFitPercent(runtime) {
+  const {well, pages, scale = 1} = runtime.a4;
+  const sheet = runtime.continuous ? runtime.paper.closest(".page") : pages;
+  const sheetWidth = sheet.getBoundingClientRect().width / scale;
+  const padding = getComputedStyle(well);
+  const width = well.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
+  const height = well.clientHeight - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom) - 8;
+  if (!sheetWidth || width <= 0 || height <= 0) return 100;
+  const fit = runtime.continuous ? width / sheetWidth : Math.min(width / sheetWidth, height / (sheetWidth * 297 / 210));
+  return Math.max(1, Math.min(100, Math.floor(fit * 100)));
+}
+
 function writingZoomFocusRect(runtime) {
   const {paper, a4} = runtime;
   const active = paper.getRootNode().activeElement;
@@ -3103,44 +3127,82 @@ function installWritingZoom(runtime) {
   const control = runtime.root.querySelector("[data-writing-zoom]");
   if (!control || !CSS.supports("zoom", "1.1")) return;
   const decrease = control.querySelector("[data-zoom-out]");
-  const reset = control.querySelector("[data-zoom-reset]");
+  const choices = control.querySelector("[data-zoom-choices]");
+  const summary = choices.querySelector("summary");
+  const readout = summary.querySelector("[data-zoom-percent]");
+  const levels = choices.querySelectorAll("[data-zoom-level]");
   const increase = control.querySelector("[data-zoom-in]");
   const {signal} = runtime.controller;
-  let percent = 100;
+  let preference = "100";
   try {
-    percent = writingZoomPercent(localStorage.getItem(writingZoomPreference));
+    const saved = localStorage.getItem(writingZoomPreference);
+    preference = saved === "fit" ? saved : String(writingZoomPercent(saved));
   } catch {
     // Zoom can still change when browser storage is unavailable.
   }
+  let percent = preference === "fit" ? 100 : Number(preference);
 
   function paintControls() {
-    reset.textContent = `${percent}%`;
-    reset.setAttribute("aria-label", `Document zoom ${percent}%. Reset to 100%`);
-    decrease.disabled = percent === writingZoomMin;
-    increase.disabled = percent === writingZoomMax;
+    readout.textContent = `${percent}%`;
+    const mode = preference === "fit" ? "Fit size. " : "";
+    summary.setAttribute("aria-label", `Document zoom ${percent}%. ${mode}Choose a zoom level`);
+    decrease.disabled = percent <= writingZoomMin;
+    increase.disabled = percent >= writingZoomMax;
+    for (const level of levels) level.setAttribute("aria-pressed", String(level.dataset.zoomLevel === preference));
   }
 
   function change(value) {
     if (runtime.composing || runtime.composingFootnote) return;
-    const next = writingZoomPercent(value);
-    if (next === percent) return;
-    applyWritingZoom(runtime, next, true);
-    percent = next;
+    preference = value === "fit" ? value : String(writingZoomPercent(value));
+    percent = preference === "fit" ? writingFitPercent(runtime) : Number(preference);
+    applyWritingZoom(runtime, percent, true);
     paintControls();
     try {
-      localStorage.setItem(writingZoomPreference, String(percent));
+      localStorage.setItem(writingZoomPreference, preference);
     } catch {
       // Keep the chosen zoom for this Studio session.
     }
+  }
+
+  function closeChoices() {
+    if (!choices.open) return;
+    const returnFocus = choices.contains(choices.getRootNode().activeElement);
+    choices.open = false;
+    if (returnFocus) summary.focus({preventScroll: true});
+  }
+
+  runtime.refreshWritingFit = () => {
+    if (preference !== "fit" || runtime.composing || runtime.composingFootnote) return;
+    const next = writingFitPercent(runtime);
+    if (next === percent) return;
+    percent = next;
+    applyWritingZoom(runtime, percent, true);
+    paintControls();
+  };
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(runtime.refreshWritingFit);
+    observer.observe(runtime.a4.well);
+    signal.addEventListener("abort", () => observer.disconnect(), {once: true});
   }
 
   // Clicking the view controls keeps the editor's native selection and focus.
   control.addEventListener("mousedown", event => {
     if (event.button === 0) event.preventDefault();
   }, {signal});
-  decrease.addEventListener("click", () => change(percent - writingZoomStep), {signal});
-  reset.addEventListener("click", () => change(100), {signal});
-  increase.addEventListener("click", () => change(percent + writingZoomStep), {signal});
+  decrease.addEventListener("click", () => change((Math.ceil(percent / writingZoomStep) - 1) * writingZoomStep), {signal});
+  increase.addEventListener("click", () => change((Math.floor(percent / writingZoomStep) + 1) * writingZoomStep), {signal});
+  for (const level of levels) level.addEventListener("click", () => {
+    change(level.dataset.zoomLevel);
+    closeChoices();
+  }, {signal});
+  control.ownerDocument.addEventListener("pointerdown", event => {
+    if (!event.composedPath().includes(choices)) closeChoices();
+  }, {signal});
+  runtime.root.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || !choices.open) return;
+    event.preventDefault();
+    closeChoices();
+  }, {signal, capture: true});
   applyWritingZoom(runtime, percent, false);
   paintControls();
   control.hidden = false;
@@ -5868,6 +5930,7 @@ function renderPanel(runtime) {
 function renderLayout(runtime, immediate = false) {
   runtime.root.classList.toggle("continuous", runtime.continuous);
   refreshWritingA4(runtime, immediate);
+  runtime.refreshWritingFit?.();
   runtime.peerReview?.refresh();
   const button = runtime.root.querySelector('[data-action="layout"]');
   if (button) {
