@@ -84,7 +84,7 @@ async function start(){
   return fieldPromise;
  }
  let state={workId:(data.works[0]?.id||''),routeMode:'incoming',outlineUnits:[]},view='library',cleanup,savedCleanup,viewerCleanup,numoWorkspace;
- let numoHeader,pendingNumoAQ;
+ let numoHeader,pendingNumoAQ,pendingNumoReference;
  let opened=[],history=[],historyIndex=-1;
  const manuscriptTabs=new Map();
  let draftId='',lastDraftId='';
@@ -252,6 +252,7 @@ async function start(){
   document.body.dataset.workbenchView=currentPage;
   numoHeader?.setActive(view==='numogram');
   $('.workbench-search').hidden=view==='numogram';
+  $('[data-numo-tools]').hidden=view!=='numogram';
   const markup=opened.map(key=>{
    const {document,work,isSaved,isNumo,kind,style,title,href}=tabDetails(key),active=inTab&&keyNow===key;
    return `<span class="open-tab ${active?'active':''}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${esc(href)}"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span>${document?`<small data-tab-role>${style.label}</small>`:''}</a>${!work&&!document&&!isSaved&&!isNumo?`<button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button>`:''}<button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
@@ -641,7 +642,8 @@ async function start(){
       if(source.origin===location.origin&&source.pathname==='/library.html'&&(params.has('book')||params.has('lateral')))location.hash=source.hash;
      }});
      if(pendingNumoAQ)numoWorkspace.openAQ(pendingNumoAQ);
-     pendingNumoAQ=null;
+     if(pendingNumoReference)numoWorkspace.openReference(pendingNumoReference);
+     pendingNumoAQ=pendingNumoReference=null;
      setLoadStatus();
     }
     return;
@@ -734,6 +736,7 @@ async function start(){
  addEventListener('popstate',()=>workspaceHistory.observe());
  const settingsMenu=$('#workbench-settings'),roomsMenu=$('#workbench-rooms'),labels=$('#workbench-labels');
  const toolbarMenus=[roomsMenu,settingsMenu];
+ $('[data-numo-tools]').onclick=()=>numoWorkspace?.openTools();
  function setLabels(visible){
   labels.checked=visible;
   window.careToolbarLabelsVisible=visible;
@@ -791,10 +794,14 @@ async function start(){
  $('.workbench-saved').onclick=()=>{if(location.hash==='#view=saved')routeFromURL();else location.hash='view=saved';};
  numoHeader=mountNumogramHeaderSearch({
   host:$('[data-numo-header-search]'),
-  getCalculator:()=>loadNumogram().then(module=>module.instrumentAQInput),
+  loadAQParser:()=>loadNumogram().then(module=>module.instrumentAQInput),
   onOpenNumogram(target){
    if(numoWorkspace)numoWorkspace.openAQ(target);
    else pendingNumoAQ=target;
+  },
+  onOpenReference(target){
+   if(numoWorkspace)numoWorkspace.openReference(target);
+   else pendingNumoReference=target;
   },
   onSearchCare:query=>spotlight.open(query,{expanded:true}),
  });

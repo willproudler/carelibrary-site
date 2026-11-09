@@ -1,4 +1,4 @@
-import mountInstrument, {arithmetic, css, html, instrumentAQInput} from './numogram-instrument.mjs?v=a786a5d3f8126c86';
+import mountInstrument, {arithmetic, css, html, instrumentAQInput} from './numogram-instrument.mjs?v=ce2466b67392b8c4';
 import reference from './numogram-reference.mjs';
 
 const aqEndpoint = '/api/numo/aq';
@@ -19,7 +19,7 @@ export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ} = {
     })),
   };
 
-  let acceptAQ, openAQ, pending;
+  let acceptAQ, openAQ, openReference, openTools, pending;
   async function receiveAction(_key, {kind, total, id, match_kind = 'all', sort = 'variety', offset = 0}) {
     if (kind === 'instrument_aq_source') {
       const href = world.instrument_aq_match?.record?.source_href;
@@ -60,6 +60,8 @@ export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ} = {
       aq_scroll_url: aqEndpoint,
       bindAQResponse: receive=>{ acceptAQ = receive; },
       bindAQOpen: open=>{ openAQ = open; },
+      bindReferenceOpen: open=>{ openReference = open; },
+      bindToolsOpen: open=>{ openTools = open; },
       focusHeaderAQ,
       instrument_font_prefix: new URL('./numo-', import.meta.url).href,
     },
@@ -67,9 +69,11 @@ export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ} = {
   });
   return {
     openAQ: target=>openAQ?.(target),
+    openReference: target=>openReference?.(target),
+    openTools: ()=>openTools?.(),
     unmount() {
       acceptAQ = null;
-      openAQ = null;
+      openAQ = openReference = openTools = null;
       pending?.abort();
       unmount?.();
       shadow.replaceChildren();

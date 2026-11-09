@@ -14,7 +14,7 @@
   --numo-aq-accent: #e7b96f;
   --numo-aq-muted: #c0ac88;
   --numo-aq-line: #634f31;
-  --numo-aq-field: #242019;
+  --numo-aq-field: #000;
   --numo-aq-panel: #1b1915;
   --numo-aq-mono: "CARE NUMO Header Mono", "IBM Plex Mono", monospace;
   display: flex;
@@ -76,7 +76,7 @@
   padding: 0 .55rem;
   border: 1px solid #5c4e36;
   border-radius: .65rem;
-  background: #232018;
+  background: transparent;
   color: var(--numo-aq-ink);
   font-size: .72rem;
   white-space: nowrap;
@@ -141,6 +141,16 @@
   font: 400 1.06rem/1.17 "CARE NUMO Header Serif", Georgia, serif;
 }
 .numo-header-results button small { display: block; margin-top: .15rem; color: var(--numo-aq-muted); font: .62rem/1.3 var(--numo-aq-mono); }
+.numo-header-reference {
+  --numo-aq-accent: #3dff8c;
+  --numo-aq-ink: #d8f3e1;
+  --numo-aq-muted: #a4b9ab;
+  border-bottom: 1px solid #345442;
+  background: #101913;
+}
+.numo-header-reference .numo-header-kicker { margin: 0; padding: .65rem .8rem .35rem; }
+.numo-header-reference .numo-header-results li { border-color: #263a2d; }
+.numo-header-reference .numo-header-results button:hover { background: #1a3424; }
 .numo-header-results-foot { display: flex; justify-content: flex-end; padding: .52rem .75rem; border-top: 1px solid #413522; }
 .numo-header-results-foot button svg { width: .8rem; height: .8rem; }
 
@@ -170,7 +180,7 @@
   .numo-header-field input { font-size: 16px; }
   .numo-header-search .numo-header-close { display: block; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--numo-aq-accent); font-size: 1.25rem; }
   .numo-header-panel { position: static; flex: 1 1 auto; width: 100%; min-height: 0; max-width: none; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
-  .numo-header-search .numo-header-open, .numo-header-results-foot button { min-height: 44px; }
+  .numo-header-search .numo-header-open, .numo-header-results button, .numo-header-results-foot button { min-height: 44px; }
 }
 @media (max-width: 460px) {
   .numo-header-search .numo-header-care, .numo-header-compact span { display: none; }

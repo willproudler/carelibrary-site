@@ -6,9 +6,46 @@ const matchKind = 'sentence';
 const sort = 'variety';
 const resultLimit = 4;
 const loadInstrumentParser = () => import('./numogram-instrument.mjs').then(module => module.instrumentAQInput);
+const loadPublicReference = () => import('./numogram-reference.mjs').then(module => module.default);
 let nextSearchId = 0;
 
-export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, loadAQParser = loadInstrumentParser}) {
+const normalizeReference = value => String(value ?? '').normalize('NFKD').toLowerCase()
+  .replace(/\p{M}/gu, '').replace(/[’']/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+export function findNumogramReferences(reference, query, limit = resultLimit) {
+  const term = normalizeReference(query);
+  if (term.length < 2 || /^\d+$/.test(term)) return [];
+
+  const hits = [];
+  function add({kind, id, name, detail}, names, context = []) {
+    const labels = [name, name.replace(/^the\s+/i, ''), ...names].map(normalizeReference);
+    const details = context.map(normalizeReference);
+    const rank = labels.includes(term) ? 0
+      : labels.some(label => label.startsWith(term)) ? 1
+      : labels.some(label => label.includes(term)) ? 2
+      : details.some(label => label.includes(term)) ? 3 : -1;
+    if (rank !== -1) hits.push({rank, result:{kind, id, name, detail}});
+  }
+
+  for (const demon of reference.demons || []) {
+    const {id, name, aliases = [], net_span:span} = demon;
+    const reverseSpan = span?.split('::').reverse().join('::');
+    const detail = ['Demon', span, aliases[0]].filter(Boolean).join(' · ');
+    add({kind:'demon', id, name, detail}, [id, id.replace(/-/g, ''), span, reverseSpan, ...aliases]);
+  }
+  for (const shelf of reference.correspondence_chambers || []) {
+    const kind = shelf.kind === 'voice' ? 'skill' : 'card';
+    for (const {id, name, group, subject} of shelf.entries) {
+      const detail = [shelf.label, subject || group].filter(Boolean).join(' · ');
+      add({kind, id, name, detail}, [subject], [`${shelf.label} ${name}`, `${name} ${shelf.label}`]);
+    }
+  }
+  return hits.sort((a, b) => a.rank - b.rank || a.result.name.localeCompare(b.result.name))
+    .slice(0, limit).map(({result}) => result);
+}
+
+export function mountNumogramHeaderSearch({host, onOpenNumogram, onOpenReference, onSearchCare,
+  loadAQParser = loadInstrumentParser, loadReference = loadPublicReference}) {
   const doc = host.ownerDocument;
   const frame = doc.defaultView;
   const searchId = `care-numo-header-${++nextSearchId}`;
@@ -17,13 +54,17 @@ export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, l
   host.innerHTML = `
     <button type="button" class="numo-header-compact" data-aq-compact aria-label="Open AQ search" title="AQ search" aria-controls="${searchId}-surface" aria-expanded="false">${NUMOGRAM_MARK}<span>AQ</span></button>
     <div class="numo-header-surface" id="${searchId}-surface">
-      <form class="numo-header-field" role="search" aria-label="Search the AQ index" id="${searchId}-form">
+      <form class="numo-header-field" role="search" aria-label="Search Numogram references and AQ" id="${searchId}-form">
         <span class="numo-header-field-mark">${NUMOGRAM_MARK}</span>
-        <input type="search" data-aq-query placeholder="AQ search" aria-label="AQ search" aria-controls="${searchId}-matches" maxlength="1024" autocomplete="off" spellcheck="false">
+        <input type="search" data-aq-query placeholder="AQ or NUMO name" aria-label="AQ and NUMO reference search" aria-controls="${searchId}-matches" maxlength="1024" autocomplete="off" spellcheck="false">
         <span class="numo-header-total" data-aq-total hidden></span>
         <button class="numo-header-close" type="button" data-aq-close aria-label="Close AQ search">×</button>
       </form>
-      <section class="numo-header-panel" id="${searchId}-matches" aria-label="AQ sentence matches" hidden>
+      <section class="numo-header-panel" id="${searchId}-matches" aria-label="Numogram search matches" hidden>
+        <section class="numo-header-reference" data-aq-reference aria-labelledby="${searchId}-references" hidden>
+          <h2 id="${searchId}-references" class="numo-header-kicker">NUMO / REFERENCES</h2>
+          <ul class="numo-header-results" data-aq-reference-results></ul>
+        </section>
         <div class="numo-header-results-top"><div><span class="numo-header-kicker">AQ / SENTENCE INDEX</span>
           <div class="numo-header-status" role="status" data-aq-status></div></div>
           <button type="submit" class="numo-header-open" form="${searchId}-form" data-aq-open disabled>Open in Numogram <span aria-hidden="true">↗</span></button>
@@ -39,6 +80,8 @@ export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, l
   const panel = $('.numo-header-panel');
   const status = $('[data-aq-status]');
   const list = $('[data-aq-results]');
+  const referenceSection = $('[data-aq-reference]');
+  const referenceList = $('[data-aq-reference-results]');
   const totalLabel = $('[data-aq-total]');
   const compact = $('[data-aq-compact]');
   const openButton = $('[data-aq-open]');
@@ -48,6 +91,7 @@ export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, l
   let expanded = false;
   let calculation = null;
   let calculator;
+  let references;
   let timer;
   let pending;
   let revision = 0;
@@ -105,6 +149,35 @@ export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, l
     list.hidden = !list.childElementCount;
   }
 
+  async function showReferences(query, token) {
+    if (!onOpenReference) return;
+    try {
+      references ??= Promise.resolve().then(loadReference).catch(error => {
+        references = null;
+        throw error;
+      });
+      const reference = await references;
+      if (revision !== token || !expanded) return;
+      for (const result of findNumogramReferences(reference, query)) {
+        const item = doc.createElement('li');
+        const button = doc.createElement('button');
+        const name = doc.createElement('span');
+        const detail = doc.createElement('small');
+        button.type = 'button';
+        button.dataset.aqReferenceId = result.id;
+        button.dataset.aqReferenceKind = result.kind;
+        name.textContent = result.name;
+        detail.textContent = result.detail;
+        button.append(name, detail);
+        item.append(button);
+        referenceList.append(item);
+      }
+      referenceSection.hidden = !referenceList.childElementCount;
+    } catch {
+      // The independent AQ lookup can still resolve without the reference shelves.
+    }
+  }
+
   function showPage(page) {
     const count = page.total_count;
     status.textContent = count ? `${count.toLocaleString()} published ${count === 1 ? 'sentence' : 'sentences'}` : 'No published sentences at this total.';
@@ -141,10 +214,13 @@ export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, l
     totalLabel.hidden = true;
     openButton.disabled = true;
     results();
+    referenceList.replaceChildren();
+    referenceSection.hidden = true;
     if (!query) {
-      status.textContent = 'Type a word, a phrase or an AQ number.';
+      status.textContent = 'Type a word, a phrase, an AQ number or a NUMO name.';
       return;
     }
+    showReferences(query, token);
     try {
       const parse = await loadCalculator();
       if (revision !== token || !expanded) return;
@@ -212,6 +288,10 @@ export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, l
       const query = input.value.trim();
       close();
       onSearchCare(query);
+    } else if (button.dataset.aqReferenceId) {
+      const {aqReferenceId:id, aqReferenceKind:kind} = button.dataset;
+      close();
+      onOpenReference?.({kind, id});
     } else if (button.dataset.aqResult) go(button.dataset.aqResult);
   }
   function onKeydown(event) {
@@ -223,7 +303,7 @@ export function mountNumogramHeaderSearch({host, onOpenNumogram, onSearchCare, l
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const buttons = [...list.querySelectorAll('button')];
+    const buttons = [...referenceList.querySelectorAll('button'), ...list.querySelectorAll('button')];
     const current = buttons.indexOf(event.target);
     const next = event.target === input && event.key === 'ArrowDown' ? buttons[0] || (!openButton.disabled && openButton)
       : current < 0 ? null : event.key === 'ArrowDown' ? buttons[current + 1] : buttons[current - 1] || input;

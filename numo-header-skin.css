@@ -3,9 +3,9 @@
 .beta-workbench .workbench-search[hidden] { display: none !important; }
 
 body.care-library-shell[data-workbench-view="numogram"] .app-header.beta-workbench {
-  --numo-shell: #0a120d;
-  --numo-control: #102018;
-  --numo-edge: #294d36;
+  --numo-shell: #000;
+  --numo-control: transparent;
+  --numo-edge: #345442;
   --numo-icon: #7bdfa0;
   --numo-phosphor: #3dff8c;
   --numo-dim: #587361;
@@ -13,9 +13,9 @@ body.care-library-shell[data-workbench-view="numogram"] .app-header.beta-workben
   --workbench-line: var(--numo-edge);
   --care-command-edge: var(--numo-edge);
   --care-command-hover: #1a3424;
-  background: linear-gradient(180deg, #101c13, var(--numo-shell));
+  background: var(--numo-shell);
   border-bottom-color: var(--numo-edge);
-  box-shadow: inset 0 1px #79e99c14;
+  box-shadow: none;
 }
 
 body[data-workbench-view="numogram"] .beta-workbench .brand :is(.brand-name, .brand-mark) { display: none; }
@@ -24,7 +24,7 @@ body[data-workbench-view="numogram"] .beta-workbench .brand::before {
   flex: none;
   inline-size: 4.4rem;
   block-size: 2.25rem;
-  background: linear-gradient(105deg, #9df1b3 15%, #57b879 70%, #397d51);
+  background: var(--numo-phosphor);
   -webkit-mask: url("/assets/care-header-mark.svg") center / contain no-repeat;
   mask: url("/assets/care-header-mark.svg") center / contain no-repeat;
 }
@@ -33,7 +33,7 @@ body[data-workbench-view="numogram"] .beta-workbench .brand small {
   color: #9ab9a4;
   -webkit-text-fill-color: currentColor;
   border-color: var(--numo-edge);
-  background: #102018;
+  background: transparent;
 }
 
 body.care-library-shell[data-workbench-view="numogram"] .beta-workbench :is(.workbench-history, .workbench-switch, .workbench-tools) {
@@ -55,7 +55,7 @@ body.care-library-shell[data-workbench-view="numogram"] .beta-workbench .workben
 body.care-library-shell[data-workbench-view="numogram"] .beta-workbench .workbench-history button:enabled:hover { background: var(--care-command-hover) !important; }
 body.care-library-shell[data-workbench-view="numogram"] .beta-workbench :is(.workbench-rooms, .workbench-settings)[open] > summary,
 body.care-library-shell[data-workbench-view="numogram"] .beta-workbench .workbench-rooms > summary {
-  background: #1a3424 !important;
+  background: transparent !important;
   border-color: #4a825b !important;
 }
 body.care-library-shell[data-workbench-view="numogram"] .beta-workbench :is(a, button, summary):focus-visible { outline-color: var(--numo-phosphor) !important; }
@@ -63,9 +63,9 @@ body.care-library-shell[data-workbench-view="numogram"] .beta-workbench :is(a, b
 @media (min-width: 821px) {
   body[data-workbench-view="numogram"] .beta-workbench .numo-wordmark {
     display: inline;
-    color: var(--numo-phosphor);
-    -webkit-text-fill-color: var(--numo-phosphor);
-    font: 600 .8rem/1.2 var(--care-web-mono);
+    color: var(--numo-phosphor) !important;
+    -webkit-text-fill-color: var(--numo-phosphor) !important;
+    font: 500 .85rem/1.2 "CARE NUMO Header Mono", var(--care-web-mono);
     letter-spacing: .15em;
     text-shadow: 0 0 10px #3dff8c4d;
   }
