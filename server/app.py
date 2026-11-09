@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import re
 import sqlite3
 from urllib.parse import quote
 
@@ -21,7 +22,12 @@ from starlette.routing import Route
 from .access_requests import AccessRequestService
 from .auth import AuthStore, SESSION_SECONDS, client_key
 from .config import Settings, inside
+from .library_search import MAX_REQUEST_BYTES as SEARCH_REQUEST_BYTES
+from .library_search import LibrarySearchError, PublishedLibrarySearch, search_options
 from .site_settings import MAX_REVISION, SiteSettingsConflict, SiteSettingsStore
+from .studio_binder import MAX_REQUEST_BYTES as BINDER_REQUEST_BYTES, StudioBinderStore
+from .studio_drafts import DRAFT_ID, MAX_REQUEST_BYTES as STUDIO_REQUEST_BYTES, MAX_REVISION as STUDIO_MAX_REVISION
+from .studio_drafts import StudioDraftError, StudioDraftStore, draft_content
 
 
 COOKIE_NAME = "__Host-care_session"
@@ -33,13 +39,20 @@ PUBLIC_FILES = frozenset({
     "auth.css", "styles.css", "discover.css", "discover-atlas.css",
     "discover-experiments.css", "brand-header.css", "site.webmanifest",
     "favicon.ico", "favicon.svg", "quick-start.pdf", "robots.txt", "sitemap.xml", "llms.txt",
+    "ui-fonts-ofl.txt", "ui-icons-apache.txt",
 })
 PUBLIC_BRANDING = frozenset({
     "assets/care-header-mark.svg", "assets/care-mark.svg", "assets/favicon-32.png",
     "assets/favicon-128.png", "assets/favicon-light-32.png", "assets/favicon-light-128.png",
     "assets/apple-touch-icon.png", "assets/app-icon-512.png",
+    "assets/ui-fonts/source-sans.woff2", "assets/ui-fonts/source-code.woff2",
+    "assets/ui-icons/workbench.svg",
 })
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".svg", ".ico"})
+NUMO_FONTS = frozenset({
+    "native/numo-Kalam-Regular.ttf", "native/numo-IBMPlexMono-Regular.ttf", "native/numo-IBMPlexMono-Medium.ttf",
+    "native/numo-EBGaramond.ttf", "native/numo-EBGaramond-Italic.ttf", "native/numo-VT323-Regular.ttf",
+})
 SECURITY_HEADERS = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
@@ -127,6 +140,9 @@ class SecurityBoundary:
                 cookies = [(key, value) for key, value in message.get("headers", []) if key.lower() == b"set-cookie"]
                 headers.pop(b"set-cookie", None)
                 headers.update({key.lower().encode(): value.encode() for key, value in SECURITY_HEADERS.items()})
+                if scope.get("care_library_companion") and message["status"] in {200, 206}:
+                    headers[b"x-frame-options"] = b"SAMEORIGIN"
+                    headers[b"content-security-policy"] = b"frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
                 if scope.get("scheme") == "https":
                     headers[b"strict-transport-security"] = b"max-age=31536000"
                 message["headers"] = list(headers.items()) + cookies
@@ -134,7 +150,7 @@ class SecurityBoundary:
         await self.app(scope, receive, secure_send)
 
 
-async def body(request: Request):
+async def body(request: Request, max_bytes=MAX_BODY_BYTES):
     origins = request.headers.getlist("origin")
     if len(origins) != 1 or origins[0] != request.scope["care_origin"]:
         raise HTTPException(403, "Use the website form to continue.")
@@ -147,14 +163,17 @@ async def body(request: Request):
     if (len(lengths) > 1 or (lengths and not lengths[0].isdigit())
             or (lengths and request.headers.get("transfer-encoding"))):
         raise HTTPException(400, "Invalid request body.")
-    expected = int(lengths[0]) if lengths else None
-    if expected is not None and expected > MAX_BODY_BYTES:
+    try:
+        expected = int(lengths[0]) if lengths else None
+    except ValueError:
+        raise HTTPException(400, "Invalid request body.") from None
+    if expected is not None and expected > max_bytes:
         raise HTTPException(413, "Request body is too large.")
     encoded = bytearray()
     try:
         with anyio.fail_after(5):
             async for chunk in request.stream():
-                if len(encoded) + len(chunk) > MAX_BODY_BYTES:
+                if len(encoded) + len(chunk) > max_bytes:
                     raise HTTPException(413, "Request body is too large.")
                 encoded.extend(chunk)
     except TimeoutError:
@@ -172,7 +191,7 @@ async def body(request: Request):
                 result[key] = item
             return result
         value = json.loads(encoded.decode("utf-8"), object_pairs_hook=unique_fields)
-    except (ValueError, UnicodeError):
+    except (ValueError, UnicodeError, RecursionError):
         raise HTTPException(400, "Invalid request body.") from None
     if not isinstance(value, dict):
         raise HTTPException(400, "Invalid request body.")
@@ -224,6 +243,92 @@ async def site_settings(request):
     except SiteSettingsConflict:
         return json_response({"error": "The settings changed. Reload them before saving again."}, 409)
     return json_response(updated)
+
+
+async def library_search(request):
+    configuration = await run_in_threadpool(request.app.state.site_settings.get)
+    if configuration["beta_enabled"] and not await run_in_threadpool(request.app.state.auth.session, token(request)):
+        raise HTTPException(401, "Log in to search the Library.")
+    value = await body(request, SEARCH_REQUEST_BYTES)
+    state = request.app.state
+    try:
+        options = search_options(value)
+        with anyio.fail_after(2):
+            await state.search_limiter.acquire()
+        try:
+            result = await run_in_threadpool(state.library_search.search, options)
+        finally:
+            state.search_limiter.release()
+        return json_response(result)
+    except LibrarySearchError as error:
+        raise HTTPException(400, str(error)) from None
+    except TimeoutError:
+        return json_response({"error": "Library search is busy. Please try again."}, 429, {"Retry-After": "2"})
+    except (OSError, ValueError, KeyError, sqlite3.Error):
+        return json_response({"error": "Library search is temporarily unavailable."}, 503)
+
+
+async def studio_drafts(request):
+    store = request.app.state.studio_drafts
+    draft_id = request.path_params.get("draft_id")
+    try:
+        if draft_id is not None and not DRAFT_ID.fullmatch(draft_id):
+            raise StudioDraftError("draft_not_found", 404)
+        if request.method in {"GET", "HEAD"}:
+            accounts = request.headers.getlist("x-care-account")
+            if len(accounts) > 1:
+                raise StudioDraftError("account_changed", 403)
+            result = await run_in_threadpool(store.read, token(request), accounts[0] if accounts else None, draft_id)
+            return json_response(result)
+
+        value = await body(request, STUDIO_REQUEST_BYTES if request.method != "DELETE" else MAX_BODY_BYTES)
+        fields = {"account"}
+        optional = set()
+        if request.method != "DELETE":
+            fields.update({"title", "body"})
+            optional.update({"format", "footnotes"})
+            if draft_id is None:
+                optional.add("folder_id")
+        if draft_id is not None:
+            fields.add("revision")
+        if (not fields <= value.keys() <= fields | optional
+                or not isinstance(value["account"], str) or not 1 <= len(value["account"]) <= 254
+                or ("footnotes" in value and not isinstance(value["footnotes"], list))
+                or (draft_id is not None and (type(value["revision"]) is not int
+                    or not 1 <= value["revision"] <= STUDIO_MAX_REVISION))):
+            raise StudioDraftError("invalid_draft", 400)
+        if request.method == "DELETE":
+            result = await run_in_threadpool(store.delete, token(request), value["account"], draft_id, value["revision"])
+            return json_response(result)
+        content = await run_in_threadpool(draft_content, value["title"], value["body"],
+                                          value.get("format", "text"), value.get("footnotes"))
+        if draft_id is None:
+            result = await run_in_threadpool(store.create, token(request), value["account"], content, value.get("folder_id"))
+            return json_response(result, 201)
+        result = await run_in_threadpool(store.update, token(request), value["account"], draft_id,
+                                         value["revision"], content)
+        return json_response(result)
+    except StudioDraftError as error:
+        return json_response({"error": error.code}, error.status)
+
+
+async def studio_binder(request):
+    store = request.app.state.studio_binder
+    try:
+        if request.method in {"GET", "HEAD"}:
+            accounts = request.headers.getlist("x-care-account")
+            if len(accounts) > 1:
+                raise StudioDraftError("account_changed", 403)
+            result = await run_in_threadpool(store.read, token(request), accounts[0] if accounts else None)
+        else:
+            value = await body(request, BINDER_REQUEST_BYTES)
+            account = value.pop("account", None)
+            if not isinstance(account, str) or not 1 <= len(account) <= 254:
+                raise StudioDraftError("binder_invalid", 400)
+            result = await run_in_threadpool(store.mutate, token(request), account, value)
+        return json_response(result)
+    except StudioDraftError as error:
+        return json_response({"error": error.code}, error.status)
 
 
 async def login(request):
@@ -307,15 +412,22 @@ async def static_file(request):
     permitted = (public or owner_only or relative == "library.html"
                  or (len(parts) == 1 and suffix in {".mjs", ".js", ".css"})
                  or (parts[0] == "native" and suffix in {".mjs", ".js", ".css", ".html", ".json"})
+                 or relative in NUMO_FONTS
                  or (parts[0] == "data" and suffix in {".json", ".jsonpart"})
                  or (parts[:2] == ("assets", "covers") and suffix in IMAGE_SUFFIXES))
     if not permitted:
         raise HTTPException(404, "Not found.")
+    companion_id = request.query_params.getlist("care_studio_request")
+    companion = (relative == "library.html"
+                 and request.query_params.getlist("care_studio_embed") == ["1"]
+                 and request.query_params.getlist("care_studio_pane_reading") == ["1"]
+                 and len(companion_id) == 1
+                 and bool(re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", companion_id[0])))
     configuration = await run_in_threadpool(request.app.state.site_settings.get)
     if not configuration["beta_enabled"] and relative == "index.html":
         destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
         return json_response({"location": destination}, 303, {"Location": destination})
-    if owner_only or (not public and configuration["beta_enabled"]):
+    if owner_only or companion or (not public and configuration["beta_enabled"]):
         user = await run_in_threadpool(request.app.state.auth.session, token(request))
         if not user:
             message = "Log in to manage the website." if owner_only else "Log in to open the library."
@@ -335,6 +447,10 @@ async def static_file(request):
     headers = {"Vary": "Cookie, Accept-Encoding"}
     if not public:
         headers["X-Robots-Tag"] = "noindex"
+    # Only the reviewed Library companion can be framed. The draft, login and
+    # settings endpoints retain the standard anti-framing headers.
+    if companion:
+        request.scope["care_library_companion"] = True
     # Built gzip copies are served only after the same authorization checks.
     accepted = request.headers.get("accept-encoding", "")
     if any(item.strip().lower() == "gzip" for item in accepted.split(",")) and Path(str(path) + ".gz").exists():
@@ -365,6 +481,10 @@ def create_app(*, env=None, settings=None, access_service=None):
         Route("/api/login", login, methods=["POST"]),
         Route("/api/logout", logout, methods=["POST"]),
         Route("/api/site-settings", site_settings, methods=["GET", "HEAD", "POST"]),
+        Route("/api/library/search", library_search, methods=["POST"]),
+        Route("/api/studio/drafts", studio_drafts, methods=["GET", "HEAD", "POST"]),
+        Route("/api/studio/drafts/{draft_id}", studio_drafts, methods=["GET", "HEAD", "PUT", "DELETE"]),
+        Route("/api/studio/binder", studio_binder, methods=["GET", "HEAD", "POST"]),
         Route("/api/access-requests/config", access_config, methods=["GET", "HEAD"]),
         Route("/api/access-requests", access_request, methods=["POST"]),
         Route("/{path:path}", static_file, methods=["GET", "HEAD"]),
@@ -374,7 +494,11 @@ def create_app(*, env=None, settings=None, access_service=None):
                     exception_handlers={HTTPException: http_error, Exception: unexpected_error})
     app.state.settings, app.state.auth, app.state.access_requests = settings, auth, access
     app.state.site_settings = site_configuration
+    app.state.library_search = PublishedLibrarySearch(settings.web_root)
+    app.state.studio_drafts = StudioDraftStore(auth, resolve_source=app.state.library_search.reference)
+    app.state.studio_binder = StudioBinderStore(app.state.studio_drafts)
     # On the initial 512 MB host at most two 32 MiB scrypt operations run at once.
     app.state.hash_limiter = anyio.CapacityLimiter(2)
     app.state.mail_limiter = anyio.CapacityLimiter(2)
+    app.state.search_limiter = anyio.CapacityLimiter(1)
     return app

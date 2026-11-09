@@ -1,25 +1,12 @@
 {
-  "version": "care-study-field/2.55-pane-reading.1-pane-sizing.1-beautiful-typeset.1",
+  "version": "care-study-field/2.74",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "033524eec26518ab9b48c02a1dcf364d3b8f4f4d562fdc84b86fb7e77aef87d8",
-    "study-field.mjs": "acb4469ace69e18075f1db27a93cd315d3b13efc0780b0dc6addb9bdda484c10"
+    "study-field.css": "a96b554a8c1f6e8159ac546004b3637a85ec63404242c4efa7eeeb04e5e57de8",
+    "study-field.mjs": "606666b9af4497d0f89a686341e2d649709cbed5cf36739d9b3ec83904438419"
   },
   "compatibility_changes": [
-    "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
-    "Improve finger-tap selection and compact phone reader controls",
-    "Keep single-sheet WB rails visible and reduce phone slider padding",
-    "Tighten phone sheet title spacing and retain a smaller sheet code",
-    "Keep continuation Routes controls visible for preserved corpus feeders",
-    "Compact corpus route controls and headers only on phone-sized screens",
-    "Slim mobile corpus route bars with 44-pixel touch areas",
-    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
-    "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
-    "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts",
-    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights",
-    "Per-pane Standard, Wide and Full width sizing; independent pale-green control with preserved reading position and separate workspace fullscreen",
-    "Verified source paragraph flow, restrained margin selection, immediate toggle and click-away dismissal; preserve published source revisions and native quotation gestures"
-  ],
-  "source_typography": "care-study-desk/2.74"
+    "Apply public reading controls within embedded corpus book readers"
+  ]
 }

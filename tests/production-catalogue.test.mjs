@@ -13,6 +13,27 @@ import {publicFields} from '../public-fields.mjs';
 const raw=readFileSync(new URL('../data/library.json',import.meta.url),'utf8');
 const data=JSON.parse(raw);
 
+test('the production catalogue and reading files contain exactly the reviewed work editions',()=>{
+ const directory=new URL('../data/',import.meta.url);
+ const reviewed=JSON.parse(readFileSync(new URL('export-audit.json',directory),'utf8'));
+ const catalogue=JSON.parse(readFileSync(new URL('catalogue.json',directory),'utf8'));
+ const editions=works=>works.map(({slug,seal})=>[slug,seal]).sort(([left],[right])=>left.localeCompare(right));
+ assert.ok(reviewed.works.length>0);
+ assert.deepEqual(editions(data.works),editions(reviewed.works));
+ assert.deepEqual(editions(catalogue.works),editions(reviewed.works));
+ const assets=catalogue.public_assets.works;
+ assert.deepEqual(Object.keys(assets).sort(),catalogue.works.map(work=>work.id).sort());
+ for(const {id,slug,seal} of catalogue.works){
+  const {url,sha256,bytes}=assets[id];
+  assert.match(url,/^\.\/data\/chunks\/work-[a-f0-9]{24}\.json$/);
+  const body=readFileSync(new URL(url.slice('./data/'.length),directory));
+  assert.equal(body.length,bytes);
+  assert.equal(createHash('sha256').update(body).digest('hex'),sha256);
+  const reading=JSON.parse(body.toString('utf8'));
+  assert.deepEqual([reading.id,reading.slug,reading.seal],[id,slug,seal]);
+ }
+});
+
 test('the release catalogue has unique identities and every saved link stays in its published book',()=>{
  const index=indexLibrary(data),ids=new Set(),slugs=new Set();
  function register(node){assert.ok(node.id);assert.ok(!ids.has(node.id),`Duplicate identity ${node.id}`);ids.add(node.id);}

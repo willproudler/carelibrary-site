@@ -1,0 +1,91 @@
+/* Generated from care_platform/studio_navigation.py by tools/export_native_rooms.py. */
+.rooms-menu {
+  width:304px;
+  max-width:calc(100vw - 16px);
+  max-height:min(75dvh,420px);
+  overflow:auto;
+  padding:.55rem;
+  border:1px solid #465054;
+  border-radius:13px;
+  background:linear-gradient(155deg,#20272c,#11171c 55%);
+  box-shadow:0 18px 48px #0009, inset 0 1px #ffffff0e;
+  color:#f2efe7;
+}
+.rooms-menu {--room-row-inset:.75rem;gap:.28rem !important}
+.care-rooms-heading {padding:.35rem calc(var(--room-row-inset) + 1px) .5rem}
+.care-rooms-heading span {
+  display:block;margin-bottom:.28rem;color:#a9c1bc;
+  font:600 .59rem/1.2 ui-monospace,monospace;letter-spacing:.17em;
+}
+.care-rooms-heading strong {font:500 1.2rem/1.15 Georgia,"Times New Roman",serif}
+.care-rooms-tools {
+  margin:.35rem 0 .15rem;padding:.7rem var(--room-row-inset) .12rem;
+  border-top:1px solid #465054;color:#a9c1bc;
+  font:600 .59rem/1.2 ui-monospace,monospace;letter-spacing:.17em;
+}
+body[data-workbench-view="studio"] .beta-workbench {--room-accent:#c2c7d3;--room-surface:#252632;--room-active:#2f6f68}
+body[data-workbench-view="reader"] .beta-workbench {--room-accent:#a8c9b7;--room-surface:#20342b;--room-active:#2a5445}
+.rooms-menu [data-care-room="laterals"], body[data-workbench-view="laterals"] .beta-workbench {--room-accent:#b49ac9;--room-surface:#211b2a;--room-active:#563d6b}
+.rooms-menu [data-care-room="dialogues"] {--room-accent:#9cbee2;--room-surface:#172333;--room-active:#315376}
+.rooms-menu [data-care-room="corpuses"], body[data-workbench-view="corpuses"] .beta-workbench {--room-accent:#dab37c;--room-surface:#2a2117;--room-active:#6a492b}
+.rooms-menu [data-care-room="numo"], body[data-workbench-view="numogram"] .beta-workbench {--room-accent:#91d1a7;--room-surface:#14271e;--room-active:#285f48}
+.rooms-menu [data-care-room="store"] {--room-accent:#d9a88c;--room-surface:#2a1d19;--room-active:#70442f}
+.rooms-menu > :is(a, button) {
+  --room-line:color-mix(in srgb,var(--room-accent) 27%,#262b31);
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) .7rem;
+  align-items:center;
+  gap:.55rem !important;
+  width:100%;
+  min-height:54px !important;
+  padding:.42rem var(--room-row-inset) !important;
+  border:1px solid var(--room-line) !important;
+  border-radius:8px !important;
+  background:linear-gradient(100deg,var(--room-surface),#171d22 82%) !important;
+  text-align:start;
+}
+/* Streamlit centres the icon and label in a nested content wrapper.
+   Fill that wrapper so every card shares the same icon and text columns. */
+.rooms-menu > :is(a, button) .room-card-content {
+  display:grid;
+  grid-template-columns:1.8rem minmax(0,1fr);
+  align-items:center;
+  width:100%;
+  gap:.65rem;
+}
+.rooms-menu > :is(a, button) .room-card-icon {
+  display:grid;place-items:center;
+  width:1.8rem;height:1.8rem;flex:none;
+  border:1px solid var(--room-line);border-radius:5px;
+  background:var(--room-surface);
+  color:var(--room-accent) !important;
+  font-size:1.1rem;
+}
+.rooms-menu > :is(a, button) .room-card-label {
+  min-width:0;text-align:start;
+}
+.rooms-menu > :is(a, button) .room-card-label {
+  margin:0;
+  color:#b9c2c3;
+  font:450 .68rem/1.35 var(--care-web-sans);
+}
+.rooms-menu > :is(a, button) strong {
+  display:block;margin-bottom:.09rem;
+  color:#f2efe7;
+  font:500 1rem/1.2 Georgia,"Times New Roman",serif;
+}
+.rooms-menu > :is(a, button) strong + br {display:none}
+.rooms-menu > :is(a, button)::after {
+  content:"";
+  justify-self:center;width:.36rem;height:.36rem;
+  border-top:1px solid var(--room-accent);border-right:1px solid var(--room-accent);
+  transform:rotate(45deg);opacity:.6;
+}
+.rooms-menu > :is(a, button):is(:hover,:focus-visible,[aria-current="page"]) {
+  border-color:var(--room-accent) !important;
+  background:linear-gradient(100deg,var(--room-surface),color-mix(in srgb,var(--room-accent) 12%,#171d22) 82%) !important;
+}
+.rooms-menu > :is(a, button):focus-visible {
+  outline:2px solid var(--room-accent) !important;outline-offset:-2px;
+}
+.rooms-menu > :is(a, button)[aria-current="page"] strong {color:var(--room-accent)}

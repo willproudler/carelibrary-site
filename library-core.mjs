@@ -45,12 +45,17 @@ export function selectionFor(work,id) {
   selection.SOURCE=source || work.sources.find(s=>s.chapter_id===selection.CH?.id) || work.sources[0];
   return selection;
 }
-export function searchLibrary(index,query,limit=60) {
+export function searchLibrary(index,query,limit=60,workId='') {
   const words=query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   if(!words.length)return [];
   const matches=[];
-  for(const n of index.nodes.values()) if(n.text && words.every(w=>(n.id+' '+n.text).toLocaleLowerCase().includes(w))) {
-    matches.push(n);if(matches.length===limit)break;
+  const exact=index.nodes.get(query.trim());
+  if(exact&&(!workId||exact.work?.id===workId))matches.push(exact);
+  for(const n of index.nodes.values()) {
+    if(matches.length>=limit)break;
+    if(n===exact||!n.text||(workId&&n.work?.id!==workId))continue;
+    const text=(n.id+' '+n.text).toLocaleLowerCase();
+    if(words.every(word=>text.includes(word)))matches.push(n);
   }
   return matches;
 }

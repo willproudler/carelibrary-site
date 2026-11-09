@@ -1,0 +1,7 @@
+{
+  "source": "care_platform/numogram_world.py",
+  "arithmetic_source": "care_platform/numogram_data.py",
+  "assets": {
+    "numogram-world.mjs": "d0053628a39d11d045a1a034c8c7c2ff058063134e29d1f497767d807e62f20c"
+  }
+}

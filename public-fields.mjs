@@ -75,11 +75,13 @@ export function fieldPayload(field, adapter, state = {}) {
     stacks[id] = {...stack, work:{...stack.work,id}, work_id:id};
   }
   const saved=state.fieldSaved||{},bookmarks=(state.bookmarks||[]).flatMap(row=>{
+    // An exact passage saved from the standalone reader is not a field pane bookmark.
+    if(row.passage_id)return [];
     const member=fieldMemberFor(field,adapter,row.work_id);return member?[{...row,work_id:member.memberId}]:[];
   });
   const favourites=[...(state.favouriteAxiomIds||[]),...(saved.saved_axioms||[]).filter(row=>!row.source_pane).map(row=>row.care_item_id)]
     .filter(id=>fieldMemberFor(field,adapter,adapter.index?.nodes.get(id)?.work?.id));
-  return {field:{...field.bundle,member_load_errors,...saved,saved_panes:[...(saved.saved_panes||[]),...bookmarks],
+  return {field:{...field.bundle,member_load_errors,...saved,reading_downloads_available:false,saved_panes:[...(saved.saved_panes||[]),...bookmarks],
     favourite_axiom_ids:[...new Set(favourites)],saved_focus:state.fieldSavedFocus},stacks,reference:state.fieldReference || null};
 }
 export function fieldReference(field, paneId, referenceId) {

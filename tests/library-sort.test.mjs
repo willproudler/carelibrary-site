@@ -13,7 +13,7 @@ const storage=values=>({values:new Map(Object.entries(values||{})),getItem(key){
 function fixture(books=[],{local={},session={},blocked=false}={}){
  const listeners=new Set(),localStorage=storage(local),sessionStorage=storage(session),view={localStorage,sessionStorage,Event:class{constructor(type,options){this.type=type;Object.assign(this,options);}}};
  if(blocked){for(const key of ['localStorage','sessionStorage'])Object.defineProperty(view,key,{get(){throw Error('Storage denied');}});}
- const runtime={shelf:shelf.shelfDefaults(),paintShelf(){this.ids=sorted(books,this.shelf.sort);}};
+ const runtime={shelf:shelf.shelfDefaults(),onStudySetPickerInput:()=>false,paintShelf(){this.ids=sorted(books,this.shelf.sort);}};
  const nativeInput=new Function('runtime',`return event=>${onInputBody}`)(runtime);
  const control={value:'title',dataset:{shelfInput:'sort'},closest:()=>control,dispatchEvent(event){event.target=control;nativeInput(event);for(const callback of listeners)callback(event);}};
  const root={ownerDocument:{defaultView:view},querySelector:()=>control,addEventListener(name,handler){assert.equal(name,'change');listeners.add(handler);},removeEventListener(name,handler){listeners.delete(handler);}};

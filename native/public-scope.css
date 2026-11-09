@@ -1,12 +1,11 @@
-/* Public edition restrictions. Shelf, panes and reading styles come unchanged
-   from CARE's native desktop reader. No authoring API is mounted. */
+/* Public edition restrictions. The published catalogue uses the native shelf and reading styles. */
 .library-archive,[data-shelf-kind="lecture"],
 [data-book-menu-action="translate_book"],[data-translate-sheet],.sheet-translation-row,
 [data-book-menu-action="archive_book"],[data-book-menu-action="restore_book"],
 [data-discovery-compare],
 .rating-box{display:none!important}
 option[value="unprocessed"]{display:none}
-:host{--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,SFMono-Regular,Menlo,monospace}
+:host{--st-font:var(--care-web-sans,system-ui,sans-serif);--st-code-font:var(--care-web-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}
 
 [data-book-menu-action="restart_book"]{display:none!important}
 
@@ -20,3 +19,11 @@ option[value="unprocessed"]{display:none}
 
 /* Collections are not part of the public catalogue. */
 [data-shelf-kind="collection"]{display:none!important}
+
+/* Keep filters readable within the narrow web reader. */
+.study-desk:has(> .library-window) { border: 0; border-radius: 0; }
+.library-toolbar { container: public-shelf-toolbar / inline-size; }
+@container public-shelf-toolbar (max-width: 34rem) {
+  .library-filters:not([hidden]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .library-filters label { min-width: 0; max-width: none; }
+}

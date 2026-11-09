@@ -1,25 +1,14 @@
 {
-  "version": "care-study-desk/2.55-pane-reading.1-pane-sizing.1-beautiful-typeset.1",
+  "version": "care-study-desk/2.106",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
-    "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
-    "Improve finger-tap selection and compact phone reader controls",
-    "Keep single-sheet WB rails visible and reduce phone slider padding",
-    "Tighten phone sheet title spacing and retain a smaller sheet code",
-    "Keep continuation Routes controls visible for preserved corpus feeders",
-    "Compact corpus route controls and headers only on phone-sized screens",
-    "Slim mobile corpus route bars with 44-pixel touch areas",
-    "Lightly compact desktop and tablet reader chrome without reducing reading type or slider targets",
-    "Use a separate route row at phone widths or whenever menus and route controls do not fit; restore the original desktop row when they fit",
-    "Switch to the separate route row when the title squeezes a reading menu onto a second line; keep clean single-line layouts",
-    "Green expands the existing multi-pane workspace; a 36px black strip shows a green exit action or compact route controls, with room for native Mac traffic lights",
-    "Per-pane Standard, Wide and Full width sizing; independent pale-green control with preserved reading position and separate workspace fullscreen",
-    "Verified source paragraph flow, restrained margin selection, immediate toggle and click-away dismissal; preserve published source revisions and native quotation gestures"
+    "Offer only available saved translations and supported published shelf actions",
+    "Reuse shelf menus for published author browsing and private study sets"
   ],
   "assets": {
-    "study-desk.css": "54becf96f0dc793a265ebea11017b4c4d1b08a59e2a7617161b3c71ccf420380",
-    "study-desk.mjs": "e2c2b31ca5b547425ddcd5e24b770ad9a692178a8d59accb98e1ca654491d002",
+    "study-desk.css": "6e503b560db8595ad3082f776e2ee6a9854ab9604c532bb3ffd837e11e36b772",
+    "study-desk.mjs": "b8faf68e93106c34cccf9c03ca588e98f9ca8bbabe7a681b246d7a9304b4b5c2",
     "reading-views.mjs": "a11a60ccd6c2a530e11ed4a5bd1e6a70a8b3f9e23b199ffa01b5aa1b828d400f"
   },
   "reading_presentation": "care-item-presentation/7",

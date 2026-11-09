@@ -19,28 +19,125 @@
 <link rel="stylesheet" href="/public-app.css?v=20261023-simple-search"><script type="module" src="/library-boot.mjs?v=20261102-beta"></script>
 <link rel="stylesheet" href="/brand-header.css?v=c47c12affb3ca81e">
 <link rel="stylesheet" href="/auth.css?v=20261102-beta">
+<link rel="stylesheet" href="/web-workspace.css">
+<link rel="stylesheet" href="/native/feature-previews.css">
+<link rel="stylesheet" href="/native/desktop-chrome.css">
+<link rel="stylesheet" href="/native/writing-studio-picker.css">
+<link rel="stylesheet" href="/native/rooms.css">
+<link rel="stylesheet" href="/studio-workspace.css">
+<link rel="stylesheet" href="/native/preparation-desk.css">
+<link rel="stylesheet" href="/native/preparation-preview.css">
+<link rel="stylesheet" href="/study-sets.css">
 <meta name="robots" content="noindex,nofollow">
 </head><body>
 <a class="skip-link" href="#reader">Skip to the library</a>
-<header class="app-header">
- <a class="brand" href="/" aria-label="CARE Library Beta home"><img class="brand-mark" src="/assets/care-header-mark.svg" alt="" aria-hidden="true"><span class="brand-name"><strong>CARE</strong> Library</span><small><span data-nosnippet>Beta</span></small></a>
+<header class="app-header beta-workbench">
+ <div class="workbench-identity">
+  <a class="brand" href="/library.html" aria-label="CARE Library Beta home"><img class="brand-mark" src="/assets/care-header-mark.svg" alt=""><span class="brand-name"><strong>CARE</strong> <span id="workspace-name">Library</span></span><small data-nosnippet>Beta</small></a>
+  <div class="workbench-history" aria-label="Reading history">
+   <button type="button" data-history="-1" aria-label="Go back" title="Go back" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 10h-11m5-5-5 5 5 5"/></svg></button>
+   <button type="button" data-history="1" aria-label="Go forward" title="Go forward" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10h11m-5-5 5 5-5 5"/></svg></button>
+  </div>
+ </div>
+ <div class="workbench-search-slot">
+  <button class="workbench-search" type="button" data-page="search" title="Search · ⌘K" aria-label="Search CARE Library" aria-keyshortcuts="Meta+K Control+K" aria-haspopup="dialog"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#search"/></svg><span id="workbench-search-title">Search</span><kbd>⌘ K</kbd></button>
+ </div>
  <nav aria-label="Main navigation">
-  <button data-page="search" aria-label="Search" title="Search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg><span class="nav-label">Search</span></button>
-  <a data-page="library" href="/library.html" class="active" aria-label="Library" title="Library"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 7v10M10 7 3 4v10l7 3 7-3V4z"/><circle cx="10" cy="3" r="2"/></svg><span class="nav-label">Library</span></a>
-  <a data-page="laterals" href="#view=laterals" aria-label="Laterals" title="Laterals"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15M10 3v14"/><circle cx="5" cy="5" r="2"/><circle cx="15" cy="5" r="2"/><circle cx="5" cy="15" r="2"/><circle cx="15" cy="15" r="2"/></svg><span class="nav-label">Laterals</span></a>
-  <a href="#view=corpuses" data-page="corpuses" aria-label="Corpora" title="Corpora"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c5 3 5 11 0 14M10 3c-5 3-5 11 0 14"/></svg><span class="nav-label">Corpora</span></a>
-  <button data-page="saved" aria-label="Saved readings" title="Saved on this device"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-5-3-5 3z"/></svg><span class="nav-label compact-label">Saved</span></button>
-  <a class="discover" href="/discover.html" aria-label="Discover CARE" title="Discover CARE"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 15 15 5M6 5h9v9"/></svg><span class="nav-label">Discover<span class="wide-label"> CARE</span></span></a>
-  <a data-owner-only hidden href="/site-settings.html" aria-label="Website settings" title="Website settings"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 2v3m0 10v3M2 10h3m10 0h3M4.3 4.3l2.1 2.1m7.2 7.2 2.1 2.1M4.3 15.7l2.1-2.1m7.2-7.2 2.1-2.1"/></svg><span class="nav-label">Settings</span></a>
-  <a data-public-login hidden href="/login.html" aria-label="Log in" title="Log in"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 3h5v14h-5M3 10h10M9 6l4 4-4 4"/></svg><span class="nav-label">Log in</span></a>
-  <button data-logout hidden aria-label="Log out" title="Log out"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3H3v14h5M7 10h10m-4-4 4 4-4 4"/></svg><span class="nav-label">Log out</span></button>
+  <a data-page="library" href="/library.html" class="active" aria-label="Library" title="Library"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#local_library"/></svg><span class="nav-label">Library</span></a>
+  <a class="workbench-desktop-tool" data-page="preparation" href="#view=preparation" aria-label="Preview Add to Library" title="Add to Library · Preview"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#upload_file"/></svg><span class="nav-label">Add to Library</span></a>
+  <div data-studio-picker>
+   <div class="workbench-switch" data-mode-switch role="group" aria-label="Document workspace">
+    <a data-page="studio" data-picker-trigger href="#view=studio" aria-label="CARE Studio" aria-haspopup="dialog" aria-expanded="false" aria-controls="care-studio-picker-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M4 10h7M4 14h4m4 3 6-6 2 2-6 6-3 1z"/></svg><span class="nav-label">Studio</span></a>
+    <a data-page="reader" data-reader-trigger href="#view=reader" aria-label="CARE Reader" aria-haspopup="dialog" aria-expanded="false" aria-controls="care-studio-picker-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H9l-5 4zm4 8 5-5 2 2-5 5H8z"/></svg><span class="nav-label">Reader</span></a>
+   </div>
+  </div>
+  <details class="workbench-rooms" id="workbench-rooms">
+   <summary aria-label="Rooms" title="Rooms and tools"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#door_open"/></svg><span class="nav-label">Rooms</span></summary>
+   <div class="workbench-menu rooms-menu">
+    <header class="care-rooms-heading"><span>CARE ROOMS</span><strong>Ways into the library</strong></header>
+    <!-- Shared desktop Rooms -->
+    <a data-care-room="laterals" data-page="laterals" href="#view=laterals"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#hub"/></svg></span><span class="room-card-label"><strong>Laterals</strong>Follow ideas across books</span></span></a>
+    <button type="button" data-care-room="dialogues" data-full-feature="Dialogues"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#forum"/></svg></span><span class="room-card-label"><strong>Dialogues</strong>Read and listen to conversations<small class="room-unavailable">Available in the full version</small></span></span></button>
+    <a data-care-room="corpuses" data-page="corpuses" href="#view=corpuses"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#public"/></svg></span><span class="room-card-label"><strong>Corpora</strong>Read a body of work together</span></span></a>
+    <a data-care-room="numo" data-page="numogram" href="#view=numogram"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#scatter_plot"/></svg></span><span class="room-card-label"><strong>NUMO</strong>Enter the Numogram and its readings</span></span></a>
+    <button type="button" data-care-room="store" data-full-feature="CARE Store"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#storefront"/></svg></span><span class="room-card-label"><strong>Store</strong>Find books for your library<small class="room-unavailable">Available in the full version</small></span></span></button>
+    <!-- End shared desktop Rooms -->
+    <div class="care-rooms-tools">TOOLS</div>
+    <a data-page="study-sets" href="#view=study-sets"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#school"/></svg></span><span class="room-card-label"><strong>Study sets</strong>Build a shelf of published books</span></span></a>
+    <a data-page="saved" href="#view=saved"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#bookmark"/></svg></span><span class="room-card-label"><strong>Saved</strong>Return to passages and readings</span></span></a>
+    <a class="discover" href="/discover.html"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#auto_stories"/></svg></span><span class="room-card-label"><strong>Discover CARE</strong>Explore the published collection</span></span></a>
+   </div>
+  </details>
+  <div class="workbench-tools">
+  <button class="workbench-desktop-tool" type="button" data-full-feature="Run Room" aria-label="Run Room, available in the full version" title="Run Room · Full version"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#downloading"/></svg><span class="nav-label">Run Room</span></button>
+  <button class="workbench-saved" type="button" data-page="saved" aria-label="Saved readings" title="Saved on this device"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#bookmark"/></svg><span class="nav-label">Saved</span></button>
+  <details class="workbench-settings" id="workbench-settings">
+   <summary aria-label="View and website settings" title="View and website settings"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#settings"/></svg><span class="nav-label">View</span></summary>
+   <div class="workbench-menu">
+    <label><input type="checkbox" id="workbench-labels"> Show toolbar labels</label>
+    <label><input type="checkbox" id="workbench-arrows"> Show slider arrows</label>
+    <a href="#view=preparation">Add to Library · Preview</a>
+    <button type="button" data-full-feature="Run Room">Run Room · Full version</button>
+    <button type="button" data-full-feature="Desktop settings">Desktop settings · Full version</button>
+    <hr>
+    <a href="/quick-start.pdf" target="_blank" rel="noopener">Quick start ↗</a>
+    <hr>
+    <a data-owner-only hidden href="/site-settings.html">Website settings</a>
+    <a data-public-login hidden href="/login.html">Log in</a>
+    <button type="button" data-logout hidden>Log out</button>
+   </div>
+  </details>
+  </div>
  </nav>
 </header>
-<nav id="open-books" class="open-books" aria-label="Open books" hidden></nav>
+<div class="reading-tabbar" id="reading-tabbar" hidden>
+ <details class="studio-tab-file">
+  <summary>File <span aria-hidden="true">⌄</span></summary>
+  <div class="workbench-menu">
+   <button type="button" data-studio-command="new">New draft</button>
+   <button type="button" data-document-picker="studio">Open Drafts…</button>
+   <button type="button" data-document-picker="reader">Open CARE Reader…</button>
+   <button type="button" data-studio-command="binder" data-studio-editor-only>Project Binder</button>
+   <button type="button" data-studio-command="save" data-studio-editor-only>Save draft</button>
+   <button type="button" data-studio-command="find">Find in document</button>
+   <button type="button" data-studio-command="format" data-studio-editor-only>Format</button>
+   <button type="button" data-studio-command="manual-footnote" data-studio-editor-only>Insert footnote</button>
+   <button type="button" data-studio-command="footnote-style" data-studio-editor-only>Footnote style</button>
+   <button type="button" data-studio-command="export">Download draft</button>
+   <button type="button" data-studio-command="import">Import manuscript…</button>
+   <button type="button" data-studio-command="remove">Move draft to Trash…</button>
+  </div>
+ </details>
+ <button type="button" class="open-label" data-open-readings aria-haspopup="menu" aria-expanded="false">Open readings</button>
+ <nav id="open-books" class="open-books" aria-label="Open readings"></nav>
+ <div class="reading-tab-scroll" id="reading-tab-scroll" role="group" aria-label="Scroll open tabs" hidden>
+  <button type="button" data-tab-scroll="-1" aria-label="Scroll tabs left" title="Scroll tabs left"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 5-5 5 5 5"/></svg></button>
+  <button type="button" data-tab-scroll="1" aria-label="Scroll tabs right" title="Scroll tabs right"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 5 5 5-5 5"/></svg></button>
+ </div>
+ <div class="reading-tab-menus" id="reading-tab-menus" role="group" aria-label="Reading menus" hidden></div>
+ <button class="studio-tab-collaborate" type="button" data-full-feature="Collaborate" title="Collaborate · Full version">Collaborate</button>
+</div>
 <div id="load-status" class="load-status" role="status" aria-live="polite" hidden></div>
-<main id="main"><section class="saved-library" data-saved-library hidden aria-label="Saved library"></section><div id="reader" tabindex="-1"><p class="loading" role="status"><img class="loading-mark" src="/assets/care-mark.svg" alt=""><span class="loading-name"><strong>CARE</strong> Library <small><span data-nosnippet>Beta</span></small></span></p></div></main>
+<main id="main">
+ <section id="preparation-view" class="preparation-preview" hidden aria-labelledby="preparation-preview-title">
+  <div class="preparation-preview-stage" aria-hidden="true" inert></div>
+  <div class="preparation-preview-overlay">
+   <div class="preparation-preview-notice">
+    <span>CARE Library Beta</span>
+    <h1 id="preparation-preview-title" tabindex="-1">Not available in beta</h1>
+    <p>The Preparation Desk is where you add books and review their source text. Uploads and CARE runs are available in the full version.</p>
+    <a href="#">Back to Library</a>
+   </div>
+  </div>
+ </section>
+ <section id="studio-workspace" hidden aria-label="Document workspace"></section>
+ <section id="study-sets-view" hidden aria-label="Study sets"></section><section class="saved-library" data-saved-library hidden aria-label="Saved library"></section><div id="reader" tabindex="-1"><p class="loading" role="status"><img class="loading-mark" src="/assets/care-mark.svg" alt=""><span class="loading-name"><strong>CARE</strong> Library <small><span data-nosnippet>Beta</span></small></span></p></div></main>
 <div id="notice" class="notice" role="status" hidden></div>
-<dialog id="search-dialog" aria-label="Search"><div class="dialog-heading search-controls"><input id="search-query" type="search" aria-label="Search" placeholder="Search" autocomplete="off"><button data-close-dialog aria-label="Close search">×</button></div><p id="search-status" role="status"></p><div id="search-results"></div></dialog>
+<dialog class="workbench-feature" id="workbench-feature" aria-labelledby="workbench-feature-title">
+ <form method="dialog"><button aria-label="Close">×</button></form>
+ <h2 id="workbench-feature-title"></h2>
+ <p>Available in the full version. This feature is unavailable in the online beta.</p>
+</dialog>
 
 <noscript><p class="loading">The reading panes need JavaScript. You can also read the original texts at <a href="https://www.gutenberg.org/ebooks/4280">Gutenberg: Kant</a> and <a href="https://www.gutenberg.org/ebooks/4705">Gutenberg: Hume</a>.</p></noscript>
 </body></html>

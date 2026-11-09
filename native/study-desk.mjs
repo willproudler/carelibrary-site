@@ -1,10 +1,73 @@
 
 const INSTANCES = new WeakMap()
+
+function contextMenus(view) {
+  if (!view?.addEventListener) return null
+  const key = Symbol.for('care.context-menus/1')
+  if (view[key]) return view[key]
+  let shell = null, frame = null, lastPayload = null, actions = new Map()
+  const readings = new Map()
+  const availability = () => Boolean(view.careNativeMenusAvailable && view.webkit?.messageHandlers?.careContextMenus)
+  const reading = () => {
+    const entry = readings.get(shell?.scope)
+    return entry?.root.isConnected ? entry : null
+  }
+  const send = () => {
+    frame = null
+    const handler = view.webkit?.messageHandlers?.careContextMenus
+    if (!handler) return
+    actions = new Map()
+    const provider = shell?.studio || reading()?.native
+    const menus = provider ? provider(actions) : []
+    const payload = JSON.stringify(menus)
+    if (payload === lastPayload) return
+    try { handler.postMessage({menus}); lastPayload = payload } catch (_) {}
+  }
+  const refresh = () => {
+    if (frame !== null) return
+    if (view.requestAnimationFrame) frame = view.requestAnimationFrame(send)
+    else send()
+  }
+  const paint = () => {
+    const entry = reading()
+    const anchors = shell?.paint(entry, availability())
+    for (const provider of readings.values()) provider.paint(provider === entry ? anchors : null)
+    refresh()
+  }
+  view.addEventListener('care-native-menu-availability', () => { lastPayload = null; paint() })
+  view.addEventListener('care-native-menu-action', event => {
+    if (availability()) actions.get(event.detail?.id)?.()
+  })
+  return view[key] = {
+    useShell(next) {
+      shell = next
+      paint()
+      return () => {
+        if (shell !== next) return
+        shell = null
+        paint()
+      }
+    },
+    useReading(scope, entry) {
+      readings.set(scope, entry)
+      paint()
+      return () => {
+        if (readings.get(scope) !== entry) return
+        readings.delete(scope)
+        entry.paint(null)
+        paint()
+      }
+    },
+    refresh,
+  }
+}
+
 // A framework cleanup can arrive after the next render. Dispose the previous
 // render before binding the next one, and make delayed cleanups harmless.
 function ownStudyDeskCleanup(runtime,cleanup){
   let disposed=false
   const dispose=()=>{
+    runtime.paneFind?.checkDetached()
     if(runtime.renderCleanup!==dispose){
       // Local cached navigation may render again before the framework receives
       // another payload. Its older cleanup still owns eventual host unmount.
@@ -32,7 +95,7 @@ function studyDeskWorkspaceContext(data){
   return JSON.stringify([studyDeskContentContext(data,'workspace_context'),studyDeskContentContext(data,'outline_context')])
 }
 function studyDeskRenderSignature(data){
-  return JSON.stringify({...data,navigation_preload:null,navigation_request_id:null,content_revision:null,workspace_context:studyDeskContentContext(data,'workspace_context'),outline_context:studyDeskContentContext(data,'outline_context'),selected_axiom:null,selected_work_ids:null,connection:data?.connection?{...data.connection,selection:null}:null})
+  return JSON.stringify({...data,navigation_preload:null,navigation_request_id:null,content_revision:null,workspace_context:studyDeskContentContext(data,'workspace_context'),outline_context:studyDeskContentContext(data,'outline_context'),selected_axiom:null,selected_work_ids:null,writing_clipboard_request:null,connection:data?.connection?{...data.connection,selection:null}:null})
 }
 function studyNavigationEligible(data){
   return !!(data?.local_navigation_enabled&&data.mode==='workspace'&&data.stack?.work?.id&&data.content_revision&&(!data.reference||['axiom','passage'].includes(data.reference.kind)&&!data.reference.preserved)&&!data.connection&&!data.dialogue_media&&!data.corpus_sheet&&!data.corpus_build)
@@ -61,9 +124,8 @@ function studyNavigationRemember(runtime,request,data){
 }
 function studyNavigationMatches(request,data){return request.layer==='READING'?!data.reference&&studyNavigationStackKey(data)===request.returnStackKey:request.layer==='ROUTE'?String(data.reference?.id||'')===request.id:request.layer==='SOURCE'?String(data.stack?.active_raw_unit_id||'')===request.id:String(data.stack?.active_unit_id||'')===request.id}
 function studyNavigationIngest(runtime,data){
-  const state=studyNavigationState(runtime),batch=data.navigation_preload
-  if(state.prefetch&&state.prefetch.request_id===batch?.request_id){
-    for(const target of state.prefetch.targets)state.requested.add(studyNavigationKey(target.layer,target.id,target.raw_unit_id))
+  const state=studyNavigationState(runtime),batch=data.navigation_preload,acknowledged=state.prefetch?.request_id===batch?.request_id?state.prefetch:null
+  if(acknowledged){
     state.prefetch=null
     runtime.root.ownerDocument.defaultView?.clearTimeout?.(state.prefetchTimer);state.prefetchTimer=null
   }
@@ -82,6 +144,17 @@ function studyNavigationIngest(runtime,data){
   }
   for(const [key,value] of Object.entries(batch.destinations||{})){state.plans.delete(key);state.plans.set(key,value)}
   while(state.plans.size>320)state.plans.delete(state.plans.keys().next().value)
+  if(acknowledged){
+    const progressed=Object.keys(batch.destinations||{}).length+Object.keys(batch.routes||{}).length>0
+    for(const target of acknowledged.targets){
+      const key=studyNavigationKey(target.layer,target.id,target.raw_unit_id),plan=studyNavigationPlan(state,{...target,key})
+      const ready=target.layer==='ROUTE'?state.routes.has(key):plan&&arr(plan.care_path_keys).every(key=>state.units.has(key))&&(!plan.chapter_key||state.chapters.has(plan.chapter_key))
+      // A byte-limited batch may omit its later destinations. Omission is not
+      // completion: retry them after the shared ancestors have been delivered.
+      if(ready||batch.error||(!progressed&&(state.retries.get(key)||0)>=2))state.requested.add(key)
+      else if(progressed)state.retries.set(key,Math.max(0,(state.retries.get(key)||0)-1))
+    }
+  }
 }
 function studyNavigationRenderData(runtime,data,previous,local){
   if(!local||!studyNavigationEligible(data)||data.reference||previous?.reference||previous?.stack?.work?.id!==data.stack.work.id)return data
@@ -260,6 +333,7 @@ function studyNavigationVisibleRoutes(runtime){
 function studyNavigationPrefetch(runtime){
   const state=studyNavigationState(runtime),view=runtime.root.ownerDocument.defaultView,data=runtime.data
   if(!studyNavigationEligible(data)||runtime.readerView==='outline'||state.prefetch||state.desired||state.inflight||state.actions.length||state.actionWaiting||runtime.sliderGesture||state.idle!==null||!data.navigation_preload_enabled)return
+  if(runtime.root.ownerDocument.querySelector?.('[data-testid="stDialog"]'))return
   const now=Date.now(),work=String(data.stack.work.id)
   if(state.budgetWork!==work||now-state.budgetStart>=30000){state.budgetWork=work;state.budgetStart=now;state.budgetCount=0;state.reservedCount=0;state.revisionChurn=false}
   const batchBudget=!state.revisionChurn&&arr(data.stack.chapters).length<=64?24:6
@@ -280,7 +354,7 @@ function studyNavigationPrefetch(runtime){
     }}
     if(runtime.data.reference||!state.lastPrefetchRoute||state.routePriority)addRoute()
     const routeBatch=targets.some(target=>target.layer==='ROUTE')
-    if(!runtime.data.reference&&!routeBatch)for(let distance=0;distance<Math.min(chapters.length,32)&&targets.length<2;distance++)for(const position of distance?[index+distance,index-distance]:[index]){if(chapters[position])add('SOURCE',chapters[position].raw_unit_id,'');if(targets.length>=2)break}
+    if(!runtime.data.reference&&!routeBatch)for(let distance=1;distance<Math.min(chapters.length,32)&&targets.length<2;distance++)for(const position of distance?[index+distance,index-distance]:[index]){if(chapters[position])add('SOURCE',chapters[position].raw_unit_id,'');if(targets.length>=2)break}
     const layers=new Set(runtime.data.reference||routeBatch?[]:Object.keys(stack.sheet_options||{}).filter(layer=>!['ORIGINAL','SOURCE','MC'].includes(layer)))
     if(!runtime.data.reference&&!routeBatch)for(const option of arr(stack.sheet_options?.MC))layers.add(sheetLayerKey({...option,type:'MC'}))
     const groups=[...layers].map(layer=>[layer,sliderOptions(stack,layer)])
@@ -478,12 +552,32 @@ function readerMenu(id,label,content){
   return `<div class="desk-menu"><button type="button" class="desk-menu-trigger" data-reader-menu="${id}" aria-haspopup="dialog" aria-expanded="false">${label}<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button><section class="desk-menu-panel" data-reader-menu-panel="${id}" role="dialog" aria-label="${label}" hidden>${content}</section></div>`
 }
 function readerMenuLabel(markup,label){return markup.replace('</button>',`<span class="desk-menu-label">${esc(label)}</span></button>`)}
+
+const READING_FOCUS_KEY = "care-reading-focus-v1";
+const READING_FOCUS_EVENT = "care-reading-focus-change";
+function readingFocusEnabled(view) {
+  try { return view?.sessionStorage?.getItem(READING_FOCUS_KEY) === "true"; }
+  catch (_) { return false; }
+}
+
+function setupReadingFocus(runtime){
+  const {root}=runtime,view=root.ownerDocument.defaultView
+  runtime.paintReadingFocus=()=>{root.dataset.readingFocus=String(readingFocusEnabled(view))}
+  runtime.watchReadingFocus=()=>{
+    const paint=runtime.paintReadingFocus,storage=event=>{if(event.key===READING_FOCUS_KEY||event.key===null)paint()}
+    view?.addEventListener(READING_FOCUS_EVENT,paint)
+    view?.addEventListener("pageshow",paint)
+    // A mounted Studio companion shares this tab's storage with Settings.
+    view?.addEventListener("storage",storage)
+    return()=>{view?.removeEventListener(READING_FOCUS_EVENT,paint);view?.removeEventListener("pageshow",paint);view?.removeEventListener("storage",storage)}
+  }
+}
 function connectionViewControl(){
   return '<span class="desk-menu-heading">Connection lines</span><div role="group" aria-label="Connection lines"><button type="button" class="desk-tab" data-connection-view="flow" aria-pressed="true" title="Follow visible feeders and hide repeated direct lines">Through feeders</button><button type="button" class="desk-tab" data-connection-view="all" aria-pressed="false" title="Show every recorded connection, including direct links">All connections</button></div>'
 }
 function setupConnectionView(runtime,redraw){
   runtime.cleanupConnectionView?.()
-  const root=runtime.root,view=root.ownerDocument.defaultView,key='care-connection-view-v1',eventName='care-connection-view-change'
+  const root=runtime.root,view=root.ownerDocument.defaultView,key=root.dataset?.studioEmbed==='true'?'care-companion-connection-view-v1':'care-connection-view-v1',eventName='care-connection-view-change'
   const read=()=>{try{const storage=view?.localStorage;return storage?storage.getItem(key)==='all'?'all':'flow':runtime.connectionView||'flow'}catch(_){return runtime.connectionView||'flow'}}
   const draw=()=>{if(runtime.queueThreads)runtime.queueThreads();else redraw?.()}
   runtime.connectionView=read()
@@ -507,22 +601,85 @@ function setupConnectionView(runtime,redraw){
   runtime.attachConnectionView=()=>{view?.addEventListener(eventName,change);view?.addEventListener('storage',storage);apply(read())}
   runtime.cleanupConnectionView=()=>{view?.removeEventListener(eventName,change);view?.removeEventListener('storage',storage)}
 }
+function toolbarLabelsControl(){
+  return '<button type="button" class="desk-tab" data-care-toolbar-labels-toggle aria-pressed="false" hidden><span>Show Toolbar Labels</span><span class="desk-submenu-arrow" aria-hidden="true"></span></button>'
+}
+function sliderArrowsControl(){
+  return '<button type="button" class="desk-tab" data-care-slider-arrows-toggle aria-pressed="false"><span>Show Slider Arrows</span><span class="desk-submenu-arrow" aria-hidden="true"></span></button>'
+}
+function setupSliderArrows(runtime){
+  const root=runtime.root,view=root.ownerDocument.defaultView,key='care-slider-arrows-v1'
+  const changed='care-slider-arrows-changed',request='care-slider-arrows-request'
+  const windows=view?[view]:[]
+  // Companion frames can share the main toolbar preference when it is reachable.
+  try{if(view?.top!==view&&view?.top?.document)windows.push(view.top)}catch(_){}
+  const owner=()=>windows.find(host=>typeof host.careSliderArrowsVisible==='boolean')||windows.at(-1)
+  let fallback=true
+  const paint=runtime.paintSliderArrows=next=>{
+    let preference=owner()?.careSliderArrowsVisible
+    // A reader may be mounted before the app's listener sets the new value.
+    if(typeof next==='boolean')preference=fallback=next
+    else if(typeof preference!=='boolean')try{if(view?.localStorage)fallback=view.localStorage.getItem(key)!=='false'}catch(_){}
+    const visible=typeof preference==='boolean'?preference:fallback,pressed=String(visible)
+    if(root.dataset&&root.dataset.careSliderArrows!==pressed)root.dataset.careSliderArrows=pressed
+    const button=root.querySelector('[data-care-slider-arrows-toggle]')
+    if(button&&button.getAttribute('aria-pressed')!==pressed){
+      button.setAttribute('aria-pressed',pressed)
+      button.lastElementChild.textContent=visible?'✓':''
+    }
+    return visible
+  }
+  const listeners=windows.map(host=>[host,event=>{
+    const current=owner()
+    if(host===current||typeof current?.careSliderArrowsVisible!=='boolean')paint(event.detail?.visible)
+  }])
+  const storage=event=>{if(event.key===key||event.key===null)paint()}
+  return {
+    toggle(){
+      const host=owner();if(!host?.CustomEvent)return
+      const detail={visible:!paint()}
+      if(typeof host.careSliderArrowsVisible==='boolean')host.dispatchEvent(new host.CustomEvent(request,{detail}))
+      else{
+        try{view?.localStorage?.setItem(key,String(detail.visible))}catch(_){}
+        host.dispatchEvent(new host.CustomEvent(changed,{detail}))
+      }
+    },
+    attach(){listeners.forEach(([host,listen])=>host.addEventListener(changed,listen));view?.addEventListener('storage',storage);paint()},
+    cleanup(){listeners.forEach(([host,listen])=>host.removeEventListener(changed,listen));view?.removeEventListener('storage',storage)}
+  }
+}
 function readerViewOptions({showZoom=true,showAppearance=true,showBeautifulText=true,shortcuts='book'}={}){
   const text='<span class="desk-menu-heading">Text size</span><div class="desk-text-size" aria-label="Reading text size"><button type="button" data-text-size="-1" aria-label="Make text smaller">A−</button><button type="button" data-text-size="1" aria-label="Make text larger">A+</button></div>'
   const zoom=showZoom?'<span class="desk-menu-heading">Pane zoom</span>'+trackZoomControls():''
   const appearance=showAppearance?'<span class="desk-menu-heading">Appearance</span><div class="desk-skin" aria-label="Visual skin"><button type="button" data-skin-value="care">CARE</button><button type="button" data-skin-value="library">BOOK</button><button type="button" data-skin-value="classic">CLASSIC</button></div>':''
-  const rows=shortcuts==='lateral'?[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane'],['− / + on a pane','Fold or unfold'],['Tab · Enter','Move to and use controls']]:[['↑ / ↓','Previous or next axiom'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane']]
-  return titleViewControl()+(showBeautifulText?beautifulTextControl():'')+connectionViewControl()+text+zoom+appearance+vibrantViewControl()+`<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
+  const arrows=shortcuts==='lateral'?'':sliderArrowsControl()
+  const rows=[['← / →','Select the nearest axiom or passage in the pane to either side'],['↑ / ↓','Previous or next axiom or passage'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane']]
+  if(shortcuts==='lateral')rows.push(['− / + on a pane','Fold or unfold'],['Tab · Enter','Move to and use controls'])
+  return titleViewControl()+(showBeautifulText?beautifulTextControl():'')+connectionViewControl()+text+zoom+appearance+vibrantViewControl()+`<div class="desk-menu-rule"></div>${toolbarLabelsControl()}${arrows}<button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
+}
+function readingDownloadControls(data){
+  if(!data?.reading_downloads_available)return ''
+  const field=data.reading_download_field_id?` data-download-field="${esc(data.reading_download_field_id)}"`:''
+  return `<span class="desk-menu-heading">${esc(data.reading_download_label||'Download this book')}</span>${[['sheets','All CARE sheets…'],['source','Source text & passages…'],['complete','Source text, passages & CARE sheets…']].map(([scope,label])=>`<button type="button" class="desk-tab" data-reading-download="${scope}"${field}><span>${esc(label)}</span></button>`).join('')}`
+}
+function readingFileControls(data){
+  const downloads=readingDownloadControls(data)
+  const language=data?.public_reading_languages,choices=arr(language?.options)
+  if(choices.length<2)return downloads?downloads+'<div class="desk-menu-rule"></div>':''
+  return `<span class="desk-menu-heading">Language · all panes &amp; Routes</span>${choices.map(({code,label})=>`<button type="button" class="desk-tab" data-reading-language="${esc(code)}" aria-pressed="${code===language.selected}">${esc(label)}</button>`).join('')}<div class="desk-menu-rule"></div>`
 }
 function readerMenuBar(data,tabs,options={}){
   const book=options.file??(data?.corpus_sheet?'<span class="desk-menu-heading">Saved reading</span><span class="desk-sheet-version-slot" data-sheet-version-slot></span>':`<span class="desk-menu-heading">Book versions</span>${buildVersionControl(data)||'<span class="desk-menu-empty">Current reading</span>'}<div class="desk-menu-rule"></div>${readerMenuLabel(originalFormatControl(data),'Original reading format')}${readerMenuLabel(originalDownloadControl(data),'Download original')}<span class="desk-sheet-version-slot" data-sheet-version-slot></span>`)
   const navigate=options.navigate??`${readerMenuLabel(bookmarkControl(data),'Bookmarks')}<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-layers aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m3 6 7-3 7 3-7 3-7-3Zm0 4 7 3 7-3M3 14l7 3 7-3"/></svg><span>Reading layers</span><span class="desk-submenu-arrow" aria-hidden="true">›</span></button>`
   const thinkerRuns=data?.dialogue_runs?'<span class="desk-menu-heading">Dialogue thinkers</span><button type="button" class="desk-tab" data-dialogue-thinker-runs aria-haspopup="dialog"><span>Thinker comparisons…</span></button><div class="desk-menu-rule"></div>':''
   const connections=options.connections??thinkerRuns+connectionControls(data).replace(/(<button\b[^>]*aria-label="([^"]+)"[^>]*>)([\s\S]*?)(<\/button>)/g,(_,start,label,body,end)=>start+body+(body.includes('<svg')?`<span class="desk-menu-label">${label}</span>`:'')+end)+connectionResolutionControl(data)
-  const portraitWork=String(data?.stack?.work?.id||data?.work?.id||'');
-  const portraitViews=portraitWork?`<button type="button" class="desk-tab" data-portrait-open="book" data-portrait-work="${esc(portraitWork)}">Book portrait…</button><button type="button" class="desk-tab" data-portrait-open="author" data-portrait-work="${esc(portraitWork)}">Author’s library…</button><div class="desk-menu-rule"></div>`:'';
-  const view=options.view??(`<span class="desk-menu-heading">Reading view</span>${data?.outline_available?outlineViewControl():'<span class="desk-menu-empty">Normal reading</span>'}`+readerViewOptions({...options,showZoom:options.showZoom??!(isRouteReference(data?.reference)||data?.connection?.reference)}))
-  return `<div class="desk-reader-controls" role="group" aria-label="CARE reading menus">${readerMenu('book','File',book)}${readerMenu('navigate','Go',navigate)}${readerMenu('connections','Connections',connections||'<span class="desk-menu-empty">No connected readings available.</span>')}${readerMenu('view','View',portraitViews+view)}<section class="desk-menu-panel desk-layer-menu" data-reader-layers-panel role="dialog" aria-label="Reading layers" hidden>${connectionTabRail(tabs,data)}</section></div>`
+
+  const portraitViews=""
+  const routeView=isRouteReference(data?.reference)&&!data?.connection?.reference?routePresentationControls(data.reference):''
+  const studioFilter=data?.studio_axiom_draft_counts?`<button type="button" class="desk-tab" data-studio-all-filter aria-pressed="false" title="Filter eligible panes in this reading" hidden>${studioFilterIcon}<span>Studio-linked readings only</span><span data-studio-all-filter-state aria-hidden="true"></span></button>`:''
+  const view=options.view??(`<span class="desk-menu-heading">Reading view</span>${data?.outline_available?outlineViewControl():'<span class="desk-menu-empty">Normal reading</span>'}`+routeView+readerViewOptions({...options,showZoom:options.showZoom??!(isRouteReference(data?.reference)||data?.connection?.reference)}))
+  const fileActions=(data?.write_beside_available?'<button type="button" class="desk-tab" data-write-beside-section>Write beside this section</button>':'')+(data?.send_library_book_available&&data?.stack?.work?.id?'<button type="button" class="desk-tab" data-send-reading-book aria-haspopup="dialog">Send book…</button>':'')
+  return `<div class="desk-reader-controls" role="group" aria-label="CARE reading menus">${readerMenu('book','File',fileActions+(fileActions?'<div class="desk-menu-rule"></div>':'')+readingFileControls(data)+book)}${readerMenu('navigate','Go',navigate)}${readerMenu('connections','Connections',connections||'<span class="desk-menu-empty">No connected readings available.</span>')}${readerMenu('view','View',portraitViews+studioFilter+view)}<section class="desk-menu-panel desk-layer-menu" data-reader-layers-panel role="dialog" aria-label="Reading layers" hidden>${connectionTabRail(tabs,data)}</section></div>`
 }
 function portraitMenuAction(runtime,event){
   const control=event.target.closest('[data-portrait-open]');if(!control)return false
@@ -555,7 +712,7 @@ function watchReaderRouteLayout(runtime){
       const outerWidth=element=>{if(!element)return 0;const css=view.getComputedStyle(element);return Math.max(element.offsetWidth,element.scrollWidth)+number(css.marginLeft)+number(css.marginRight)}
       // Popovers live inside the menu group but must not count toward its
       // inline width while open. Count the four visible triggers instead.
-      const triggers=[...menus?.querySelectorAll('.desk-menu-trigger')||[]],menuStyle=menus?view.getComputedStyle(menus):null
+      const triggers=[...menus?.querySelectorAll('.desk-menu-trigger')||[]].filter(button=>!button.getClientRects||button.getClientRects().length),menuStyle=menus?view.getComputedStyle(menus):null
       const menuWidth=triggers.reduce((width,button)=>width+outerWidth(button),0)+Math.max(0,triggers.length-1)*number(menuStyle?.columnGap)
       const required=menuWidth+outerWidth(route)+number(style.columnGap)*2
       // The title can squeeze this flex group before the whole bar overflows.
@@ -581,6 +738,17 @@ function watchReaderRouteLayout(runtime){
 }
 function setupReaderMenus(runtime){
   const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
+  const sliderArrows=setupSliderArrows(runtime)
+  const paintToolbarLabels=runtime.paintToolbarLabels=()=>{
+    const button=root.querySelector('[data-care-toolbar-labels-toggle]');if(!button)return
+    const visible=view?.careToolbarLabelsVisible
+    // Standalone and embedded readers have no app toolbar to configure.
+    const hidden=typeof visible!=='boolean'
+    if(button.hidden!==hidden)button.hidden=hidden
+    if(hidden||button.getAttribute('aria-pressed')===String(visible))return
+    button.setAttribute('aria-pressed',String(visible))
+    button.lastElementChild.textContent=visible?'✓':''
+  }
   // Existing popovers become cascading submenus when launched from this bar.
   for(const [method,key] of [['positionBuildVersionMenu','buildVersionMenu'],['positionSheetVersionMenu','sheetVersionPopover'],['positionBookmarkMenu','bookmarkMenu'],['positionOriginalFormats','originalFormatMenu'],['positionOriginalDownloads','originalDownloadMenu'],['positionConnectionDiscovery','discoveryPopover']]){
     const position=runtime[method];if(!position)continue
@@ -603,6 +771,12 @@ function setupReaderMenus(runtime){
     }
   }
   const buttons=()=>[...root.querySelectorAll('[data-reader-menu]')]
+  const menuAnchor=button=>{
+    if(root.dataset?.paneReading==='true'||root.dataset?.paneReadingChild==='true')return button
+    const anchor=runtime.workspaceMenuAnchors?.get(button.dataset.readerMenu)
+    if(anchor?.getClientRects().length)return anchor
+    return runtime.workspaceMenuAnchors?.get('$compact')||button
+  }
   const items=panel=>[...panel.querySelectorAll('button:not(:disabled),a[href],select:not(:disabled),input:not(:disabled),summary')].filter(el=>el.getClientRects().length)
   runtime.closeReaderLayers=({restoreFocus=false}={})=>{
     const layer=runtime.readerLayers;if(!layer)return
@@ -630,11 +804,14 @@ function setupReaderMenus(runtime){
     runtime.closeReaderLayers()
     if(children){runtime.closeBuildVersionMenu?.();runtime.closeSheetVersionMenu?.();runtime.closeBookmarkMenu?.();runtime.closeOriginalFormats?.();runtime.closeOriginalDownloads?.();runtime.closeConnectionDiscovery?.();runtime.closeConnectionResolution?.()}
     runtime.readerMenu=null;menu.panel.hidden=true;menu.button.setAttribute('aria-expanded','false')
-    if(restoreFocus&&menu.button.isConnected)menu.button.focus({preventScroll:true})
+    const anchor=menuAnchor(menu.button)
+    runtime.workspaceMenuAnchors?.get('$compact')?.removeAttribute('data-reading-menu-active')
+    runtime.workspaceMenuAnchors?.get(menu.button.dataset.readerMenu)?.setAttribute('aria-expanded','false')
+    if(restoreFocus&&anchor.isConnected)anchor.focus({preventScroll:true})
   }
   runtime.positionReaderMenu=()=>{
     const menu=runtime.readerMenu;if(!menu)return
-    const toolbar=menu.button.closest('.desk-menu-toolbar'),bounds=toolbar.getBoundingClientRect(),anchor=menu.button.getBoundingClientRect(),desk=(runtime.readerMenuBoundsRoot||root).getBoundingClientRect()
+    const toolbar=menu.button.closest('.desk-menu-toolbar'),bounds=toolbar.getBoundingClientRect(),anchor=menuAnchor(menu.button).getBoundingClientRect(),desk=(runtime.readerMenuBoundsRoot||root).getBoundingClientRect()
     const scale=bounds.width/(toolbar.offsetWidth||bounds.width)||1
     menu.panel.style.left=Math.max(8,Math.min((anchor.left-bounds.left)/scale,(bounds.width/scale)-menu.panel.offsetWidth-8))+'px'
     menu.panel.style.maxHeight=Math.max(80,(desk.bottom-bounds.bottom-12)/scale)+'px'
@@ -643,12 +820,22 @@ function setupReaderMenus(runtime){
   runtime.openReaderMenu=(button,{focus=false,last=false}={})=>{
     runtime.closeReaderMenu()
     const panel=root.querySelector(`[data-reader-menu-panel="${button.dataset.readerMenu}"]`);if(!panel)return
-    runtime.readerMenu={button,panel};panel.hidden=false;button.setAttribute('aria-expanded','true');runtime.positionReaderMenu()
+    runtime.readerMenu={button,panel};panel.hidden=false;button.setAttribute('aria-expanded','true')
+    if(button.dataset.readerMenu==='view'){paintToolbarLabels();runtime.paintSliderArrows()}
+    const anchor=menuAnchor(button)
+    if(anchor===runtime.workspaceMenuAnchors?.get('$compact'))anchor.setAttribute('data-reading-menu-active','')
+    else if(anchor!==button)anchor.setAttribute('aria-expanded','true')
+    runtime.positionReaderMenu()
     // These labels follow the current pane, including after a language change.
     panel.querySelectorAll('[data-sheet-version-menu]').forEach(el=>{if(!el.querySelector('.desk-menu-label'))el.insertAdjacentHTML('beforeend','<span class="desk-menu-label">Language & translation</span>')})
     if(focus){const choices=items(panel);(last?choices.at(-1):choices[0])?.focus({preventScroll:true})}
   }
   const click=event=>{
+    if(event.target.closest?.('[data-care-toolbar-labels-toggle]')){
+      if(view?.CustomEvent)view.dispatchEvent(new view.CustomEvent('care-toolbar-labels-request',{detail:{visible:view.careToolbarLabelsVisible!==true}}))
+      return
+    }
+    if(event.target.closest?.('[data-care-slider-arrows-toggle]')){sliderArrows.toggle();return}
     const shortcuts=event.target.closest?.('[data-reader-shortcuts]')
     if(shortcuts){const list=shortcuts.parentElement.querySelector('[data-reader-shortcut-list]');if(list){list.hidden=!list.hidden;shortcuts.setAttribute('aria-expanded',String(!list.hidden));runtime.positionReaderMenu()}return}
     const layers=event.target.closest?.('[data-reader-layers]')
@@ -678,7 +865,7 @@ function setupReaderMenus(runtime){
     if(event.target.matches?.('select,input,textarea'))return
     if(event.key==='ArrowRight'&&inPanel&&event.target.matches?.('[aria-haspopup]')){event.preventDefault();event.target.click();return}
     if(['ArrowLeft','ArrowRight'].includes(event.key)){
-      event.preventDefault();const next=headings[(index+(event.key==='ArrowRight'?1:-1)+headings.length)%headings.length];next?.focus({preventScroll:true});if(menu)runtime.openReaderMenu(next,{focus:inPanel});return
+      event.preventDefault();const next=headings[(index+(event.key==='ArrowRight'?1:-1)+headings.length)%headings.length];if(next){menuAnchor(next).focus({preventScroll:true});if(menu)runtime.openReaderMenu(next,{focus:inPanel})}return
     }
     if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
       event.preventDefault();if(trigger){runtime.openReaderMenu(trigger,{focus:true,last:event.key==='ArrowUp'||event.key==='End'});return}
@@ -691,15 +878,126 @@ function setupReaderMenus(runtime){
     if(!runtime.readerMenu)return
     const path=event.composedPath?.()||[],target=path[0]||event.target,menu=runtime.readerMenu
     if(path.includes(menu.panel)||path.includes(menu.button)||menu.panel.contains(target)||menu.button.contains(target))return
+    if([...runtime.workspaceMenuAnchors?.values()||[]].some(anchor=>path.includes(anchor)||anchor.contains(target)))return
     if(runtime.readerLayers&&(path.includes(runtime.readerLayers.panel)||runtime.readerLayers.panel.contains(target)))return
     // Child popovers are siblings under the component root, not descendants.
     if(target?.closest?.('.build-version-menu,.pane-bookmark-menu,.connection-discovery-popover,.connection-resolution-panel'))return
     runtime.closeReaderMenu()
   }
   const wheel=event=>{if(runtime.readerMenu?.panel.contains(event.target))event.stopPropagation()}
-  runtime.attachReaderMenus=()=>{runtime.stopReaderRouteLayout?.();runtime.stopReaderRouteLayout=watchReaderRouteLayout(runtime);root.addEventListener('click',click);root.addEventListener('pointerover',hover);doc.addEventListener('pointerdown',outside,true);doc.addEventListener('focusin',outside,true);view?.addEventListener('resize',runtime.positionReaderMenu);root.addEventListener('wheel',wheel,true)}
+  runtime.attachReaderMenus=()=>{runtime.stopReaderRouteLayout?.();runtime.stopReaderRouteLayout=watchReaderRouteLayout(runtime);root.addEventListener('click',click);root.addEventListener('pointerover',hover);doc.addEventListener('pointerdown',outside,true);doc.addEventListener('focusin',outside,true);view?.addEventListener('resize',runtime.positionReaderMenu);view?.addEventListener('care-toolbar-labels-changed',paintToolbarLabels);paintToolbarLabels();sliderArrows.attach();root.addEventListener('wheel',wheel,true)}
   runtime.restoreReaderMenu=()=>{const saved=runtime.readerMenuRestore;runtime.readerMenuRestore=null;if(saved&&saved.workId===String(runtime.data?.stack?.work?.id||'')){const button=root.querySelector(`[data-reader-menu="${saved.id}"]`);if(button){runtime.openReaderMenu(button);if(saved.layers){const anchor=root.querySelector('[data-reader-layers]');if(anchor)runtime.openReaderLayers(anchor)}}}}
-  runtime.cleanupReaderMenus=()=>{runtime.stopReaderRouteLayout?.();runtime.stopReaderRouteLayout=null;runtime.readerMenuRestore=runtime.readerMenu?{id:runtime.readerMenu.button.dataset.readerMenu,workId:String(runtime.data?.stack?.work?.id||''),layers:Boolean(runtime.readerLayers)}:null;runtime.closeReaderMenu({children:false});root.removeEventListener('click',click);root.removeEventListener('pointerover',hover);doc.removeEventListener('pointerdown',outside,true);doc.removeEventListener('focusin',outside,true);view?.removeEventListener('resize',runtime.positionReaderMenu);root.removeEventListener('wheel',wheel,true)}
+  runtime.cleanupReaderMenus=()=>{runtime.stopReaderRouteLayout?.();runtime.stopReaderRouteLayout=null;runtime.readerMenuRestore=runtime.readerMenu?{id:runtime.readerMenu.button.dataset.readerMenu,workId:String(runtime.data?.stack?.work?.id||''),layers:Boolean(runtime.readerLayers)}:null;runtime.closeReaderMenu({children:false});root.removeEventListener('click',click);root.removeEventListener('pointerover',hover);doc.removeEventListener('pointerdown',outside,true);doc.removeEventListener('focusin',outside,true);view?.removeEventListener('resize',runtime.positionReaderMenu);view?.removeEventListener('care-toolbar-labels-changed',paintToolbarLabels);sliderArrows.cleanup();root.removeEventListener('wheel',wheel,true)}
+}
+
+function mountWorkspaceReaderMenus(runtime, scope) {
+  const view = runtime.root.ownerDocument.defaultView
+  const bridge = contextMenus(view)
+  if (!bridge || !scope || runtime.data?.studio_embed) return () => {}
+  let registration = runtime.workspaceMenuRegistration
+  if (registration?.scope !== scope) {
+    registration?.dispose()
+    registration = {scope,dispose:registerWorkspaceReaderMenus(runtime,scope,bridge)}
+    runtime.workspaceMenuRegistration = registration
+  }
+  const render = {}
+  registration.render = render
+  bridge.refresh()
+  return () => Promise.resolve().then(() => {
+    if (runtime.workspaceMenuRegistration !== registration || registration.render !== render) return
+    delete runtime.workspaceMenuRegistration
+    registration.dispose()
+  })
+}
+
+function registerWorkspaceReaderMenus(runtime, scope, bridge) {
+  const {root} = runtime, view = root.ownerDocument.defaultView
+  const toolbar = () => root.querySelector(':scope > .desk-menu-toolbar')
+  const headings = () => [...toolbar()?.querySelectorAll('[data-reader-menu]') || []]
+  const menu = id => headings().find(button => button.dataset.readerMenu === id)
+  const toggle = (id, options = {}) => {
+    const button = menu(id)
+    if (!button) return
+    const same = runtime.readerMenu?.button === button
+    if (options.close || (same && options.toggle)) runtime.closeReaderMenu({restoreFocus:true})
+    else runtime.openReaderMenu(button, options)
+  }
+  const native = actions => headings().flatMap(button => {
+    const group = button.dataset.readerMenu
+    const panel = toolbar()?.querySelector(`[data-reader-menu-panel="${group}"]`)
+    if (!panel) return []
+    const visible = control => !control.closest('[hidden]') || control.closest('[hidden]') === panel
+    const controls = [...panel.querySelectorAll('button,select,.desk-menu-rule')].filter(visible)
+    const command = (element, suffix, title, run, checked, enabled = !element.disabled) => {
+      const id = `${scope}:${group}:${suffix}`
+      actions.set(id, () => {
+        if (!element.isConnected || element.disabled || !enabled) return
+        if (element.matches('[aria-haspopup],[aria-expanded]')) runtime.openReaderMenu(button)
+        else runtime.closeReaderMenu()
+        run()
+      })
+      return {id,title,enabled,checked}
+    }
+    const items = controls.flatMap((control, index) => {
+      if (control.matches('.desk-menu-rule')) return [{separator:true}]
+      if (view.webkit?.messageHandlers?.careToolbarLabels && control.matches('[data-care-toolbar-labels-toggle]')) return []
+      if (control.matches('select')) {
+        const title = control.getAttribute('aria-label') || control.labels?.[0]?.firstChild?.textContent?.trim() || 'Choose reading'
+        const options = [...control.options].filter(option => option.value).map((option, optionIndex) =>
+          command(control, `${index}:${optionIndex}`, option.label, () => {
+            control.value = option.value
+            control.dispatchEvent(new view.Event('change', {bubbles:true}))
+          }, control.value === option.value, !control.disabled && !option.disabled))
+        return options.length ? [{title,items:options}] : []
+      }
+      const title = (control.querySelector('.desk-menu-label')?.textContent || control.getAttribute('aria-label')
+        || control.textContent).replace(/[✓›⌨]/g,'').trim()
+      if (!title) return []
+      if (control.matches('[data-reader-layers]')) {
+        const layers = [...toolbar().querySelectorAll('[data-reader-layers-panel] [data-pane-target]')]
+        if (layers.length) return [{title,items:layers.map((layer, layerIndex) =>
+          command(layer, `${index}:${layerIndex}`, layer.textContent.trim(), () => layer.click(), layer.classList.contains('active')))}]
+      }
+      const pressed = control.getAttribute('aria-pressed')
+      const open = control.hasAttribute('aria-haspopup') && !title.endsWith('…') ? '…' : ''
+      return [command(control, index, title + open, () => control.click(), pressed === null ? undefined : pressed === 'true')]
+    })
+    const cleaned = items.filter((item, index) => !item.separator || (index && index < items.length - 1 && !items[index - 1].separator))
+    return cleaned.length ? [{title:button.textContent.trim(),items:cleaned}] : []
+  })
+  const release = bridge.useReading(scope, {
+    root, native, toggle, dismiss:() => runtime.closeReaderMenu(),
+    headings:() => headings().map(button => [button.dataset.readerMenu,button.textContent.trim()]),
+    paint(anchors) {
+      if (runtime.workspaceMenuAnchors === anchors) return
+      runtime.closeReaderMenu()
+      runtime.workspaceMenuAnchors = anchors
+      if (anchors) root.dataset.workspaceMenus = ''
+      else delete root.dataset.workspaceMenus
+    },
+  })
+  let currentBar = toolbar()
+  const controls = view.MutationObserver && new view.MutationObserver(bridge.refresh)
+  const watchBar = () => {
+    controls?.disconnect()
+    if (currentBar) controls?.observe(currentBar, {
+      subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['aria-pressed','disabled','hidden','class'],
+    })
+  }
+  watchBar()
+  const replacement = view.MutationObserver && new view.MutationObserver(() => {
+    const next = toolbar()
+    if (next === currentBar) return
+    currentBar = next
+    watchBar()
+    bridge.refresh()
+  })
+  replacement?.observe(root, {childList:true})
+  return () => {
+    controls?.disconnect()
+    replacement?.disconnect()
+    release()
+  }
 }
 
 function paneTab(id,label){return `<button type="button" class="desk-tab" data-pane-target="${esc(id)}">${esc(label)}</button>`}
@@ -768,15 +1066,34 @@ const fieldBookmarkLayers=new Set(["CB","XR","XS","SC","XA"])
 const bookmarkLayerAllowed=(layer,field=false)=>bookmarkLayers.has(String(layer).toUpperCase())||(field&&fieldBookmarkLayers.has(String(layer).toUpperCase()))
 function bookBookmarks(data){
   const work=String(data?.stack?.work?.id||""),seen=new Set()
-  return arr(data?.bookmarks).filter(row=>{const id=String(row.care_unit_id||"");if(!id||seen.has(id)||(row.work_id&&String(row.work_id)!==work))return false;seen.add(id);return true}).sort((a,b)=>String(b.saved_at||"").localeCompare(String(a.saved_at||"")))
+  return arr(data?.bookmarks).filter(row=>{const id=String(row.care_unit_id||""),key=id+"|"+String(row.passage_id||"")+"|"+String(row.layer==="SOURCE"?row.source_pane||"":"");if(!id||seen.has(key)||(row.work_id&&String(row.work_id)!==work))return false;seen.add(key);return true}).sort((a,b)=>String(b.saved_at||"").localeCompare(String(a.saved_at||"")))
 }
 function bookmarkablePane(data,focused){
   if(isRouteReference(data?.reference)||data?.connection?.reference)return null
+  const chapter=sourceBookmarkChapters(data).find(chapter=>String(chapter.raw_unit_id)===String(focused))||(focused==="source"?data?.stack?.active_chapter:null)
+  if(chapter?.raw_unit_id&&["source",String(chapter.raw_unit_id)].includes(String(focused)))return {id:chapter.raw_unit_id,type:"SOURCE",title:chapter.title}
   return arr(data?.stack?.care_path).find(unit=>String(unit.id)===String(focused)&&bookmarkLayerAllowed(unit.type,data?.corpus_sheet))||null
+}
+function sourceBookmarkChapters(data){
+  const work=String(data?.stack?.work?.id||"")
+  return [data?.stack?.active_chapter,...arr(data?.outline_units).filter(row=>String(row.work_id||"")===work).map(row=>row.chapter)].filter(chapter=>chapter?.raw_unit_id)
+}
+function bookmarkablePassages(data){
+  const targets=new Map(),work=String(data?.stack?.work?.id||"")
+  const add=(item,raw)=>{if(item?.id&&raw&&item.resolved!==false&&(!item.work_id||String(item.work_id)===work))targets.set(String(item.id),{raw_unit_id:String(raw),passage_id:String(item.id)})}
+  for(const chapter of sourceBookmarkChapters(data))for(const passage of arr(chapter.passages))add(passage,chapter.raw_unit_id)
+  const reference=data?.reference
+  if(reference?.kind==="passage")add(reference,reference.unit_id)
+  for(const item of arr(reference?.route_layers?.SOURCE))if(item.kind==="passage")add(item,item.unit_id)
+  return targets
+}
+function sourceBookmarkButton(raw,passage,bookmarks=[],title=""){
+  const active=arr(bookmarks).some(row=>String(row.care_unit_id)===String(raw)&&String(row.passage_id||"")===String(passage||"")&&!row.source_pane),label=`${active?"Remove bookmark for":"Bookmark"} ${passage?"passage":"whole source chapter"}${title?` · ${title}`:""}`
+  return `<button type="button" class="${passage?"reader-axiom-mark":"pane-bookmark"}" data-bookmark-toggle="${esc(raw)}" data-bookmark-layer="SOURCE" data-bookmark-passage="${esc(passage||"")}" aria-pressed="${active}" aria-label="${esc(label)}" title="${esc(label)}">${bookmarkIcon()}</button>`
 }
 function paneBookmarkButton(unit,bookmarks=[],field=false){
   if(!bookmarkLayerAllowed(unit.type,field))return ""
-  const active=arr(bookmarks).some(row=>String(row.care_unit_id)===String(unit.id)),title=unit.identity?.title||unit.title||unit.id,label=`${active?"Remove bookmark for":"Bookmark"} ${readerLayerLabel(unit.type,unit)} · ${title}`
+  const active=arr(bookmarks).some(row=>String(row.care_unit_id)===String(unit.id)&&!row.passage_id),title=unit.identity?.title||unit.title||unit.id,label=`${active?"Remove bookmark for":"Bookmark"} ${readerLayerLabel(unit.type,unit)} · ${title}`
   return `<button type="button" class="pane-bookmark" data-bookmark-toggle="${esc(unit.id)}" aria-pressed="${active}" aria-label="${esc(label)}" title="${esc(label)}">${bookmarkIcon()}</button>`
 }
 function bookmarkControl(data){
@@ -785,11 +1102,11 @@ function bookmarkControl(data){
   return `<button type="button" class="desk-tab desk-bookmark-control" data-bookmark-menu aria-label="Bookmarks in this book${count?` · ${count}`:""}" title="Bookmarks in this book" aria-haspopup="dialog" aria-expanded="false">${bookmarkIcon()}${count?`<small aria-hidden="true">${count}</small>`:""}</button>`
 }
 function bookmarkMenu(data,focused){
-  const bookmarks=bookBookmarks(data),unit=bookmarkablePane(data,focused),active=unit&&bookmarks.some(row=>String(row.care_unit_id)===String(unit.id))
-  const current=unit?`<button type="button" class="pane-bookmark-current" data-bookmark-toggle="${esc(unit.id)}" aria-pressed="${Boolean(active)}">${bookmarkIcon()}<span><strong>${active?"Remove this bookmark":"Bookmark this pane"}</strong><small>${esc(readerLayerLabel(unit.type,unit))} · ${esc(unit.identity?.title||unit.title||unit.id)}</small></span></button>`:""
+  const bookmarks=bookBookmarks(data),unit=bookmarkablePane(data,focused),active=unit&&bookmarks.some(row=>String(row.care_unit_id)===String(unit.id)&&!row.passage_id&&(unit.type!=="SOURCE"||!row.source_pane))
+  const current=unit?`<button type="button" class="pane-bookmark-current" data-bookmark-toggle="${esc(unit.id)}"${unit.type==="SOURCE"?' data-bookmark-layer="SOURCE" data-bookmark-passage=""':""} aria-pressed="${Boolean(active)}">${bookmarkIcon()}<span><strong>${active?"Remove this bookmark":unit.type==="SOURCE"?"Bookmark whole source chapter":"Bookmark this pane"}</strong><small>${esc(readerLayerLabel(unit.type,unit))} · ${esc(unit.identity?.title||unit.title||unit.id)}</small></span></button>`:""
   const savedDate=value=>{const date=new Date(value);return value&&!Number.isNaN(date.getTime())?new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short"}).format(date):""}
-  const rows=bookmarks.map(row=>`<button type="button" class="pane-bookmark-row" data-bookmark-open="${esc(row.care_unit_id)}"${row.available===false?` disabled aria-label="${esc(row.title||row.care_unit_id)} · Currently unavailable"`:""}><span class="pane-bookmark-layer" style="--bookmark-accent:${layerColor(row.layer,row)}">${esc(readerLayerLabel(row.layer,row)||"CARE")}</span><span class="pane-bookmark-copy"><strong>${esc(row.title||row.care_unit_id)}</strong><small>${esc(row.available===false?"Currently unavailable":[row.layer?`${readerLayerLabel(row.layer,row)} pane`:"Saved pane",savedDate(row.saved_at)].filter(Boolean).join(" · "))}</small></span></button>`).join("")
-  return `<div class="pane-bookmark-heading"><div><strong>Bookmarks in this book</strong><small>${esc(data?.stack?.work?.title||"Your reading")}</small></div><button type="button" data-bookmark-close aria-label="Close bookmarks">×</button></div>${current}${rows?`<div class="pane-bookmark-list" role="group" aria-label="Saved panes">${rows}</div>`:`<div class="pane-bookmark-empty">${bookmarkIcon()}<strong>Keep a place worth returning to</strong><p>Bookmark a CH, CL, MC or WB pane to find it here.</p></div>`}${unit?"":'<p class="pane-bookmark-footnote">Choose a CARE pane to bookmark it.</p>'}`
+  const rows=bookmarks.map(row=>`<button type="button" class="pane-bookmark-row" data-bookmark-open="${esc(row.care_unit_id)}"${row.layer==="SOURCE"?` data-bookmark-layer="SOURCE" data-bookmark-passage="${esc(row.passage_id||"")}" data-source-pane="${esc(row.source_pane||"")}"`:""}${row.available===false?` disabled aria-label="${esc(row.title||row.care_unit_id)} · Currently unavailable"`:""}><span class="pane-bookmark-layer" style="--bookmark-accent:${layerColor(row.layer,row)}">${esc(readerLayerLabel(row.layer,row)||"CARE")}</span><span class="pane-bookmark-copy"><strong>${esc(row.title||row.care_unit_id)}</strong><small>${esc(row.available===false?"Currently unavailable":[row.layer==="SOURCE"?(row.passage_id?`Source passage · ${row.passage_id}`:"Whole source chapter"):row.layer?`${readerLayerLabel(row.layer,row)} pane`:"Saved pane",savedDate(row.saved_at)].filter(Boolean).join(" · "))}</small></span></button>`).join("")
+  return `<div class="pane-bookmark-heading"><div><strong>Bookmarks in this book</strong><small>${esc(data?.stack?.work?.title||"Your reading")}</small></div><button type="button" data-bookmark-close aria-label="Close bookmarks">×</button></div>${current}${rows?`<div class="pane-bookmark-list" role="group" aria-label="Saved readings">${rows}</div>`:`<div class="pane-bookmark-empty">${bookmarkIcon()}<strong>Keep a place worth returning to</strong><p>Bookmark a source passage, whole chapter or CARE pane to find it here.</p></div>`}${unit?"":'<p class="pane-bookmark-footnote">Use the bookmark beside a passage or in a reading pane.</p>'}`
 }
 
 const etchedRouteIcon=()=>'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4v4c0 3 8 1 8 5v3M6 8v8"/><circle cx="6" cy="3" r="1.4"/><circle cx="6" cy="17" r="1.4"/><circle cx="14" cy="17" r="1.4"/></svg><span class="reader-action-tip" aria-hidden="true">Routes</span>'
@@ -805,20 +1122,353 @@ function bookmarkableAxioms(data){
   if(reference){add(reference,reference.unit_id,reference.layer);for(const rows of Object.values(reference.route_layers||{}))for(const item of arr(rows))add(item,item.unit_id,item.layer)}
   return targets
 }
+function decorateAxiomStudioUse(axiom,id,count){
+  const row=axiom.closest(".axiom-row"),heading=axiom.querySelector(".axiom-id,.route-card-id")
+  if(!row||!heading)return null
+  let badge=row.querySelector("[data-studio-axiom-use]"),slot=heading.querySelector(".studio-axiom-use-slot")
+  if(!Number.isSafeInteger(count)||count<1){badge?.remove();slot?.remove();return null}
+  if(!badge){
+    badge=row.ownerDocument.createElement("button")
+    badge.setAttribute("type","button")
+    badge.classList.add("studio-axiom-use")
+    row.append(badge)
+  }
+  if(!slot){
+    slot=row.ownerDocument.createElement("span")
+    slot.classList.add("studio-axiom-use-slot")
+    slot.setAttribute("aria-hidden","true")
+    heading.append(slot)
+  }
+  badge.setAttribute("data-studio-axiom-use",id)
+  badge.textContent=count===1?"Studio":`Studio ${count}`
+  slot.setAttribute("data-studio-use-label",badge.textContent)
+  badge.title=count===1?"Used in 1 Studio draft":`Used in ${count} Studio drafts`
+  badge.setAttribute("aria-label",`Where ${id} is used · ${badge.title}`)
+  return {row,heading,slot,badge}
+}
+function placeAxiomStudioUses(runtime,placements){
+  runtime.cleanupAxiomStudioUses?.()
+  if(!placements.length)return
+  const view=runtime.root.ownerDocument.defaultView
+  let frame=null
+  const paint=()=>{
+    frame=null
+    // Keep the native button outside the card's own button semantics, aligned
+    // with its reserved spot in the metadata line even when the ID wraps.
+    const positions=placements.flatMap(({row,slot,badge})=>{
+      const box=slot.getBoundingClientRect()
+      if(!box.width||!box.height)return []
+      const bounds=row.getBoundingClientRect(),scale=readerLayoutScale(row,bounds)
+      return [{badge,left:(box.left-bounds.left)/scale-(row.clientLeft||0),top:(box.top-bounds.top)/scale-(row.clientTop||0)}]
+    })
+    for(const {badge,left,top} of positions){
+      badge.style.left=`${left}px`;badge.style.top=`${top}px`
+      badge.setAttribute("data-studio-positioned","")
+    }
+  }
+  const queue=()=>{if(frame===null)frame=view?.requestAnimationFrame?.(paint)??null}
+  const observer=view?.ResizeObserver?new view.ResizeObserver(queue):null
+  for(const {heading,slot} of placements){observer?.observe(heading);observer?.observe(slot)}
+  view?.addEventListener?.("resize",queue)
+  paint()
+  runtime.cleanupAxiomStudioUses=()=>{
+    if(frame!==null)view?.cancelAnimationFrame?.(frame)
+    observer?.disconnect()
+    view?.removeEventListener?.("resize",queue)
+    runtime.cleanupAxiomStudioUses=null
+  }
+}
+function setupAxiomStudioUses(runtime){
+  const click=runtime.onClick
+  runtime.onClick=event=>{
+    const badge=event.target?.closest?.("[data-studio-axiom-use]")
+    if(!badge)return click(event)
+    event.preventDefault?.();event.stopPropagation?.()
+    const id=String(badge.dataset.studioAxiomUse||""),work_id=String(runtime.data?.stack?.work?.id||"")
+    const count=runtime.data?.studio_axiom_draft_counts?.[id]
+    if(!id||!work_id||!Number.isSafeInteger(count)||count<1)return
+    const book=badge.closest("[data-connection-book]")?.dataset.connectionBook
+    const scope=routeCardScope(badge)||(book?`work:${book}`:"")
+    const kind=badge.dataset.studioUseKind==="passage"?"passage":"axiom"
+    if(runtime.data?.studio_embed){
+      const view=runtime.root.ownerDocument.defaultView
+      if(view?.CustomEvent){
+        const inspect=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{kind,id,scope,open:true,surface:"writing_uses"}})
+        view.dispatchEvent(inspect)
+        if(inspect.defaultPrevented)return
+      }
+    }
+    runtime.api?.setTriggerValue("studio_axiom_use",{id,scope,work_id,...(kind==="passage"?{kind}:{}),nonce:`${Date.now()}-${Math.random().toString(36).slice(2)}`})
+  }
+}
+function studioDraftCount(counts,id){
+  const count=counts?.[id]
+  return Number.isSafeInteger(count)&&count>0?count:0
+}
+function studioPassageAvailable(runtime,card){
+  const pane=card.closest("[data-pane]"),variant=card.dataset.studioSourceVariant||pane?.dataset.studioSourceVariant
+  return (!variant||variant==="canonical")&&!routeCardScope(card)&&!(card.closest(".route-pane")&&runtime.data?.reference?.preserved)
+}
+function studioDeskCopySource(runtime,card){
+  const {data}=runtime,stack=data?.stack,reference=data?.reference
+  const passage=Boolean(card.dataset.selectPassage),id=card.dataset.selectPassage||card.dataset.selectAxiom
+  const pane=card.closest("[data-pane]")
+  let work_id=String(stack?.work?.id||"")
+  if(!id||!pane||!work_id||card.closest("[data-connection-book],[data-connection-field]")||routeCardScope(card))return null
+  if(passage&&!studioPassageAvailable(runtime,card))return null
+  const unitId=card.dataset.sourceUnit||card.dataset.selectionUnit||pane.dataset.pane
+  const routeCard=card.matches(".route-card,.route-source-card")
+  if(reference?.preserved&&(routeCard||isRouteReference(reference)))return null
+  const outline=runtime.root.dataset.view==="outline"?runtime.outlineState?.().cache.get(unitId):null
+  const units=passage?[outline?.chapter,stack.active_chapter]:[outline?.unit,...arr(stack.care_path)]
+  const unit=units.find(unit=>unit&&String(passage?unit.raw_unit_id:unit.id)===unitId)
+  const rows=routeCard?[reference,...Object.values(reference?.route_layers||{}).flatMap(arr)]
+    :passage?arr(unit?.passages):arr(unit?.sections).flatMap(section=>arr(section.items))
+  const item=rows.find(item=>String(item?.id||"")===id&&(!routeCard||!item.unit_id||String(item.unit_id)===unitId))
+  if(passage&&item?.work_id)work_id=String(item.work_id)
+  const kind=passage?"passage":"axiom",variant=item?.rendition_type||unit?.rendition_type
+  if(!item||item.resolved===false||item.preserved||item.source_pane||(item.work_id&&item.work_id!==work_id)
+    ||(item.kind&&item.kind!==kind)||(variant&&variant!=="canonical")||typeof item.text!=="string"||!item.text.trim())return null
+  // A route feeder's generic version can describe its graph card. A canonical
+  // sheet version is safe to send when the projection supplied its label.
+  const version=passage?item.passage_set_id:item.version_label||(routeCard?"":item.version||unit?.version_label||unit?.version)
+  return {kind,id,work_id,scope:"",source_text:item.text,...(version?{source_version:String(version)}:{})}
+}
+function studioDeskPassageQuote(runtime,selection){
+  const root=runtime.root
+  let range
+  try{range=selection.getComposedRanges?.({shadowRoots:[root.getRootNode()]})?.[0]}catch(_){}
+  try{if(!range&&selection.rangeCount)range=selection.getRangeAt(0)}catch(_){return null}
+  const element=node=>node?.closest?node:node?.parentElement
+  const first=element(range?.startContainer||selection.anchorNode)?.closest?.(".passage-text")
+  const last=element(range?.endContainer||selection.focusNode)?.closest?.(".passage-text")
+  if(!first||first!==last||!root.contains(first))return null
+  const card=first.closest("[data-select-passage]"),source=card&&studioDeskCopySource(runtime,card)
+  const quote=String(selection).replace(/\r\n?/g,"\n").trim()
+  if(!source||!quote||quote.length>19998||
+    !source.source_text.replace(/\s+/g," ").includes(quote.replace(/\s+/g," ")))return null
+  return {...source,mode:"passage-quote",quote,text:quote}
+}
+function setupStudioDeskCopy(runtime){
+  const {root}=runtime,doc=root.ownerDocument,view=doc.defaultView
+  if(!view)return ()=>{}
+  const cards="[data-select-axiom],[data-select-passage]"
+  const editable='input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'
+  const reference=()=>{
+    // Write beside can open or close on a rerun that retains the reader DOM.
+    // Outside a Studio iframe, only the local editor's server-issued request
+    // activates citation copy.
+    const {data}=runtime
+    let request=data?.writing_clipboard_request
+    if(data?.studio_embed){
+      if(!data.studio_axiom_draft_counts||!view.parent||view.parent===view)return null
+      request=new URL(view.location.href).searchParams.get("care_studio_request")
+    }else if(doc.querySelector("[data-care-write-beside-request]:not([data-care-write-beside-closing])")?.dataset.careWriteBesideRequest!==request){
+      return null
+    }
+    if(!request)return null
+    // A single verified source excerpt carries its citation into Studio.
+    // Other text selections keep the platform's ordinary copy behavior.
+    const selection=axiomCodeSelection(root)
+    if(selection?.isCollapsed===false||String(selection||"")){
+      const quote=studioDeskPassageQuote(runtime,selection)
+      return quote?{...quote,request}:null
+    }
+    const card=root.querySelector(":focus")
+    if(!card?.matches(cards)||card.getAttribute("aria-pressed")!=="true")return null
+    const source=studioDeskCopySource(runtime,card)
+    return source?{...source,request,mode:"reference",text:source.id}:null
+  }
+  const beforeCopy=event=>{
+    // WebKit uses beforecopy to validate the native Copy command when no text
+    // is highlighted, including the macOS Edit menu on a selected card.
+    if(!event.defaultPrevented&&reference()?.mode==="reference")event.preventDefault()
+  }
+  const copy=event=>{
+    const origin=event.composedPath?.()[0]||event.target
+    if(event.defaultPrevented||!event.clipboardData||origin?.closest?.(editable))return
+    const packet=reference()
+    if(!packet)return
+    const token=studioSourceClipboardToken(view,packet)
+    if(packet.mode==="passage-quote"&&!token)return
+    event.clipboardData.setData("text/plain",packet.text)
+    if(token){
+      // The inert attribute also works on pasteboards that only retain
+      // standard types. Both types carry an opaque pointer, never source text.
+      event.clipboardData.setData("text/html",`<span data-care-studio-source="${token}">${esc(packet.text)}</span>`)
+      try{event.clipboardData.setData("application/x-care-studio-source",token)}catch(_){}
+    }
+    event.preventDefault()
+  }
+  const key=event=>{
+    if(event.defaultPrevented||event.isComposing||event.key?.toLowerCase()!=="c"||(!event.metaKey&&!event.ctrlKey)||event.altKey||event.shiftKey)return
+    if(reference()&&doc.execCommand?.("copy"))event.preventDefault()
+  }
+  doc.addEventListener("beforecopy",beforeCopy,true)
+  doc.addEventListener("copy",copy,true)
+  root.addEventListener("keydown",key,true)
+  return ()=>{
+    doc.removeEventListener("beforecopy",beforeCopy,true)
+    doc.removeEventListener("copy",copy,true)
+    root.removeEventListener("keydown",key,true)
+  }
+}
+function decoratePassageStudioUses(runtime){
+  const {root,data}=runtime,counts=data?.studio_axiom_draft_counts
+  if(!counts&&!runtime.hasPassageStudioUses)return
+  root.querySelectorAll("[data-select-passage]").forEach(card=>{
+    const row=card.closest(".passage-row")
+    if(!row)return
+    const id=card.dataset.selectPassage,count=studioDraftCount(counts,id)
+    let badge=row.querySelector(".studio-passage-use")
+    if(!count||!studioPassageAvailable(runtime,card)){badge?.remove();return}
+    if(!badge){
+      badge=root.ownerDocument.createElement("button")
+      badge.type="button";badge.classList.add("studio-axiom-use","studio-passage-use")
+      badge.setAttribute("data-studio-use-kind","passage")
+      badge.setAttribute("data-studio-positioned","")
+      row.append(badge)
+    }
+    badge.setAttribute("data-studio-axiom-use",id)
+    badge.textContent="Studio"
+    badge.title=`Used in ${count} Studio ${count===1?"draft":"drafts"}`
+    badge.setAttribute("aria-label",`Where ${id} is used · ${badge.title}`)
+  })
+  runtime.hasPassageStudioUses=Boolean(counts)
+}
+
+const studioFilterIcon='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 2.5h9L7 6.5V10l-2-1V6.5z"/></svg>'
+function studioFilterPaneKey(runtime,pane){
+  return JSON.stringify([runtime.data?.stack?.work?.id,pane.dataset.pane])
+}
+function paintStudioPaneFilter(runtime,pane){
+  const {root,data}=runtime,counts=data?.studio_axiom_draft_counts
+  const bar=pane.querySelector(":scope > .window-titlebar"),body=pane.querySelector(":scope > .window-body")
+  if(!bar||!body)return
+  let toggle=bar.querySelector("[data-studio-pane-filter]")
+  if(!counts&&!toggle)return
+  const cards=[...body.querySelectorAll("[data-select-axiom],[data-select-passage]")]
+  const linked=new Set(cards.filter(card=>studioDraftCount(counts,card.dataset.selectAxiom||card.dataset.selectPassage)
+    &&(!card.dataset.selectPassage||studioPassageAvailable(runtime,card))))
+  const eligible=[...linked].some(card=>!card.closest("[hidden]"))
+  const active=eligible&&runtime.studioPaneFilters.has(studioFilterPaneKey(runtime,pane))
+  if(!eligible)toggle?.remove()
+  else if(!toggle){
+    toggle=root.ownerDocument.createElement("button")
+    toggle.type="button";toggle.className="studio-pane-filter"
+    toggle.setAttribute("data-studio-pane-filter","")
+    toggle.innerHTML=studioFilterIcon
+    bar.append(toggle)
+  }
+  if(eligible){
+    toggle.setAttribute("aria-pressed",String(active))
+    toggle.setAttribute("aria-label","Show only items used in Studio in this pane")
+    toggle.title=active?"Show all items in this pane":"Show only items used in Studio in this pane"
+  }
+  if(active)pane.setAttribute("data-studio-filtered","")
+  else pane.removeAttribute("data-studio-filtered")
+  if(!active){
+    body.querySelectorAll("[data-studio-filter-hidden]").forEach(node=>node.removeAttribute("data-studio-filter-hidden"))
+    return
+  }
+  const groups=new Set(body.querySelectorAll(".care-section,details[data-route-reading]")),usedGroups=new Set()
+  for(const card of cards){
+    const row=card.closest(".axiom-row,.passage-row")||card
+    if(linked.has(card)){
+      row.removeAttribute("data-studio-filter-hidden")
+      for(let group=row.closest(".care-section,details[data-route-reading]");group&&groups.has(group);group=group.parentElement?.closest(".care-section,details[data-route-reading]"))usedGroups.add(group)
+    }else row.setAttribute("data-studio-filter-hidden","")
+  }
+  for(const group of groups){
+    if(usedGroups.has(group))group.removeAttribute("data-studio-filter-hidden")
+    else group.setAttribute("data-studio-filter-hidden","")
+  }
+  body.querySelectorAll(".route-empty,.trace-empty,.beautiful-chapter-notes").forEach(node=>node.setAttribute("data-studio-filter-hidden",""))
+}
+function studioFilterControls(runtime){
+  return [...runtime.root.querySelectorAll("[data-studio-pane-filter]")].filter(control=>!control.closest("[hidden]"))
+}
+function paintStudioFilterMenu(runtime){
+  const control=runtime.root.querySelector("[data-studio-all-filter]")
+  if(!control)return
+  const panes=studioFilterControls(runtime),active=panes.filter(pane=>pane.getAttribute("aria-pressed")==="true").length
+  const state=active?(active===panes.length?"true":"mixed"):"false"
+  control.hidden=!panes.length
+  control.setAttribute("aria-pressed",state)
+  const mark=control.querySelector("[data-studio-all-filter-state]")
+  if(mark)mark.textContent=state==="true"?"✓":state==="mixed"?"−":""
+}
+function paintStudioPaneFilters(runtime){
+  if(!runtime.data?.studio_axiom_draft_counts&&!runtime.root.querySelector("[data-studio-pane-filter]"))return
+  runtime.root.querySelectorAll(".care-pane[data-pane],.source-pane[data-pane]").forEach(pane=>{
+    if(!pane.classList.contains("connection-unresolved"))paintStudioPaneFilter(runtime,pane)
+  })
+  paintStudioFilterMenu(runtime)
+}
+function setupStudioPaneFilters(runtime){
+  runtime.studioPaneFilters=new Map()
+  const applyOutline=runtime.applyOutline
+  runtime.applyOutline=()=>{applyOutline?.();paintStudioFilterMenu(runtime)}
+  const click=runtime.onClick
+  runtime.onClick=event=>{
+    const toggle=event.target?.closest?.("[data-studio-pane-filter],[data-studio-all-filter]")
+    if(!toggle)return click(event)
+    const controls=toggle.hasAttribute("data-studio-all-filter")?studioFilterControls(runtime):[toggle]
+    if(!controls.length||!runtime.data?.studio_axiom_draft_counts)return
+    event.preventDefault?.();event.stopPropagation?.()
+    const enable=controls.some(control=>control.getAttribute("aria-pressed")!=="true"),positions=[]
+    let sourceChanged=false
+    for(const control of controls){
+      const pane=control.closest("[data-pane]"),body=pane?.querySelector(":scope > .window-body")
+      if(!body)continue
+      const key=studioFilterPaneKey(runtime,pane),saved=runtime.studioPaneFilters.get(key)
+      if(Boolean(saved)===enable)continue
+      if(enable){
+        runtime.studioPaneFilters.set(key,{top:body.scrollTop,reading:body.dataset.readingId})
+        if(runtime.studioPaneFilters.size>100)runtime.studioPaneFilters.delete(runtime.studioPaneFilters.keys().next().value)
+      }else runtime.studioPaneFilters.delete(key)
+      paintStudioPaneFilter(runtime,pane)
+      sourceChanged ||= pane.classList.contains("source-pane")
+      positions.push([body,saved?.reading===body.dataset.readingId?saved?.top||0:0])
+    }
+    paintStudioFilterMenu(runtime)
+    if(sourceChanged)runtime.paintBeautifulText?.()
+    runtime.paintSelection()
+    runtime.paintConnectionSelection?.()
+    for(const [body,top] of positions)body.scrollTop=top
+    runtime.queueThreads?.()
+  }
+}
 function decorateReadingActions(runtime){
   const root=runtime.root,targets=bookmarkableAxioms(runtime.data),favourites=new Set(arr(runtime.data?.favourite_axiom_ids).map(String))
+  const studioCounts=runtime.data?.studio_axiom_draft_counts,paintStudio=studioCounts||runtime.hasStudioAxiomUses,studioPlacements=[]
   root.querySelectorAll("[data-open-axiom-routes],[data-open-passage-routes]").forEach(button=>{
     if(!button.classList.contains("reader-route-action")){button.classList.add("reader-route-action");button.innerHTML=etchedRouteIcon()}
   })
   root.querySelectorAll("[data-select-axiom]").forEach(axiom=>{
+    const id=String(axiom.dataset.selectAxiom||"")
+    const studioPlacement=paintStudio&&decorateAxiomStudioUse(axiom,id,studioCounts?.[id])
+    if(studioPlacement)studioPlacements.push(studioPlacement)
     if(axiom.closest("[data-connection-book],[data-connection-field]"))return
-    const id=String(axiom.dataset.selectAxiom||""),target=targets.get(id),row=axiom.closest(".axiom-row")
+    const target=targets.get(id),row=axiom.closest(".axiom-row")
     if(!row||!target)return
     const active=favourites.has(id),label=`${active?"Remove saved axiom":"Save axiom"} · ${id}`
     let button=row.querySelector("[data-favourite-axiom]")
     if(!button){button=root.ownerDocument.createElement("button");button.type="button";button.classList.add("reader-axiom-mark");button.setAttribute("data-favourite-axiom",id);button.innerHTML=bookmarkIcon();row.append(button)}
     button.setAttribute("aria-pressed",String(active));button.setAttribute("aria-label",label);button.title=label
     row.classList.add("reader-has-mark");row.classList.toggle("reader-axiom-saved",active)
+  })
+  placeAxiomStudioUses(runtime,studioPlacements)
+  runtime.hasStudioAxiomUses=Boolean(studioCounts)
+  const passages=bookmarkablePassages(runtime.data),bookmarks=bookBookmarks(runtime.data)
+  root.querySelectorAll("[data-select-passage]").forEach(passage=>{
+    if(passage.closest("[data-connection-book],[data-connection-field]"))return
+    const id=String(passage.dataset.selectPassage||""),target=passages.get(id),row=passage.closest(".passage-row")
+    if(!row||!target||String(passage.dataset.sourceUnit)!==target.raw_unit_id)return
+    let button=row.querySelector("[data-bookmark-toggle]")
+    if(!button){button=root.ownerDocument.createElement("button");button.type="button";button.classList.add("reader-axiom-mark");button.setAttribute("data-bookmark-toggle",target.raw_unit_id);button.setAttribute("data-bookmark-layer","SOURCE");button.setAttribute("data-bookmark-passage",id);button.innerHTML=bookmarkIcon();row.append(button)}
+    const active=bookmarks.some(saved=>String(saved.care_unit_id)===target.raw_unit_id&&String(saved.passage_id||"")===id&&!saved.source_pane),label=`${active?"Remove bookmark for":"Bookmark"} passage · ${id}`
+    button.setAttribute("aria-pressed",String(active));button.setAttribute("aria-label",label);button.title=label;row.classList.add("reader-has-mark")
   })
 }
 function setupAxiomFavourites(runtime){
@@ -835,15 +1485,52 @@ function setupAxiomFavourites(runtime){
 }
 
 function applySavedPaneFocus(runtime){
-  const request=runtime.data?.saved_focus,token=String(request?.token||""),unitId=String(request?.unit_id||"")
-  if(!token||runtime.savedFocusToken===token||String(request?.work_id||"")!==String(runtime.data?.stack?.work?.id||"")||!bookmarkablePane(runtime.data,unitId))return false
-  const pane=runtime.root.querySelector(`[data-pane="${CSS.escape(unitId)}"]`),strip=runtime.root.querySelector("[data-strip]")
+  const incoming=runtime.data?.saved_focus,stack=runtime.data?.stack
+  if(incoming)runtime.pendingPassageFocus=incoming.passage_id?incoming:null
+  const request=incoming||runtime.pendingPassageFocus,token=String(request?.token||""),unitId=String(request?.unit_id||"")
+  if(!token||runtime.savedFocusToken===token||String(request?.work_id||"")!==String(stack?.work?.id||"")||
+    isRouteReference(runtime.data?.reference)||runtime.data?.connection?.reference||
+    (!incoming&&String(stack?.active_chapter?.raw_unit_id||"")!==unitId)){
+    runtime.pendingPassageFocus=null
+    return false
+  }
+  const unit=bookmarkablePane(runtime.data,unitId)
+  if(!unit)return false
+  const axiomId=String(request?.axiom_id||""),passageId=String(request?.passage_id||"")
+  if((axiomId||passageId)&&runtime.readerView==="outline")runtime.setReaderView?.("normal")
+  const source=unit.type==="SOURCE",pane=runtime.root.querySelector(`[data-pane="${CSS.escape(source?"source":unitId)}"]`),strip=runtime.root.querySelector("[data-strip]")
+  if(source&&String(runtime.data?.stack?.active_chapter?.raw_unit_id||"")!==unitId)return false
   // Do not consume a request before the reader has a measurable destination.
   // Its first ResizeObserver delivery retries after the workspace lays out.
   if(!pane||!strip?.clientWidth||!pane.getBoundingClientRect().width)return false
+  const row=source&&passageId?pane.querySelector(`[data-select-passage="${CSS.escape(passageId)}"][data-source-unit="${CSS.escape(unitId)}"]`):
+    !source&&axiomId?pane.querySelector(`[data-select-axiom="${CSS.escape(axiomId)}"]`):null
+  const body=row?.closest(".window-body")
+  if((axiomId||passageId)&&(!row||row.disabled||!body))return false
+  if(row?.closest("[data-studio-filter-hidden]")){
+    runtime.studioPaneFilters?.delete(studioFilterPaneKey(runtime,pane))
+    paintStudioPaneFilter(runtime,pane);paintStudioFilterMenu(runtime)
+    if(source)runtime.paintBeautifulText?.()
+  }
   if(pane.classList?.contains("care-pane-minimized"))pane.querySelector('[data-pane-control="minimize"]')?.click()
+  if(row&&!body.clientHeight)return false
   runtime.savedFocusToken=token
-  runtime.focus(unitId)
+  runtime.pendingPassageFocus=null
+  runtime.focus(source?"source":unitId)
+  if(row){
+    const section=row.closest("details");if(section)section.open=true
+    if(source&&row.dataset.beautifulFolded!==undefined){
+      row.dataset.beautifulCompact="false";row.dataset.beautifulOpeningFoldable="false";runtime.paintBeautifulText?.()
+    }
+    runtime.selectedAxiom={work_id:String(request.work_id),unit_id:unitId,...(source?{passage_id:passageId}:{axiom_id:axiomId})}
+    runtime.clearedSelectionContext=null
+    runtime.paintSelection?.()
+    const bounds=body.getBoundingClientRect(),text=(row.querySelector(source?".passage-text":".axiom-text")||row).getBoundingClientRect(),scale=readerLayoutScale(body,bounds)
+    // Move only the pane's vertical scroll; keep the desk and draft in place.
+    body.scrollTop+=(text.top-bounds.top)/scale+Math.min(text.height/scale,body.clientHeight*.8)/2-body.clientHeight/2
+    row.focus({preventScroll:true})
+    runtime.viewerSelectionPending=true;runtime.onViewerReady?.()
+  }
   return true
 }
 function setupPaneBookmarks(runtime){
@@ -863,22 +1550,23 @@ function setupPaneBookmarks(runtime){
     root.append(element);runtime.bookmarkMenu={anchor,element,workId:String(runtime.data.stack.work.id)};anchor.setAttribute("aria-expanded","true");runtime.positionBookmarkMenu()
     if(!restore)(element.querySelector('[data-bookmark-toggle],[data-bookmark-open]:not(:disabled)')||element.querySelector("[data-bookmark-close]"))?.focus({preventScroll:true})
   }
-  runtime.emitBookmarkAction=(action,id)=>{
-    const care_unit_id=String(id||""),work_id=String(runtime.data?.stack?.work?.id||""),saved=bookBookmarks(runtime.data),row=saved.find(row=>String(row.care_unit_id)===care_unit_id)
+  runtime.emitBookmarkAction=(action,id,passageId="",layer="",scope="")=>{
+    const care_unit_id=String(id||""),passage_id=String(passageId||""),work_id=String(runtime.data?.stack?.work?.id||""),saved=bookBookmarks(runtime.data),row=saved.find(row=>String(row.care_unit_id)===care_unit_id&&String(row.passage_id||"")===passage_id&&(row.layer!=="SOURCE"||String(row.source_pane||"")===String(scope||"")))
     if(!care_unit_id||!work_id)return
-    if(action==="toggle"&&!bookmarkablePane(runtime.data,care_unit_id))return
+    const pane=bookmarkablePane(runtime.data,care_unit_id),source=layer==="SOURCE"||pane?.type==="SOURCE"||row?.layer==="SOURCE"
+    if(action==="toggle"&&(scope||(passage_id?(!source||bookmarkablePassages(runtime.data).get(passage_id)?.raw_unit_id!==care_unit_id):!pane)))return
     if(action==="open"&&(!row||row.available===false))return
     if(!["toggle","open"].includes(action))return
     if(action==="open")runtime.closeBookmarkMenu()
-    runtime.api?.setTriggerValue("bookmark_action",{action,care_unit_id,work_id,...(action==="toggle"?{active:!row}:{}),token:`${Date.now()}-${Math.random().toString(36).slice(2)}`})
+    runtime.api?.setTriggerValue("bookmark_action",{action,care_unit_id,work_id,...(source?{layer:"SOURCE",raw_unit_id:care_unit_id,passage_id,...(scope?{source_pane:scope}:{})}:{}),...(action==="toggle"?{active:!row}:{}),token:`${Date.now()}-${Math.random().toString(36).slice(2)}`})
   }
   const click=runtime.onClick;runtime.onClick=event=>{
     const anchor=event.target?.closest?.("[data-bookmark-menu]")
     if(anchor){event.preventDefault();runtime.openBookmarkMenu(anchor);return}
     const toggle=event.target?.closest?.("[data-bookmark-toggle]")
-    if(toggle){event.preventDefault();event.stopPropagation?.();runtime.emitBookmarkAction("toggle",toggle.dataset.bookmarkToggle);return}
+    if(toggle){event.preventDefault();event.stopPropagation?.();if(!toggle.disabled&&!toggle.closest("[data-connection-book],[data-connection-field]"))runtime.emitBookmarkAction("toggle",toggle.dataset.bookmarkToggle,toggle.dataset.bookmarkPassage,toggle.dataset.bookmarkLayer,toggle.dataset.sourcePane);return}
     const open=event.target?.closest?.("[data-bookmark-open]")
-    if(open){event.preventDefault();if(!open.disabled)runtime.emitBookmarkAction("open",open.dataset.bookmarkOpen);return}
+    if(open){event.preventDefault();if(!open.disabled)runtime.emitBookmarkAction("open",open.dataset.bookmarkOpen,open.dataset.bookmarkPassage,open.dataset.bookmarkLayer,open.dataset.sourcePane);return}
     if(event.target?.closest?.("[data-bookmark-close]")){event.preventDefault();runtime.closeBookmarkMenu({restoreFocus:true});return}
     return click(event)
   }
@@ -914,18 +1602,28 @@ function sheetVersionTrigger(unit,{pane=false}={}){
   if(!unit?.sheet_versions||!arr(unit.sheet_versions.options).length)return ""
   const versions=unit.sheet_versions,current=arr(versions.options).find(option=>String(option.id)===String(versions.selected_id))
   const languages=new Set(arr(versions.options).filter(option=>option.available!==false).map(option=>String(option.language_code||"").toLowerCase()).filter(Boolean))
-  if(pane&&languages.size<2)return ""
+  const hasQuotationReading=arr(versions.options).some(option=>option.available!==false&&option.translate_quotations===true)
+  if(pane&&languages.size<2&&!hasQuotationReading)return ""
   const label='Language & translation · '+(unit.identity?.title||unit.title||unit.id),code=String(current?.language_code||"").toUpperCase()
   const content=pane?`${esc(code)}<span aria-hidden="true">⌄</span>`:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h12M9 3v2M5 5c1 6 5 9 9 11M13 5c-1 6-5 9-10 12M14 21l4-10 4 10M15.5 17h5"/></svg>'
   return `<button type="button" class="${pane?'pane-language':'desk-tab desk-sheet-version'}" data-sheet-version-menu="${esc(unit.id)}" aria-haspopup="dialog" aria-expanded="false" aria-label="${esc(label)}" title="${esc(label)}">${content}</button>`
 }
-function sheetVersionControl(unit,stack,{canTranslateBook=false}={}){
-  const versions=unit.sheet_versions
-  if(!versions||!arr(versions.options).length)return ""
-  const selected=String(versions.selected_id||""),languages=arr(versions.language_options),disabled=versions.translating||versions.can_translate===false||!languages.length
-  const sourceControls=unit.type==="SOURCE"?`<div class="sheet-version-fields"><button type="button" data-edit-source="${esc(unit.id)}">Edit source &amp; passage size…</button><small>Preview one chapter or the whole book before saving a new source layer.</small></div>`:""
-  const bookControls=canTranslateBook?`<div class="sheet-version-fields"><strong>Whole book</strong><button type="button" data-translate-book-scope="care">Translate all CARE panes…</button><button type="button" data-translate-book-scope="source">Translate all source text…</button><button type="button" data-translate-book-scope="both">Translate CARE panes and source text…</button></div>`:""
-  return `<div class="sheet-versions" data-sheet-versions="${esc(unit.id)}" data-version-work="${esc(stack?.work?.id||"")}"><div class="sheet-version-heading"><div><strong>Language &amp; translation</strong><small>${esc(unit.type+' · '+(unit.identity?.title||unit.title||unit.id))}</small></div><button type="button" data-sheet-version-close aria-label="Close translations">×</button></div><div class="sheet-version-fields"><label>Read in<select data-sheet-version aria-label="Saved language for ${esc(unit.identity?.title||unit.title||unit.id)}">${arr(versions.options).map(option=>`<option value="${esc(option.id)}"${String(option.id)===selected?" selected":""}${option.available===false?" disabled":""}>${esc(option.label||option.id)}</option>`).join("")}</select></label><div class="sheet-translation-row"><label>Translate into<select data-translation-language aria-label="Translation language for ${esc(unit.identity?.title||unit.title||unit.id)}"${disabled?" disabled":""}>${languages.map(option=>`<option value="${esc(option.code)}"${String(option.code)===String(versions.default_language_code)?" selected":""}>${esc(option.label||option.code)}</option>`).join("")}</select></label><button type="button" data-translate-sheet${disabled?" disabled":""}>${versions.translating?"Translating…":"Translate pane"}</button></div><small>${esc(versions.message||versions.status||"Creates a saved machine translation of this CARE sheet. The original and every reference remain available. Machine translation needs review.")}</small></div>${sourceControls}${bookControls}</div>`
+const translationLanguages=(versions,translateQuotations=false)=>arr(versions?.[translateQuotations?"quotation_language_options":"language_options"])
+const translationOptionsMarkup=(languages,selected)=>languages.map(option=>`<option value="${esc(option.code)}"${String(option.code)===String(selected)?" selected":""}>${esc(option.label||option.code)}</option>`).join("")
+function setQuotationTranslationPolicy(menu,versions,translateQuotations,{language=""}={}){
+  const input=menu?.querySelector("[data-translation-language]"),button=menu?.querySelector("[data-translate-sheet]"),checkbox=menu?.querySelector("[data-translate-quotations]")
+  if(!input)return
+  const languages=translationLanguages(versions,translateQuotations),current=String(input.value||""),saved=arr(versions.options).find(option=>String(option.id)===String(versions.selected_id)),preferred=(translateQuotations?versions.default_quotation_language_code:"")||versions.default_language_code||saved?.language_code||""
+  const selected=[language,preferred,current,languages[0]?.code].find(code=>languages.some(option=>String(option.code)===String(code)))||"",disabled=Boolean(versions.translating||versions.can_translate===false||!languages.length)
+  if(checkbox)checkbox.checked=translateQuotations
+  input.innerHTML=translationOptionsMarkup(languages,selected);input.value=selected;input.disabled=disabled
+  if(button)button.disabled=disabled
+}
+function sheetVersionControl(unit,stack){
+  const versions=unit.sheet_versions,options=arr(versions?.options)
+  if(!options.length)return ""
+  const selected=String(versions.selected_id||""),title=unit.identity?.title||unit.title||unit.id
+  return `<div class="sheet-versions" data-sheet-versions="${esc(unit.id)}" data-version-work="${esc(stack?.work?.id||"")}"><div class="sheet-version-heading"><div><strong>Language &amp; translation</strong><small>${esc(unit.type+' · '+title)}</small></div><button type="button" data-sheet-version-close aria-label="Close translations">×</button></div><div class="sheet-version-fields"><label>Read in<select data-sheet-version aria-label="Saved language for ${esc(title)}">${options.map(option=>`<option value="${esc(option.id)}"${String(option.id)===selected?" selected":""}${option.available===false?" disabled":""}>${esc(option.label||option.id)}</option>`).join("")}</select></label><small>${esc(versions.message||"Read a published edition of this pane. Its references stay available.")}</small></div></div>`
 }
 function setupSheetVersionMenu(runtime){
   const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
@@ -953,12 +1651,13 @@ function setupSheetVersionMenu(runtime){
     if(saved&&unit&&saved.id===String(unit.id)&&saved.workId===String(runtime.data.stack.work.id)){
       const anchor=slot.querySelector("[data-sheet-version-menu]");runtime.openSheetVersionMenu(anchor,{restore:true})
       const popup=runtime.sheetVersionPopover?.element,input=popup?.querySelector("[data-translation-language]")
+      if(saved.translateQuotations&&popup?.querySelector("[data-translate-quotations]"))setQuotationTranslationPolicy(popup,unit.sheet_versions,true,{language:saved.language})
       if(input&&[...input.options].some(option=>option.value===saved.language))input.value=saved.language
       if(saved.focus)popup?.querySelector(saved.focus)?.focus({preventScroll:true})
     }
   }
   const paintFocus=runtime.paintFocus;runtime.paintFocus=()=>{paintFocus();runtime.paintSheetVersionControl()}
-  runtime.captureVersionMenus=()=>{const popup=runtime.sheetVersionPopover,saved=runtime.savedSheetVersionMenu;runtime.savedSheetVersionMenu=null;if(!popup)return saved?[saved]:[];const menu=popup.element,focused=menu.querySelector(":focus");return [{id:popup.id,workId:popup.workId,language:menu.querySelector("[data-translation-language]")?.value,focus:["[data-sheet-version]","[data-translation-language]","[data-translate-sheet]"].find(selector=>focused?.matches(selector))||null}]}
+  runtime.captureVersionMenus=()=>{const popup=runtime.sheetVersionPopover,saved=runtime.savedSheetVersionMenu;runtime.savedSheetVersionMenu=null;if(!popup)return saved?[saved]:[];const menu=popup.element,focused=menu.querySelector(":focus");return [{id:popup.id,workId:popup.workId,language:menu.querySelector("[data-translation-language]")?.value,translateQuotations:menu.querySelector("[data-translate-quotations]")?.checked===true,focus:["[data-sheet-version]","[data-translation-language]","[data-translate-quotations]","[data-translate-sheet]"].find(selector=>focused?.matches(selector))||null}]}
   runtime.restoreVersionMenus=states=>{runtime.pendingSheetVersionMenu=states[0]||null}
   runtime.onSheetPaneFocus=event=>{const pane=event.target?.closest?.("[data-pane]");if(pane&&pane.dataset.pane!==runtime.focused){runtime.focused=pane.dataset.pane;runtime.paintFocus()}}
   const onClick=runtime.onClick;runtime.onClick=event=>{
@@ -996,12 +1695,51 @@ function setupVersionControls(runtime){
       runtime.chooseBuildVersion(input.value)
       return
     }
+    if(input?.matches?.("[data-translate-quotations]")){
+      const sheet=sheetFor(input)
+      if(sheet&&sheet.versions.can_translate!==false&&Array.isArray(sheet.versions.quotation_language_options))setQuotationTranslationPolicy(sheet.menu,sheet.versions,input.checked===true)
+      return
+    }
     if(!input?.matches?.("[data-sheet-version]"))return
     const sheet=sheetFor(input),option=arr(sheet?.versions.options).find(row=>String(row.id)===String(input.value))
     if(sheet&&option&&option.available!==false&&String(input.value)!==String(sheet.versions.selected_id))emit({kind:sheet.unit.type==="SOURCE"?"source":"sheet",work_id:currentWork(),unit_id:String(sheet.unit.id),variant_id:String(input.value)})
   }
   const onClick=runtime.onClick
   runtime.onClick=event=>{
+    const send=event.target?.closest?.('[data-send-reading-book]')
+    if(send&&runtime.data?.send_library_book_available&&currentWork()){
+      event.preventDefault();runtime.closeReaderMenu?.()
+      runtime.api?.setTriggerValue('book_action',{action:'send_book',work_id:currentWork(),nonce:`${Date.now()}-${Math.random()}`})
+      return
+    }
+    const writeBeside=event.target?.closest?.('[data-write-beside-section]')
+    if(writeBeside&&runtime.data?.write_beside_available){
+      event.preventDefault();runtime.closeReaderMenu?.()
+      const focused=runtime.focused,stack=runtime.data.stack
+      const source=focused==='source'&&!isRouteReference(runtime.data.reference)&&Boolean(stack?.active_chapter)
+      const paneId=source||arr(stack?.care_path).some(unit=>unit.id===focused)?focused:''
+      const request={action:'write_beside_section',work_id:currentWork(),pane_id:paneId,nonce:`${Date.now()}-${Math.random()}`}
+      const resume=()=>runtime.api?.setTriggerValue('book_action',request)
+      const view=runtime.root.ownerDocument.defaultView
+      if(typeof view?.CustomEvent==='function'&&
+          !view.dispatchEvent(new view.CustomEvent('care-workspace-before-navigation',{cancelable:true,detail:{resume}})))return
+      resume()
+      return
+    }
+    const allLanguage=event.target?.closest?.('[data-reading-language]')
+    if(allLanguage&&runtime.data?.public_reading_languages){
+      event.preventDefault();runtime.closeReaderMenu?.()
+      runtime.api?.setTriggerValue('public_reading_language',{work_id:currentWork(),language_code:String(allLanguage.dataset.readingLanguage)})
+      return
+    }
+    const download=event.target?.closest?.('[data-reading-download]')
+    if(download&&runtime.data?.reading_downloads_available){
+      if(!['sheets','source','complete'].includes(download.dataset.readingDownload))return
+      event.preventDefault();runtime.closeReaderMenu?.()
+      const target=runtime.data.reading_download_field_id?{field_id:runtime.data.reading_download_field_id}:{work_id:currentWork()}
+      runtime.api?.setTriggerValue('book_action',{action:'download_reading',scope:String(download.dataset.readingDownload),...target,nonce:`${Date.now()}-${Math.random()}`})
+      return
+    }
     const sourceButton=event.target?.closest?.("[data-edit-source]")
     if(sourceButton){
       event.preventDefault()
@@ -1023,10 +1761,11 @@ function setupVersionControls(runtime){
     const button=event.target?.closest?.("[data-translate-sheet]")
     if(!button)return onClick(event)
     event.preventDefault()
-    const sheet=sheetFor(button),language=sheet?.menu.querySelector("[data-translation-language]")?.value
-    if(!sheet||button.disabled||sheet.versions.can_translate===false||!arr(sheet.versions.language_options).some(option=>String(option.code)===String(language)))return
+    const sheet=sheetFor(button),language=sheet?.menu.querySelector("[data-translation-language]")?.value,checkbox=sheet?.menu.querySelector("[data-translate-quotations]"),translateQuotations=checkbox?.checked===true
+    if(!sheet||button.disabled||sheet.versions.can_translate===false||!translationLanguages(sheet.versions,translateQuotations).some(option=>String(option.code)===String(language)))return
     button.disabled=true;button.textContent="Translating…"
-    emit({kind:sheet.unit.type==="SOURCE"?"translate_source":"translate",work_id:currentWork(),unit_id:String(sheet.unit.id),language_code:String(language)})
+    if(checkbox)checkbox.disabled=true
+    emit({kind:sheet.unit.type==="SOURCE"?"translate_source":"translate",work_id:currentWork(),unit_id:String(sheet.unit.id),language_code:String(language),...(translateQuotations?{translate_quotations:true}:{})})
   }
 
 }
@@ -1074,20 +1813,47 @@ function paintSliderHeading(input,option,index){
     if(node.textContent!==next)node.textContent=next
   }
 }
-function keepSliderVisible(input,behavior="auto"){
+function keepSliderVisible(input,neighbors=false){
   const track=input.closest?.("[data-slider-track]")
-  if(!track||track.scrollWidth<=track.clientWidth+2)return
-  const range=input.getBoundingClientRect(),bounds=track.getBoundingClientRect(),scale=readerLayoutScale(track,bounds),ratio=sliderPosition(input.value,Number(input.max)+1)/Math.max(1,Number(input.max))
-  // Reveal only the selected thumb and label. Endpoint labels face inward;
-  // intermediate labels need half their width when brought to the viewport edge.
+  if(!track?.clientWidth||track.scrollWidth<=track.clientWidth+2)return
+  const range=input.getBoundingClientRect(),bounds=track.getBoundingClientRect(),scale=readerLayoutScale(track,bounds),last=Number(input.max),index=sliderPosition(input.value,last+1),ratio=index/Math.max(1,last)
+  // Endpoint labels face inward; intermediate labels need half their width.
   const radius=input.dataset?.sheetSlider==="ORIGINAL"?6.5:8
   const label=track.querySelector?.('.slider-stop.active .slider-stop-label'),labelMargin=ratio>0&&ratio<1?(label?.getBoundingClientRect?.().width||0)/scale/2+2:0
-  const point=(range.left-bounds.left)/scale+track.scrollLeft+radius+ratio*Math.max(0,range.width/scale-2*radius),margin=input.dataset?.sheetSlider==="ORIGINAL"?38:Math.max(10,labelMargin),start=track.scrollLeft
+  const span=Math.max(0,range.width/scale-2*radius),point=(range.left-bounds.left)/scale+track.scrollLeft+radius+ratio*span,margin=input.dataset?.sheetSlider==="ORIGINAL"?38:Math.max(10,labelMargin),start=track.scrollLeft,width=track.clientWidth
+  let left=point-margin,right=point+margin
+  if(neighbors&&last>0){
+    // Let the next stop remain visible at the edge of a long, panned rail.
+    // A narrow pane may fit only one neighbor; keep the forward one in view.
+    const gap=span/last+4,previous=index>0?Math.min(left,point-gap):left,next=index<last?Math.max(right,point+gap):right
+    if(next-previous<=width){left=previous;right=next}
+    else if(index<last&&next-left<=width)right=next
+    else if(index>0&&right-previous<=width)left=previous
+  }
   let target=start
-  if(point<start+margin)target=point-margin
-  else if(point>start+track.clientWidth-margin)target=point-track.clientWidth+margin
-  target=Math.max(0,Math.min(track.scrollWidth-track.clientWidth,target))
-  if(Math.abs(target-start)>1)track.scrollTo({left:target,behavior})
+  if(left<start)target=left
+  else if(right>start+width)target=right-width
+  target=Math.max(0,Math.min(track.scrollWidth-width,target))
+  if(Math.abs(target-start)>1)track.scrollTo({left:target,behavior:"auto"})
+}
+const sliderInputSelector="[data-sheet-slider],[data-connection-layer-slider]"
+function sliderTrack(length,index,label,input,stops){
+  const step=direction=>{
+    const previous=direction<0,name=`${previous?"Previous":"Next"} ${label}`
+    return `<button type="button" class="slider-step" data-slider-step="${direction}" aria-label="${esc(name)}" title="${esc(name)}"${(previous?index===0:index===length-1)?" disabled":""}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="${previous?"m7.5 2.5-3.5 3.5 3.5 3.5":"m4.5 2.5 3.5 3.5-3.5 3.5"}"/></svg></button>`
+  }
+  const movable=length>1
+  return `<div class="slider-track-row" data-slider-row${movable?" data-slider-steppable":""}>${movable?step(-1):""}<div class="slider-track" data-slider-track><div class="slider-rail" style="--slider-count:${length}">${input}${stops}</div></div>${movable?step(1):""}</div>`
+}
+function paintSliderSteps(input,index,length){
+  const row=input.closest?.("[data-slider-row]")
+  for(const direction of [-1,1]){
+    const button=row?.querySelector?.(`[data-slider-step="${direction}"]`)
+    if(!button)continue
+    const disabled=input.disabled||(direction<0?index<=0:index>=length-1)
+    if(disabled&&!input.disabled&&button.matches(":focus"))input.focus({preventScroll:true})
+    if(button.disabled!==disabled)button.disabled=disabled
+  }
 }
 function paneSlider(stack,layer,activeId){
   const key=layer==="MC"?`MC:${mcLevel(activeId)||"legacy"}`:layer,options=sliderOptions(stack,key),index=options.findIndex(row=>String(row.id)===String(activeId)),active=options[index]
@@ -1095,7 +1861,9 @@ function paneSlider(stack,layer,activeId){
   if(arr(stack.retained_slider_layers).includes(key))return `<div data-retained-slider="${esc(key)}"></div>`
   const title=sliderTitle(active),label=active.slider_label||(layer==="ORIGINAL"?`Original ${originalLocationNoun(stack.original_reader.kind)}`:layer==="SOURCE"?"Source chapter":`${readerLayerLabel(layer,active)} sheet`),denominator=Math.max(1,options.length-1)
   const stops=options.map((option,position)=>`<button type="button" class="slider-stop${position===index?" active":""}" data-slider-stop="${position}" data-slider-layer="${esc(key)}" style="--stop-x:${position/denominator*100}%" title="${esc(sliderTitle(option))}" aria-label="Choose ${esc(sliderTitle(option))}" aria-pressed="${position===index}" tabindex="${position===index?0:-1}"><span class="slider-dot" aria-hidden="true"></span><span class="slider-stop-label">${esc(sliderStopLabel(option,layer,position))}</span></button>`).join("")
-  return `<div class="pane-slider" data-slider-control><div class="slider-heading"><span>${esc(label)}</span><button type="button" class="slider-jump-trigger" data-slider-jump aria-label="Choose ${esc(label.toLowerCase())}" aria-haspopup="dialog" aria-expanded="false"><strong data-slider-title title="${esc(title)}">${esc(title)}</strong><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button><output data-slider-count>${index+1} / ${options.length}</output></div><div class="slider-track" data-slider-track><div class="slider-rail" style="--slider-count:${options.length}"><input type="range" class="sheet-slider" data-sheet-slider="${esc(key)}" min="0" max="${Math.max(0,options.length-1)}" step="1" value="${index}" aria-label="${esc(label)}" aria-valuetext="${esc(title)}" ${options.length<2?"disabled":""} /><div class="slider-stops" role="group" aria-label="${esc(label)} stops">${stops}</div></div></div></div>`
+  const input=`<input type="range" class="sheet-slider" data-sheet-slider="${esc(key)}" min="0" max="${options.length-1}" step="1" value="${index}" aria-label="${esc(label)}" aria-valuetext="${esc(title)}"${options.length<2?" disabled":""} />`
+  const item=layer==="ORIGINAL"?originalLocationNoun(stack.original_reader.kind):layer==="SOURCE"||layer==="CH"?"chapter":label
+  return `<div class="pane-slider" data-slider-control><div class="slider-heading"><span>${esc(label)}</span><button type="button" class="slider-jump-trigger" data-slider-jump aria-label="Choose ${esc(label.toLowerCase())}" aria-haspopup="dialog" aria-expanded="false"><strong data-slider-title title="${esc(title)}">${esc(title)}</strong><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button><output data-slider-count>${index+1} / ${options.length}</output></div>${sliderTrack(options.length,index,item,input,`<div class="slider-stops" role="group" aria-label="${esc(label)} stops">${stops}</div>`)}</div>`
 }
 const sliderJumpText=value=>String(value??"").normalize("NFD").replace(/\p{M}/gu,"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").replace(/\b0+(\d+)/g,"$1").trim()
 function sliderJumpMatches(options,layer,query=""){
@@ -1296,10 +2064,61 @@ function routeContinuationAttributes(item){
   const direct=arr(item.source_trace),sources=direct.length?direct:[...arr(item.matrix_trace),...arr(item.passage_trace_ids)]
   return item.source_pane&&item.resolved!==false&&!item.unresolved&&sources.some(value=>String(value&&typeof value==='object'?value.id||value.ref||'':value??'').trim())?' data-route-continuation="true"':''
 }
+const ROUTE_PRESENTATION_KEY="care-route-presentation/1"
+function routePresentationControls(reference){
+  const counts=reference?.route_counts?.by_layer||Object.fromEntries(Object.entries(reference?.route_layers||{}).map(([layer,items])=>[layer,arr(items).length]))
+  const passages=Number(counts.SOURCE||0),axioms=Object.entries(counts).filter(([layer])=>layer!=="SOURCE").reduce((sum,[,count])=>sum+Number(count||0),0)
+  const label=`${axioms} ${axioms===1?"axiom":"axioms"} · ${passages} ${passages===1?"passage":"passages"}`
+  return `<span class="desk-menu-heading">Route display</span><div class="route-presentation" role="group" aria-label="Route presentation"><button type="button" class="desk-tab" data-route-presentation="all" aria-pressed="true" title="Expand every available route group">All routes</button><button type="button" class="desk-tab" data-route-presentation="compact" aria-pressed="false" title="Fold reading groups; expand any group to see the same routes">Compact view</button></div><span class="desk-menu-empty route-presentation-count" title="Both views contain the same available axioms and passages">${reference?.route_truncated?"Limited route · ":""}${esc(label)}</span>`
+}
+function setupRoutePresentation(runtime){
+  const root=runtime.root,view=root.ownerDocument.defaultView,studioEmbed=root.dataset?.studioEmbed==="true"
+  let mode="all"
+  try{if(!studioEmbed&&view?.sessionStorage?.getItem(ROUTE_PRESENTATION_KEY)==="compact")mode="compact"}catch(_){}
+  runtime.routePresentation=mode
+  const state={scope:"",groups:new Map(),positions:new Map()}
+  const groups=()=>[...root.querySelectorAll("details[data-route-reading]")].filter(group=>!group.closest("[data-connection-book],[data-connection-field]"))
+  const key=group=>`${group.closest("[data-pane]")?.dataset.pane||""}|${group.dataset.routeReading}`
+  const positions=()=>new Map([...root.querySelectorAll(".window-body")].filter(body=>!body.closest("[data-connection-book],[data-connection-field]")).map(body=>[body.closest("[data-pane]")?.dataset.pane,body.scrollTop]))
+  const selected=group=>Boolean(group.querySelector('[aria-pressed="true"],.selected'))
+  runtime.applyRoutePresentation=({reset=false}={})=>{
+    const scope=JSON.stringify([runtime.data?.stack?.work?.id,runtime.data?.reference?.id,routeMode(runtime.data?.reference)])
+    if(scope!==state.scope){state.scope=scope;state.groups.clear();state.positions.clear()}
+    if(!isRouteReference(runtime.data?.reference)||runtime.data?.connection?.reference)return
+    root.querySelectorAll("[data-route-presentation]").forEach(button=>{const active=button.dataset.routePresentation===runtime.routePresentation;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active))})
+    for(const group of groups()){
+      const id=key(group),open=reset?runtime.routePresentation==="all"||selected(group):state.groups.get(id)??(runtime.routePresentation==="all"||selected(group))
+      state.groups.set(id,open);if(group.open!==open)group.open=open
+    }
+  }
+  runtime.onRouteReadingToggle=event=>{
+    const group=event.target
+    if(!group?.matches?.("details[data-route-reading]")||group.closest("[data-connection-book],[data-connection-field]"))return
+    state.groups.set(key(group),group.open)
+  }
+  const click=runtime.onClick
+  runtime.onClick=event=>{
+    const button=event.target?.closest?.("[data-route-presentation]")
+    if(!button)return click?.(event)
+    const next=button.dataset.routePresentation
+    if(!["all","compact"].includes(next))return
+    event.preventDefault()
+    state.positions.set(runtime.routePresentation,positions())
+    runtime.routePresentation=next
+    try{if(!studioEmbed)view?.sessionStorage?.setItem(ROUTE_PRESENTATION_KEY,next)}catch(_){}
+    runtime.applyRoutePresentation({reset:true})
+    const saved=state.positions.get(next)
+    for(const body of root.querySelectorAll(".window-body")){if(body.closest("[data-connection-book],[data-connection-field]"))continue;const top=saved?.get(body.closest("[data-pane]")?.dataset.pane);if(top!==undefined)body.scrollTop=top}
+    runtime.queueThreads?.();runtime.queueTrackZoom?.()
+  }
+}
+function routeReadingGroup(key,title,count,content,style=""){
+  return `<details class="route-sheet" data-route-reading="${esc(key)}" open${style}><summary><span>${esc(title)}</span><b aria-label="${count} ${count===1?"item":"items"}">${count}</b></summary>${content}</details>`
+}
 function routeGroups(items,selectedId){
   const groups=new Map()
   arr(items).forEach(item=>{const key=String(item.source_pane||item.unit_id||item.sheet_title||item.layer||"TRACE");if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)})
-  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><article role="button" tabindex="0" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id" ${axiomCopyAttributes(item.id)}>${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></article>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}"${routeContinuationAttributes(item)} hidden>Routes →</button></div>`).join("");return `<section class="route-sheet"${mc?` style="--pane-accent:${layerColor("MC",first)}"`:""}><h3><span>${esc(mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet")}</span><b>${rows.length}</b></h3><div class="route-list">${cards}</div></section>`}).join("")
+  return [...groups.entries()].map(([key,rows])=>{const first=rows[0]||{},title=first.sheet_title||first.chapter_title||key||first.layer,mc=String(first.layer||"").toUpperCase()==="MC"&&mcLevel(first);const cards=rows.map(item=>`<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><article role="button" tabindex="0" class="route-card ${String(item.id)===selectedId?"selected":""}"${String(item.layer||"").toUpperCase()==="MC"&&mcLevel(item)?` style="--pane-accent:${layerColor(item.layer,item)}"`:""} data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" aria-pressed="false"><span class="route-card-id" ${axiomCopyAttributes(item.id)}>${esc(readerLayerLabel(item.layer||item.kind,item))} · ${esc(item.local_id||item.id)}</span><span class="route-card-text">${item.reading_html ?? esc(item.text||item.title)}</span><span class="route-card-via">${arr(item.feeds_ids).length?`FEEDS → ${arr(item.feeds_ids).map(esc).join(" · ")}`:item.feeds_id?`FEEDS → ${esc(item.feeds_id)}`:"REGISTERED ROUTE"}</span></article>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}"${routeContinuationAttributes(item)} hidden>Routes →</button></div>`).join("");return routeReadingGroup(key,mc?`${readerLayerLabel("MC",first)} · ${title}`:title||"Registered sheet",rows.length,`<div class="route-list">${cards}</div>`,mc?` style="--pane-accent:${layerColor("MC",first)}"`:"")}).join("")
 }
 function sameLayerRouteItems(reference,direction){
   if(reference?.kind!=="axiom"||routeMode(reference)===(direction==="incoming"?"outgoing":"incoming"))return []
@@ -1316,12 +2135,15 @@ function sameLayerRoutePane(reference,direction,items){
 }
 function sourceRoutePane(data,selectedId,reference){
   const sourceFocus=reference.kind==="passage",items=sourceFocus?[reference]:routeItems(reference,"SOURCE")
-  const passages=items.map(item=>`<div class="passage-row"><article class="route-source-card ${String(item.id)===selectedId?"selected":""}" data-ref-id="${esc(item.id)}" data-select-passage="${esc(item.id)}" data-source-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" role="button" tabindex="0" aria-pressed="false"><span class="passage-address"><span>${esc(item.id)}</span><b>${esc(item.sheet_title||item.title||"Exact source")}</b></span>${typeof item.reading_block_html === "string" ? `<div class="passage-text">${item.reading_block_html}</div>` : `<span class="passage-text">${esc(item.text)}</span>`}</article>${String(item.id)===selectedId?'':`<button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`).join("")
+  const passageCard=item=>`<div class="passage-row"><article${item.preserved?' data-studio-source-variant="preserved"':""} class="route-source-card ${String(item.id)===selectedId?"selected":""}" data-ref-id="${esc(item.id)}" data-select-passage="${esc(item.id)}" data-source-unit="${esc(item.unit_id||String(item.id).split(':')[0])}" role="button" tabindex="0" aria-pressed="false"><span class="passage-address"><span>${esc(item.id)}</span><b>${esc(item.sheet_title||item.title||"Exact source")}</b></span>${typeof item.reading_block_html === "string" ? `<div class="passage-text">${item.reading_block_html}</div>` : `<span class="passage-text">${esc(item.text)}</span>`}</article></div>`
+  const groups=new Map()
+  for(const item of items){const key=String(item.unit_id||String(item.id).split(':')[0]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)}
+  const passages=sourceFocus?items.map(passageCard).join(""):[...groups].map(([key,rows])=>routeReadingGroup(key,rows[0].sheet_title||rows[0].title||key,rows.length,`<div class="route-source-passages">${rows.map(passageCard).join("")}</div>`)).join("")
   const emptySource=arr(reference.linked_axioms).length?"Recorded links for this passage could not be resolved to available axioms.":"No recorded axiom uses this passage."
   const content=sourceFocus?`<div class="route-axiom-row">${passages}${routeArrival(reference)}</div>${exactRouteEdges(reference).some(edge=>String(edge.source_id)===selectedId)?"":`<div class="route-empty">${emptySource}</div>`}`:passages||'<div class="route-empty">No registered passage has been resolved on this route yet. The axiom chain remains visible in the CARE panes.</div>'
   return `<section class="desk-window source-pane route-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE / EXACT ROUTE</strong><span>${items.length} PASSAGES</span></div><div class="window-body"><div class="route-source-copy">${routeFocusHead(reference,"The source pane",sourceFocus?"outgoing":"incoming")}${content}</div></div></section>`
 }
-function sourcePane(data,selectedId,reference){
+function sourcePane(data,selectedId,reference,bookmarks=null){
   if(isRouteReference(reference))return sourceRoutePane(data,selectedId,reference)
   const chapter=data?.active_chapter
   if(!chapter)return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE TEXT</strong><span>NOT REGISTERED</span></div><div class="window-body"><div class="inspector-empty"><div><b>NO READABLE CHAPTER</b><p>This book can still expose its available CARE sheets. Add or repair the source in CARE Library settings when needed.</p></div></div></div></section>`
@@ -1330,9 +2152,9 @@ function sourcePane(data,selectedId,reference){
   const sourceDetailsInUse=new Set(arr(data.care_path).flatMap(unit=>[...arr(unit.items),...arr(unit.sections).flatMap(section=>arr(section.items))]).flatMap(item=>[...arr(item.source_trace),...arr(item.deep_source_trace),...arr(item.matrix_trace),...arr(item.passage_trace_ids)]).map(String))
   const passages=arr(chapter.passages).map(passage=>{
     if(passage.route_available===false)return `<div class="passage-row"><article class="passage" data-beautiful-opening-foldable="${beautifulHeadingDetail(passage)}"><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`
-    return `<div class="passage-row"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||'')}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(passage.beautiful_reading_block_html||'')}" data-beautiful-original-html="${passage.beautiful_reading_block_html?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button></div>`
+    return `<div class="passage-row${bookmarks?" reader-has-mark":""}"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||'')}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(passage.beautiful_reading_block_html||'')}" data-beautiful-original-html="${passage.beautiful_reading_block_html?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button>${bookmarks?sourceBookmarkButton(chapter.raw_unit_id,passage.id,bookmarks,passage.address||passage.id):""}</div>`
   }).join("")
-  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong><span>${arr(chapter.passages).length} PASSAGES</span></div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${arr(chapter.source_versions?.options).length?`<button type="button" class="pane-language" data-edit-source="${esc(chapter.raw_unit_id)}" title="Edit source and passage size">Edit passages</button>`:""}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
+  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" data-studio-source-variant="${esc(chapter.source_rendition_type||"canonical")}" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong><span>${arr(chapter.passages).length} PASSAGES</span>${bookmarks?sourceBookmarkButton(chapter.raw_unit_id,"",bookmarks,chapter.title):""}</div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
 }
 function traceLabel(item,layer){
   if(String(layer).toUpperCase()==="SOURCE")return "Saved source passage"
@@ -1442,7 +2264,9 @@ function groupConnectionLayers(panes,reference){
 function connectionLayerSlider(pane){
   const members=arr(pane.grouped_panes);if(members.length<2)return ""
   const choices=[{id:"",title:"All traced readings"},...members.map(member=>({id:member.id,title:resolutionUnitTitle(member)}))]
-  return `<div class="pane-slider" data-connection-layer-control><div class="slider-heading"><span>${esc(connectionLayerLabel(pane))} readings</span><strong data-connection-layer-title>All traced readings</strong><output data-connection-layer-count>${members.length} readings</output></div><div class="slider-track" data-slider-track><div class="slider-rail" style="--slider-count:${choices.length}"><input type="range" class="sheet-slider" data-connection-layer-slider min="0" max="${choices.length-1}" step="1" value="0" aria-label="${esc(pane.work_title||pane.title)} · ${esc(pane.layer)} route reading" aria-valuetext="All traced readings"><div class="slider-stops" role="group" aria-label="${esc(pane.layer)} route readings">${choices.map((choice,index)=>`<button type="button" class="slider-stop ${index===0?"active":""}" data-connection-layer-stop="${index}" data-connection-layer-reading="${esc(choice.id)}" data-connection-layer-label="${esc(choice.title)}" style="--stop-x:${index*100/(choices.length-1)}%" title="${esc(choice.title)}" aria-label="Show ${esc(choice.title)}"><span class="slider-dot"></span><span class="slider-stop-label">${index===0?"All":esc(choice.title)}</span></button>`).join("")}</div></div></div></div>`
+  const input=`<input type="range" class="sheet-slider" data-connection-layer-slider min="0" max="${choices.length-1}" step="1" value="0" aria-label="${esc(pane.work_title||pane.title)} · ${esc(pane.layer)} route reading" aria-valuetext="All traced readings">`
+  const stops=choices.map((choice,index)=>`<button type="button" class="slider-stop${index===0?" active":""}" data-connection-layer-stop="${index}" data-connection-layer-reading="${esc(choice.id)}" data-connection-layer-label="${esc(choice.title)}" style="--stop-x:${index*100/(choices.length-1)}%" title="${esc(choice.title)}" aria-label="Show ${esc(choice.title)}" aria-pressed="${index===0}" tabindex="${index===0?0:-1}"><span class="slider-dot" aria-hidden="true"></span><span class="slider-stop-label">${index===0?"All":esc(choice.title)}</span></button>`).join("")
+  return `<div class="pane-slider" data-connection-layer-control><div class="slider-heading"><span>${esc(connectionLayerLabel(pane))} readings</span><strong data-connection-layer-title>All traced readings</strong><output data-connection-layer-count>${members.length} readings</output></div>${sliderTrack(choices.length,0,"reading",input,`<div class="slider-stops" role="group" aria-label="${esc(pane.layer)} route readings">${stops}</div>`)}</div>`
 }
 function connectionFieldWindows(connection){
   const reference=connection?.reference,all=connectionAllPanes(connection),cards=reference?[reference,...Object.values(reference.route_layers||{}).flatMap(arr)]:[],byPane=new Map()
@@ -1531,7 +2355,7 @@ function workspace(data){
   const connected=connectionWindows(data)
   const tabs=(originalReaderPayload(data)?paneTab("original","ORIGINAL"):"")+(dialogueMedia(data)?paneTab("dialogue-media",dialogueMedia(data).kind==="audio"?"AUDIO":"VIDEO"):"")+(connectedRouting?"":[outgoingOnly?"":paneTab("source","SOURCE"),dialogueExchangePane(data)?paneTab("dialogue-exchange","EXCHANGE"):"",...panes.map(unit=>`${isFocus(unit)&&incomingPeers.length?paneTab(`route-${unit.type}-incoming`,`${unit.type} · IN`):""}${paneTab(unit.id,readerLayerLabel(unit.type,unit))}${isFocus(unit)&&outgoingPeers.length?paneTab(`route-${unit.type}-outgoing`,`${unit.type} · OUT`):""}`)].join(""))+connected.tabs+(dialogueThinkerPane(data)?paneTab("dialogue-thinkers","THINKERS"):"")+(dialogueWBPane(data)?paneTab("dialogue-wb","WB SOURCE"):"")
   const retained=id=>arr(data.retained_reading_panes).includes(String(id))?`<section data-retained-pane="${esc(id)}"></section>`:""
-  const windows=originalReaderPane(data)+dialoguePane(data)+(connectedRouting?"":[outgoingOnly?"":retained("source")||sourcePane(stack,selectedId,reference),dialogueExchangePane(data),...panes.map((unit,index)=>`${isFocus(unit)?sameLayerRoutePane(reference,"incoming",incomingPeers):""}${retained(unit.id)||carePane(unit,index,selectedId,reference,stack,isFocus(unit)?relocatedIds:new Set(),true,bookBookmarks(data))}${isFocus(unit)?sameLayerRoutePane(reference,"outgoing",outgoingPeers):""}`)].join(""))+connected.windows+dialogueThinkerPane(data)+dialogueWBPane(data)
+  const windows=originalReaderPane(data)+dialoguePane(data)+(connectedRouting?"":[outgoingOnly?"":retained("source")||sourcePane(stack,selectedId,reference,bookBookmarks(data)),dialogueExchangePane(data),...panes.map((unit,index)=>`${isFocus(unit)?sameLayerRoutePane(reference,"incoming",incomingPeers):""}${retained(unit.id)||carePane(unit,index,selectedId,reference,stack,isFocus(unit)?relocatedIds:new Set(),true,bookBookmarks(data))}${isFocus(unit)?sameLayerRoutePane(reference,"outgoing",outgoingPeers):""}`)].join(""))+connected.windows+dialogueThinkerPane(data)+dialogueWBPane(data)
   const activeRoute=connectedRouting?data.connection.reference:reference
   const routeLabel=routeMode(activeRoute)==="incoming"?`${esc(activeRoute?.layer)} → SOURCE`:routeMode(activeRoute)==="both"?`SOURCE → ${esc(activeRoute?.layer)} → WB`:`${esc(activeRoute?.layer)} → WB`
   const routeToolbar=connectedRouting||isRouteReference(reference)?`<div class="route-toolbar"><span>ROUTE · ${routeLabel}</span>${routeHistoryControls((connectedRouting?data.connection.route_history:data?.route_history)||{},{connected:connectedRouting})}</div>`:""
@@ -1540,12 +2364,22 @@ function workspace(data){
 const SHELF_STATE_KEY="care-studio-shelf/1"
 const SHELF_SORTS=[["title","Title · A–Z"],["title-desc","Title · Z–A"],["author","Author · A–Z"],["newest","Year · newest"],["oldest","Year · oldest"],["added","Recently added"],["visited","Recently visited"],["coverage","Most CARE layers"]]
 const SHELF_FIELDS=[["lateral","Laterals"],["corpus","Corpora"],["numo","NUMO"],["living","Living books"],["lateral_sea","Lateral sea"],["grimoire","Solomon’s grimoire"]]
-const SHELF_TABS=[["all","All"],["book","Books"],["lecture","Lectures"],["collection","Collections"],["lateral","Laterals"],["corpus","Corpora"]]
+const SHELF_TABS=[["all","All"],["book","Books"],["lateral","Laterals"],["corpus","Corpora"]]
 const shelfFieldLabel=field=>field==="dialogue"?"Dialogues":SHELF_FIELDS.find(([id])=>id===field)?.[1]||"Reading"
 const isShelfField=book=>SHELF_FIELDS.some(([id])=>id===book.field)
 const shelfScope=data=>["lateral","corpus","dialogue"].includes(data?.library_scope)?data.library_scope:""
+const shelfTheme=(data,state)=>shelfScope(data)||(!data?.active_study_set&&!state.collection&&["lateral","corpus","dialogue"].includes(state.kind)?state.kind:"")
 const shelfDefaults=(scope="")=>({kind:scope||"book",query:"",sort:"title",author:"",language:"",layer:"",era:"",collection:"",filtersOpen:false})
-const shelfStateFor=(data,state)=>shelfScope(data)?{...state,kind:shelfScope(data),collection:""}:state
+function shelfStateFor(data,state){
+  const scope=shelfScope(data)
+  if(scope)return {...state,kind:scope,collection:""}
+  if(state.kind==="study_sets")return {...state,author:"",language:"",layer:"",era:"",filtersOpen:false}
+  return state
+}
+const studySetsAvailable=data=>Array.isArray(data?.study_sets)
+const studySetRef=book=>({kind:book.item_type==="collection"?"collection":book.field||(["lecture","dialogue"].includes(book.content_kind)?book.content_kind:"book"),id:String(book.id)})
+const wbStudySetBook=book=>book&&studySetRef(book).kind==="book"&&arr(book.layers).includes("WB")
+const corpusStudySetBook=book=>book&&studySetRef(book).kind==="book"&&arr(book.layers).some(layer=>["CH","CL","MC","WB"].includes(layer))
 const shelfText=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase()
 const isCollection=book=>book.item_type==="collection"&&arr(book.members).length>0
 const shelfLeaves=books=>arr(books).flatMap(book=>isCollection(book)?shelfLeaves(book.members):[book])
@@ -1553,22 +2387,24 @@ const librarySelectionAvailable=data=>Boolean(data?.library_selection_enabled)&&
 const libraryBooks=data=>new Map(shelfLeaves(data?.books).filter(book=>book.id&&!isShelfField(book)&&book.item_type!=="collection"&&!book.archived).map(book=>[String(book.id),book]))
 const librarySelectedIds=data=>{const books=libraryBooks(data);return [...new Set(arr(data?.selected_work_ids).map(String))].filter(id=>books.has(id))}
 const librarySelecting=data=>typeof data?.library_selecting==="boolean"?data.library_selecting:librarySelectedIds(data).length>0
-const libraryMemberIds=book=>[...new Set(shelfLeaves([book]).filter(item=>item.id&&!isShelfField(item)&&item.item_type!=="collection"&&!item.archived).map(item=>String(item.id)))]
+const libraryMemberIds=book=>[...new Set(shelfLeaves([book]).filter(item=>item.id&&!isShelfField(item)&&!["collection","study_set"].includes(item.item_type)&&!item.archived).map(item=>String(item.id)))]
 function libraryCheckState(book,selected){
   const ids=libraryMemberIds(book),count=ids.filter(id=>selected.has(id)).length
   return count===0?"false":count===ids.length?"true":"mixed"
 }
 function librarySelectionTray(data){
   const books=libraryBooks(data),ids=librarySelectedIds(data),count=ids.length
+  const inSet=Boolean(data.active_study_set),runCount=inSet?ids.filter(id=>wbStudySetBook(books.get(id))).length:count
+  const corpusCount=inSet?ids.filter(id=>corpusStudySetBook(books.get(id))).length:count
   const label=count?`${count} ${count===1?"book":"books"} selected`:"Bring books together"
-  const hint=count===0?"Choose books from any shelf or collection.":count===1?"Publish this book, or choose more to bring books together.":count===2?"Two books, ready for a new connection.":"A lateral uses two books. A corpus brings them all together."
+  const hint=inSet?`${corpusCount} with CARE readings`:count===0?"Choose books from any shelf or collection.":count===1?"Build a corpus from this book’s readings.":count===2?"Two books, ready for a new connection.":"A lateral uses two books. A corpus brings them all together."
   const covers=ids.slice(0,3).map((id,index)=>{const book=books.get(id);return `<i style="--cloth:${esc(book.cloth||"#536453")};--tilt:${(index-1)*5}deg">${book.cover_url?`<img src="${esc(book.cover_url)}" alt="" onerror="this.remove()">`:""}</i>`}).join("")
-  return `${covers?`<span class="library-selection-covers" aria-hidden="true">${covers}</span>`:""}<div class="library-selection-copy" role="status" aria-live="polite"><strong>${label}</strong><span>${hint}</span></div><div class="library-selection-actions" aria-label="Selected book actions"><button type="button" data-library-selection-action="lateral" ${count===2?"":"disabled"} title="Choose exactly two books">Lateral</button><button type="button" data-library-selection-action="corpus" ${count>=2?"":"disabled"} title="Choose two or more books">Corpus</button><button type="button" data-library-selection-action="collection" ${count?"":"disabled"}>Make collection</button><button type="button" data-library-selection-action="publish_beta">Publish to beta</button>${count===1?'<button type="button" data-library-selection-action="update_beta_version">Update beta version</button>':""}${count?'<button type="button" data-library-selection-clear>Clear</button>':""}</div>`
+  return `${covers?`<span class="library-selection-covers" aria-hidden="true">${covers}</span>`:""}<div class="library-selection-copy" role="status" aria-live="polite"><strong>${label}</strong><span>${hint}</span></div><div class="library-selection-actions" aria-label="Selected book actions"><button type="button" data-library-selection-action="lateral" ${runCount===2?"":"disabled"} title="Choose exactly two books">Lateral</button><button type="button" data-library-selection-action="corpus" ${corpusCount>0?"":"disabled"} title="Build a corpus from selected books or readings">Corpus</button>${studySetsAvailable(data)?`<button type="button" data-library-selection-action="study_set_add" ${count?"":"disabled"}>Add to study set</button>`:""}<button type="button" data-library-selection-action="collection" ${count?"":"disabled"}>Make collection</button><button type="button" data-library-selection-action="publish_beta">Publish to beta</button>${count===1?'<button type="button" data-library-selection-action="update_beta_version">Update beta version</button>':""}${count?'<button type="button" data-library-selection-clear>Clear</button>':""}</div>`
 }
 function setupLibrarySelection(runtime){
   const root=runtime.root
   runtime.librarySelected=new Set();runtime.librarySelecting=false;runtime.librarySelectionPending=[]
-  runtime.librarySelectionData=()=>({...runtime.data,selected_work_ids:[...runtime.librarySelected],library_selecting:runtime.librarySelecting})
+  runtime.librarySelectionData=()=>({...runtime.data,selected_work_ids:[...runtime.librarySelected],library_selecting:runtime.librarySelecting,study_set_picker_state:runtime.studySetPicker})
   runtime.syncLibrarySelection=data=>{
     const ids=librarySelectedIds(data),signature=JSON.stringify(ids),revision=String(data?.selection_revision??"")
     if(runtime.librarySelectionRevision!==revision){
@@ -1587,7 +2423,14 @@ function setupLibrarySelection(runtime){
     if(!window||!librarySelectionAvailable(data))return
     window.setAttribute("data-selecting",String(runtime.librarySelecting))
     const toggle=root.querySelector("[data-library-selection-toggle]"),tools=root.querySelector("[data-library-selection-tools]"),tray=root.querySelector("[data-library-selection-tray]")
-    if(toggle){toggle.textContent=runtime.librarySelecting?"Done selecting":"Select books";toggle.setAttribute("aria-pressed",String(runtime.librarySelecting))}
+    if(toggle){
+      const label=runtime.librarySelecting?"Done selecting":"Select books"
+      const text=toggle.querySelector(".library-control-label")
+      if(text)text.textContent=label
+      toggle.title=label
+      toggle.setAttribute("aria-label",label)
+      toggle.setAttribute("aria-pressed",String(runtime.librarySelecting))
+    }
     if(tools)tools.hidden=!runtime.librarySelecting
     if(tray){tray.hidden=!runtime.librarySelecting&&!runtime.librarySelected.size;const markup=librarySelectionTray(data);if(tray.innerHTML!==markup)tray.innerHTML=markup}
     const entries=new Map([...arr(data.books),...shelfLeaves(data.books)].map(book=>[String(book.id),book]))
@@ -1606,7 +2449,7 @@ function setupLibrarySelection(runtime){
   }
   runtime.emitLibrarySelection=(action,extra={})=>{
     const work_ids=[...runtime.librarySelected]
-    if(action==="lateral"&&work_ids.length!==2||action==="corpus"&&work_ids.length<2||action==="collection"&&!work_ids.length)return false
+    if(action==="lateral"&&work_ids.length!==2||action==="corpus"&&!work_ids.length||action==="collection"&&!work_ids.length)return false
     runtime.api?.setTriggerValue("library_selection",{action,work_ids,...extra,nonce:`${Date.now()}-${Math.random()}`});return true
   }
   runtime.setLibrarySelected=ids=>{
@@ -1617,13 +2460,28 @@ function setupLibrarySelection(runtime){
   }
   runtime.onLibrarySelectionClick=event=>{
     const target=event.target
+    if(runtime.onStudySetPickerClick?.(event))return true
+    const setAction=target.closest("[data-study-set-action]")
+    if(setAction&&studySetsAvailable(runtime.data)){
+      if(!setAction.disabled){
+        if(["study_set_open","study_set_close"].includes(setAction.dataset.studySetAction))runtime.focusStudySetNavigation=true
+        if(setAction.dataset.studySetAction==="study_set_picker")runtime.studySetPickerFocus=runtime.studySetPicker?"toggle":"search"
+        runtime.browseLibraryFromSet=setAction.hasAttribute("data-study-set-browse")
+        runtime.emitLibrarySelection(setAction.dataset.studySetAction,{set_id:setAction.dataset.studySetId||""})
+      }
+      return true
+    }
+    const compose=target.closest("[data-library-selection-action=compose_corpus]")
+    if(compose&&runtime.data.library_selection_enabled&&!runtime.data.studio_embed){
+      return runtime.emitLibrarySelection("compose_corpus",{work_ids:[]})
+    }
     const publish=target.closest("[data-library-selection-action=publish_beta]")
     if(publish&&runtime.data.library_selection_enabled){const scope=shelfScope(runtime.data);runtime.emitLibrarySelection("publish_beta",{publication_kind:scope==="dialogue"?"book":scope||"book"});return true}
     if(!librarySelectionAvailable(runtime.data))return false
     if(target.closest("[data-library-selection-toggle]")){runtime.librarySelecting=!runtime.librarySelecting;runtime.closeBookMenu();runtime.paintLibrarySelection();return true}
     if(target.closest("[data-library-selection-clear]")){runtime.setLibrarySelected([]);root.querySelector("[data-library-selection-toggle]")?.focus({preventScroll:true});return true}
     const action=target.closest("[data-library-selection-action]")
-    if(action){if(!action.disabled)runtime.emitLibrarySelection(action.dataset.librarySelectionAction);return true}
+    if(action){if(!action.disabled){const kind=action.dataset.librarySelectionAction;if(runtime.data.active_study_set&&["lateral","corpus"].includes(kind))runtime.emitLibrarySelection(`study_set_${kind}`,{selected_only:true});else runtime.emitLibrarySelection(kind)}return true}
     const edit=target.closest("[data-library-edit-collection]")
     if(edit){const group=arr(runtime.data.books).find(book=>String(book.id)===edit.dataset.libraryEditCollection&&book.user_collection);if(group)runtime.emitLibrarySelection("manage_collection",{group_id:String(group.id),work_ids:libraryMemberIds(group)});return true}
     let ids=[]
@@ -1662,8 +2520,11 @@ function shelfSelection(data,state){
   state=shelfStateFor(data,state)
   const scope=shelfScope(data),all=scope==='dialogue'?shelfLeaves(data?.books).filter(book=>book.content_kind==='dialogue'):scope?[]:arr(data?.books),collection=all.find(book=>String(book.id)===state.collection&&isCollection(book))
   const fields=arr(data?.fields).filter(book=>isShelfField(book)&&(!scope||book.field===scope))
-  const base=collection?arr(collection.members):[...all,...fields]
+  const sets=!scope&&!collection&&!data.active_study_set&&["all","study_sets"].includes(state.kind)
+    ?arr(data.study_sets).map(set=>({...set,item_type:"study_set"})):[]
+  const base=collection?arr(collection.members):state.kind==="study_sets"?sets:[...all,...fields,...sets]
   const selected=base.flatMap(book=>{
+    if(book.item_type==="study_set")return ![state.author,state.language,state.layer,state.era].some(Boolean)&&shelfMatches(book,state)?[book]:[]
     if(!collection&&state.kind==="collection"&&!isCollection(book))return []
     if(!isCollection(book))return shelfMatches(book,state)?[book]:[]
     const groupMatches=shelfMatches({...book,content_kind:["lecture","dialogue"].includes(state.kind)?state.kind:"book"},{...state,author:"",language:"",layer:"",era:""})
@@ -1672,6 +2533,8 @@ function shelfSelection(data,state){
   })
   const textCompare=(a,b)=>shelfText(a).localeCompare(shelfText(b),undefined,{numeric:true})
   const missingLast=(a,b,descending=false)=>a==null||a===""?(b==null||b===""?0:1):(b==null||b===""?-1:(descending?-1:1)*(typeof a==="number"?a-b:textCompare(a,b)))
+  const setOrder=state.sort==="study_set"&&data?.active_study_set?new Map(arr(data.active_study_set.order).map(({kind,id},i)=>[JSON.stringify([kind,id]),i])):null
+  const setPosition=book=>{const {kind,id}=studySetRef(book);return setOrder?.get(JSON.stringify([kind,id]))??Number.MAX_SAFE_INTEGER}
   selected.sort((a,b)=>{
     let order=0
     if(state.sort==="title-desc")order=-textCompare(a.title,b.title)
@@ -1679,10 +2542,11 @@ function shelfSelection(data,state){
     if(state.sort==="newest"||state.sort==="oldest")order=missingLast(a.original_year,b.original_year,state.sort==="newest")
     if(state.sort==="added"||state.sort==="visited"){const field=state.sort==="added"?"ingested_at":"last_visited_at";order=missingLast(a[field],b[field],true)}
     if(state.sort==="coverage")order=arr(b.layers).length-arr(a.layers).length||Number(b.care_units||0)-Number(a.care_units||0)
+    if(setOrder)order=setPosition(a)-setPosition(b)
     if(state.sort==="collection"&&collection)return 0
     return order||textCompare(a.title,b.title)||textCompare(a.id,b.id)
   })
-  return {items:selected,collection,base,total:new Set(shelfLeaves(all).map(book=>String(book.id))).size,fieldTotal:fields.length}
+  return {items:selected,collection,base,total:new Set(shelfLeaves(all).map(book=>String(book.id))).size,fieldTotal:fields.length,setTotal:sets.length}
 }
 function fieldMemberCover(member,book){
   return `<span class="field-member-copy"><strong>${esc(member.title||book.title)}</strong><small>${esc(member.author||book.author||"")}</small></span>${member.cover_url?`<img src="${esc(member.cover_url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`:""}`
@@ -1713,7 +2577,7 @@ function fieldShelfCard(book,data={}){
   const subtitle=book.author||(count?`${count} ${count===1?"source book":"source books"}`:"CARE library")
   const memberText=count?`${count} ${count===1?"source book":"source books"}`:""
   const cover=["lateral","corpus"].includes(book.field)?fieldSourceCover(book):`<span class="book-cover" style="--cloth:${esc(book.cloth||"#263239")};--foil:${esc(book.foil||"#f4e8cc")}"><span class="book-cover-fallback"><span class="field-cover-label">${esc(label)}</span><svg class="field-cover-art" viewBox="0 0 100 92" aria-hidden="true">${motifs[book.field]||motifs.corpus}</svg><strong>${esc(book.title)}</strong><small>${esc(subtitle)}</small></span>${image}</span>`
-  const menu=data.library_selection_enabled&&["lateral","corpus"].includes(book.field)?shelfMenuToggle(book,"Reading options"):""
+  const menu=data.library_selection_enabled&&(["lateral","corpus"].includes(book.field)||studySetsAvailable(data))?shelfMenuToggle(book,"Reading options"):""
   return `<div class="book-card book-field" data-book-field="${esc(book.id)}"><button type="button" class="book-open" data-open-field="${esc(book.id)}" data-reading-title="${esc(book.title)}"${book.field==="corpus"?` data-corpus-covers="${esc(JSON.stringify(arr(book.members).map(member=>({title:member.title,cover_url:member.cover_url}))))}"`:""} aria-label="${esc(`Read ${label}: ${book.title}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong>${esc(book.title)}</strong>${book.author?`<span>${esc(book.author)}</span>`:""}${book.description?`<span class="field-description">${esc(book.description)}</span>`:""}${memberText?`<span class="field-members">${esc(memberText)}</span>`:""}<span class="book-layers"><b class="book-kind">${esc(label)}</b>${arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")}</span></span></button>${menu}</div>`
 }
 function dialogueJacketTitle(book){
@@ -1748,19 +2612,23 @@ function shelfMenuToggle(book,label="Book options"){
   return `<button type="button" class="book-menu-toggle" data-book-menu-toggle="${esc(book.id)}" aria-label="${esc(`Options for ${book.title}`)}" aria-haspopup="menu" aria-expanded="false" title="${esc(label)}"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/></svg></button>`
 }
 function shelfCard(book,data={}){
+  if(book.item_type==="study_set")return studySetCard(book)
   if(isShelfField(book))return fieldShelfCard(book,data)
   const collection=isCollection(book),count=arr(book.members).length,dialogue=!collection&&book.content_kind==="dialogue"
   const image=book.cover_url?`<img src="${esc(book.cover_url)}" alt="" loading="lazy" onerror="this.remove()">`:""
   const cover=dialogue&&!book.cover_url?dialogueBookCover(book):`<span class="book-cover" style="--cloth:${esc(book.cloth||"#263239")};--foil:${esc(book.foil||"#f4e8cc")}"><span class="book-cover-fallback"><i aria-hidden="true"></i><strong>${esc(book.title)}</strong><small>${esc(book.author)}</small></span>${image}</span>`
   const layers=arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")
   const kind=collection?`${count} ${book.content_kind==="lecture"?"lectures":"volumes"}`:book.content_kind==="lecture"?"Lecture":book.content_kind==="dialogue"?"Dialogue":""
-  const menu=collection?"":shelfMenuToggle(book,dialogue?"Dialogue options":"Book options")
+  const menu=collection&&!studySetsAvailable(data)?"":shelfMenuToggle(book,collection?"Collection options":dialogue?"Dialogue options":"Book options")
   const canSelect=librarySelectionAvailable(data)&&libraryMemberIds(book).length>0,checked=libraryCheckState(book,new Set(librarySelectedIds(data)))
   const selection=canSelect?`<button type="button" class="book-selection" data-library-select="${esc(book.id)}" role="checkbox" aria-checked="${checked}" aria-label="${esc(collection?`Select all ${count} books in ${book.title}`:`Select ${book.title}`)}"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path data-selection-mark d="${checked==="mixed"?"M6 10h8":checked==="true"?"m6 10 3 3 5-6":""}"/></svg></button>`:""
-  return `<div class="book-card ${collection?"book-collection":dialogue?"book-dialogue":""} ${canSelect&&checked==="true"?"is-selected":canSelect&&checked==="mixed"?"is-part-selected":""}" ${collection?"":`data-book-work="${esc(book.id)}"`}><button type="button" class="book-open" ${collection?"data-open-collection":"data-open-work"}="${esc(book.id)}" data-reading-title="${esc(book.title)}" aria-label="${esc(`${collection?"Open collection":"Study"}: ${book.title}${collection?`, ${kind}`:""}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong title="${esc(book.title)}">${esc(book.title)}</strong><span>${esc(book.author)}${book.year?` · ${esc(book.year)}`:""}</span><span class="book-layers">${kind?`<b class="book-kind">${esc(kind)}</b>`:""}${book.archived?'<b class="book-kind">Archived</b>':""}${layers}</span></span></button>${selection}${menu}</div>`
+  const cardIdentity=collection?(menu?`data-book-collection="${esc(book.id)}"`:""):`data-book-work="${esc(book.id)}"`
+  return `<div class="book-card ${collection?"book-collection":dialogue?"book-dialogue":""} ${canSelect&&checked==="true"?"is-selected":canSelect&&checked==="mixed"?"is-part-selected":""}" ${cardIdentity}><button type="button" class="book-open" ${collection?"data-open-collection":"data-open-work"}="${esc(book.id)}" data-reading-title="${esc(book.title)}" aria-label="${esc(`${collection?"Open collection":"Study"}: ${book.title}${collection?`, ${kind}`:""}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong title="${esc(book.title)}">${esc(book.title)}</strong><span>${esc(book.author)}${book.year?` · ${esc(book.year)}`:""}</span><span class="book-layers">${kind?`<b class="book-kind">${esc(kind)}</b>`:""}${book.archived?'<b class="book-kind">Archived</b>':""}${layers}</span></span></button>${selection}${menu}</div>`
 }
 function setupBookMenu(runtime){
   const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
+  const cardFor=target=>target?.closest?.("[data-book-work]")||target?.closest?.("[data-book-field]")||target?.closest?.("[data-book-collection]")
+  const openControl=card=>card.querySelector("[data-open-work]")||card.querySelector("[data-open-field]")||card.querySelector("[data-open-collection]")
   runtime.closeBookMenu=({restoreFocus=false}={})=>{
     const current=runtime.bookMenu;if(!current)return
     runtime.bookMenu=null
@@ -1771,14 +2639,18 @@ function setupBookMenu(runtime){
     current.toggle?.removeAttribute("aria-controls")
     if(restoreFocus&&current.anchor?.isConnected!==false)current.anchor?.focus({preventScroll:true})
   }
-  runtime.openBookMenu=(card,{anchor=null,x=null,y=null,last=false}={})=>{
+  runtime.openBookMenu=(card,{anchor=null,x=null,y=null,last=false,pickSet=false}={})=>{
     runtime.closeBookMenu()
-    const fieldId=String(card?.dataset.bookField||""),workId=String(card?.dataset.bookWork||"")
-    const book=fieldId?arr(runtime.data?.fields).find(item=>String(item.id)===fieldId&&["lateral","corpus"].includes(item.field)):shelfLeaves(runtime.data?.books).find(item=>String(item.id)===workId&&item.item_type!=="collection")
-    if(!book||fieldId&&!runtime.data?.library_selection_enabled||!fieldId&&!workId)return false
-    const toggle=card.querySelector("[data-book-menu-toggle]"),origin=anchor||card.querySelector(fieldId?"[data-open-field]":"[data-open-work]"),rect=(origin||card).getBoundingClientRect()
-    const menu=doc.createElement("div");menu.className="book-context-menu";menu.id="care-book-context-menu";menu.setAttribute("data-book-context-menu","");menu.setAttribute("role","menu");menu.setAttribute("aria-label",`Options for ${book.title||"this book"}`)
-    const actions=fieldId?[
+    const fieldId=String(card?.dataset.bookField||""),workId=String(card?.dataset.bookWork||""),collectionId=String(card?.dataset.bookCollection||"")
+    const book=collectionId&&studySetsAvailable(runtime.data)?arr(runtime.data?.books).find(item=>String(item.id)===collectionId&&isCollection(item)):
+      fieldId?arr(runtime.data?.fields).find(item=>String(item.id)===fieldId&&(["lateral","corpus"].includes(item.field)||studySetsAvailable(runtime.data))):
+      shelfLeaves(runtime.data?.books).find(item=>String(item.id)===workId&&item.item_type!=="collection")
+    if(!book||fieldId&&!runtime.data?.library_selection_enabled||!(fieldId||workId||collectionId))return false
+    const toggle=card.querySelector("[data-book-menu-toggle]"),origin=anchor||openControl(card),rect=(origin||card).getBoundingClientRect()
+    const menu=doc.createElement("div");menu.className="book-context-menu";menu.id="care-book-context-menu";menu.setAttribute("data-book-context-menu","");menu.setAttribute("role","menu")
+    menu.setAttribute("aria-label",pickSet?`Add ${book.title||"this item"} to a study set`:`Options for ${book.title||"this book"}`)
+    if(pickSet)menu.setAttribute("data-book-set-menu","")
+    const actions=collectionId?[["copy_title","Copy title",'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 13H3V3h10v1"/>']]:fieldId?[
       ["publish_beta","Publish / update beta",'<path d="M10 13V3m-4 4 4-4 4 4M3 12v5h14v-5"/>'],
       ...(book.field==="lateral"?[["field_rerun_latest","Re-run with latest book versions…",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>']]:[]),
       ["copy_title","Copy title",'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 13H3V3h10v1"/>'],
@@ -1786,13 +2658,29 @@ function setupBookMenu(runtime){
     ]:[["book_portrait","Book portrait",'<path d="M3 3h6v14H3zM11 3h6v14h-6z"/>'],["author_library","Author’s library",'<circle cx="10" cy="6" r="3"/><path d="M4 17c0-7 12-7 12 0"/>'],["book_info","Book info",'<circle cx="10" cy="10" r="7"/><path d="M10 9v5m0-8h.01"/>'],["translate_book","Translate book",'<path d="M2 4h10M7 2v2M4 4c0 5 5 7 7 8M10 4c0 5-5 7-8 8m9 5 4-10 4 10m-6-3h4"/>'],["restart_book","Start again from scratch",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>'],["copy_title","Copy title",'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 13H3V3h10v1"/>'],book.archived?["restore_book","Restore",'<path d="M4 7v10h12V7M3 3h14v4H3zM10 14V9m-2 2 2-2 2 2"/>']:["archive_book","Archive",'<path d="M3 3h14v4H3zM4 7v10h12V7M8 10h4"/>']]
     if(!fieldId&&runtime.data.library_selection_enabled&&libraryBooks(runtime.data).has(workId))actions.splice(3,0,["publish_beta","Publish to beta",'<path d="M10 13V3m-4 4 4-4 4 4M3 12v5h14v-5"/>'])
     if(!fieldId&&runtime.data.library_selection_enabled&&libraryBooks(runtime.data).has(workId))actions.splice(4,0,["update_beta_version","Update beta version",'<path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/>'])
-    for(const [action,label,path] of actions){
+    if(workId&&runtime.data.library_selection_enabled&&!runtime.data.studio_embed&&libraryBooks(runtime.data).has(workId))actions.splice(3,0,["compose_corpus","Choose readings for a corpus…",'<path d="M3 4h11M3 9h11M3 14h5m7-1v6m-3-3h6"/>'])
+    if(workId&&runtime.data.send_library_book_available)actions.splice(3,0,["send_book","Send book…",'<path d="m2 9 16-6-6 14-2.5-5.5L2 9zm7.5 2.5L18 3"/>'])
+    if(fieldId&&!["lateral","corpus"].includes(book.field))actions.splice(0,actions.length,...actions.filter(([action])=>action==="copy_title"))
+    if(studySetsAvailable(runtime.data)&&!book.archived){
+      actions.unshift(["study_set_add","Add to study set…",'<path d="M3 4h9M3 8h9M3 12h5m6 0h4m-2-2v4"/>'])
+      if(runtime.data.active_study_set)actions.splice(1,0,["study_set_remove","Remove from this study set",'<path d="M3 4h9M3 8h9M3 12h5m6 0h4"/>'])
+    }
+    const sets=arr(runtime.data?.study_sets)
+    const choices=pickSet?[
+      ["study_set_back","Back to options",'<path d="M16 10H4m5-5-5 5 5 5"/>'],
+      ...sets.map(set=>["study_set_add_direct",set.title,'<path d="M4 4h12v13H4zM7 8h6m-6 4h6"/>',set.id]),
+      ["study_set_create","New study set…",'<path d="M10 4v12m-6-6h12"/>'],
+    ]:actions.filter(([action])=>["book_info","copy_title"].includes(action)||action==="author_library"&&Boolean(book.author))
+    if(workId&&runtime.data?.web_study_set_actions)choices.unshift(["web_study_set_add","Add to study set…",'<path d="M3 4h9M3 8h9M3 12h5m6 0h4m-2-2v4"/>'])
+    for(const [action,label,path,setId] of choices){
       const button=doc.createElement("button");button.type="button";button.tabIndex=-1;button.setAttribute("role","menuitem");button.setAttribute("data-book-menu-action",action)
+      if(action==="study_set_add"&&sets.length)button.setAttribute("aria-haspopup","menu")
+      if(setId)button.setAttribute("data-book-set-id",setId)
       const icon=doc.createElement("span");icon.className="book-menu-icon";icon.setAttribute("aria-hidden","true");icon.innerHTML=`<svg viewBox="0 0 20 20">${path}</svg>`
       const text=doc.createElement("span");text.setAttribute("data-book-menu-label","");text.textContent=label;button.append(icon,text);menu.append(button)
     }
     const status=doc.createElement("span");status.className="book-menu-status";status.setAttribute("role","status");menu.append(status)
-    const current={element:menu,card,book,toggle,anchor:origin,status,feedbackTimer:null};runtime.bookMenu=current
+    const current={element:menu,card,book,toggle,anchor:origin,status,feedbackTimer:null,pickSet,placement:{anchor:origin,x,y}};runtime.bookMenu=current
     root.append(menu);card.classList.add("menu-open");toggle?.setAttribute("aria-expanded","true");toggle?.setAttribute("aria-controls",menu.id)
     const bounds=menu.getBoundingClientRect(),width=view?.innerWidth||doc.documentElement?.clientWidth||1024,height=view?.innerHeight||doc.documentElement?.clientHeight||768
     menu.style.left=`${Math.max(8,Math.min(x??rect.right-bounds.width,width-bounds.width-8))}px`
@@ -1815,6 +2703,31 @@ function setupBookMenu(runtime){
   runtime.activateBookMenu=button=>{
     const current=runtime.bookMenu,action=button?.dataset.bookMenuAction;if(!current||!action)return false
     if(action==="copy_title"){runtime.copyBookTitle(button);return true}
+    if(action==="study_set_back"&&current.pickSet)return runtime.openBookMenu(current.card,current.placement)
+    if(action==="study_set_add"&&arr(runtime.data.study_sets).length){
+      return runtime.openBookMenu(current.card,{...current.placement,pickSet:true})
+    }
+    if(["study_set_add","study_set_add_direct","study_set_create","study_set_remove"].includes(action)&&studySetsAvailable(runtime.data)){
+      const direct=action==="study_set_add_direct",set_id=button.dataset.bookSetId
+      if(direct&&(!current.pickSet||!arr(runtime.data.study_sets).some(set=>set.id===set_id)))return false
+      runtime.closeBookMenu({restoreFocus:true})
+      return runtime.emitLibrarySelection(action==="study_set_create"?"study_set_add":action,{
+        work_ids:[],members:[studySetRef(current.book)],...(direct?{set_id}:{}),
+      })
+    }
+    if(action==="web_study_set_add"&&runtime.data?.web_study_set_actions&&current.book.id){
+      runtime.closeBookMenu({restoreFocus:true})
+      runtime.api?.setTriggerValue("open_study_sets",{work_id:current.book.id})
+      return true
+    }
+    if(action==="author_library"&&current.book.author){
+      runtime.closeBookMenu()
+      runtime.shelf={...shelfDefaults(),kind:"book",sort:runtime.shelf.sort,author:current.book.author,filtersOpen:true}
+      runtime.paintShelf(true)
+      root.querySelector('[data-shelf-input="author"]')?.focus({preventScroll:true})
+      return true
+    }
+    if(isCollection(current.book))return false
     if(isShelfField(current.book)){
       const field=current.book.field,field_id=String(current.book.id)
       if(!runtime.data.library_selection_enabled||!["lateral","corpus"].includes(field)||!arr(runtime.data.fields).some(item=>String(item.id)===field_id&&item.field===field))return false
@@ -1822,13 +2735,14 @@ function setupBookMenu(runtime){
       runtime.closeBookMenu({restoreFocus:true})
       return runtime.emitLibrarySelection(action,action==="publish_beta"?{publication_kind:field,field_ids:[field_id],work_ids:[]}:{field_id,field,work_ids:[]})
     }
-    if(["publish_beta","update_beta_version"].includes(action)){
+    if(["publish_beta","update_beta_version","compose_corpus"].includes(action)){
       const work_id=String(current.book.id)
       if(!runtime.data.library_selection_enabled||!libraryBooks(runtime.data).has(work_id))return false
       runtime.closeBookMenu({restoreFocus:true})
       return runtime.emitLibrarySelection(action,{work_ids:[work_id],publication_kind:"book"})
     }
-    if(!["book_info","translate_book","restart_book","archive_book","restore_book","book_portrait","author_library"].includes(action))return false
+    if(action==="send_book"&&!runtime.data.send_library_book_available)return false
+    if(!["book_info","send_book","translate_book","restart_book","archive_book","restore_book","book_portrait","author_library"].includes(action))return false
     const work_id=String(current.book.id);runtime.closeBookMenu({restoreFocus:true})
     runtime.api?.setTriggerValue("book_action",{action,work_id,nonce:`${Date.now()}-${Math.random()}`});return true
   }
@@ -1838,32 +2752,41 @@ function setupBookMenu(runtime){
     const toggle=event.target?.closest?.("[data-book-menu-toggle]");if(!toggle)return false
     event.preventDefault?.();event.stopPropagation?.()
     if(runtime.bookMenu?.toggle===toggle)runtime.closeBookMenu({restoreFocus:true})
-    else runtime.openBookMenu(toggle.closest("[data-book-work]")||toggle.closest("[data-book-field]"),{anchor:toggle})
+    else runtime.openBookMenu(cardFor(toggle),{anchor:toggle})
     return true
   }
   runtime.onBookContextMenu=event=>{
-    const card=event.target?.closest?.("[data-book-work]")||event.target?.closest?.("[data-book-field]");if(!card)return
-    if(runtime.openBookMenu(card,{anchor:card.querySelector("[data-open-work]")||card.querySelector("[data-open-field]"),x:event.clientX,y:event.clientY})){event.preventDefault();event.stopPropagation()}
+    const card=cardFor(event.target);if(!card)return
+    if(runtime.openBookMenu(card,{anchor:openControl(card),x:event.clientX,y:event.clientY})){event.preventDefault();event.stopPropagation()}
   }
   runtime.onBookMenuKey=event=>{
     const current=runtime.bookMenu,key=event.key
     if(current){
-      if(key==="Escape"){event.preventDefault();event.stopPropagation();runtime.closeBookMenu({restoreFocus:true});return true}
+      if(key==="Escape"||(key==="ArrowLeft"&&current.pickSet)){
+        event.preventDefault();event.stopPropagation()
+        if(current.pickSet)runtime.openBookMenu(current.card,current.placement)
+        else runtime.closeBookMenu({restoreFocus:true})
+        return true
+      }
       if(key==="Tab"){runtime.closeBookMenu({restoreFocus:true});return true}
       if(current.element.contains(event.target)){
         const items=[...current.element.querySelectorAll("[role='menuitem']")],index=Math.max(0,items.indexOf(event.target.closest("[role='menuitem']")))
         if(["ArrowDown","ArrowUp","Home","End"].includes(key)){
           event.preventDefault();event.stopPropagation();const next=key==="Home"?0:key==="End"?items.length-1:(index+(key==="ArrowDown"?1:-1)+items.length)%items.length
-          items.forEach((item,position)=>item.tabIndex=position===next?0:-1);items[next].focus({preventScroll:true});return true
+          items.forEach((item,position)=>item.tabIndex=position===next?0:-1);items[next].focus({preventScroll:true})
+          if(current.pickSet)items[next].scrollIntoView({block:"nearest"})
+          return true
         }
-        if(["Enter"," "].includes(key)){event.preventDefault();event.stopPropagation();return runtime.activateBookMenu(items[index])}
+        if(["Enter"," "].includes(key)||(key==="ArrowRight"&&items[index]?.getAttribute?.("aria-haspopup")==="menu")){
+          event.preventDefault();event.stopPropagation();return runtime.activateBookMenu(items[index])
+        }
         return true
       }
     }
     if(event.metaKey||event.ctrlKey||event.altKey||event.isComposing)return false
-    const toggle=event.target?.closest?.("[data-book-menu-toggle]"),card=event.target?.closest?.("[data-book-work]")||event.target?.closest?.("[data-book-field]")
+    const toggle=event.target?.closest?.("[data-book-menu-toggle]"),card=cardFor(event.target)
     if(card&&(key==="ContextMenu"||(event.shiftKey&&key==="F10")||(toggle&&["ArrowDown","ArrowUp"].includes(key)))){
-      event.preventDefault();event.stopPropagation();return runtime.openBookMenu(card,{anchor:toggle||card.querySelector("[data-open-work]")||card.querySelector("[data-open-field]"),last:key==="ArrowUp"})
+      event.preventDefault();event.stopPropagation();return runtime.openBookMenu(card,{anchor:toggle||openControl(card),last:key==="ArrowUp"})
     }
     return false
   }
@@ -1879,10 +2802,168 @@ function shelfHasFilters(state){return Boolean(state.query||state.author||state.
 function shelfResults(data,state){
   state=shelfStateFor(data,state)
   const selection=shelfSelection(data,state),count=selection.items.length
-  const fieldTab=SHELF_FIELDS.some(([id])=>id===state.kind),hasEntries=selection.total+selection.fieldTotal>0
-  const label=state.kind==="dialogue"?`${count} ${count===1?"dialogue":"dialogues"}${shelfHasFilters(state)?` · ${selection.total} in your library`:""}`:selection.collection?`${count} of ${selection.base.length} volumes`:fieldTab?`${count} ${count===1?"reading":"readings"} · ${shelfFieldLabel(state.kind)}`:`${count} shelf ${count===1?"entry":"entries"} · ${selection.total} works${selection.fieldTotal?` · ${selection.fieldTotal} readings`:""}`
+  if(data.active_study_set&&!selection.total&&!selection.fieldTotal)return {selection,summary:"",cards:'<div class="library-empty"><strong>Make this set your own</strong><p>Choose “Add from Library” to bring books onto this shelf. You can also add a book or reading from its three-dot menu.</p></div>'}
+  if(state.kind==="study_sets")return {selection,summary:`<span>${count} study ${count===1?"set":"sets"}</span>`,cards:selection.items.map(studySetCard).join("")||`<div class="library-empty"><strong>${state.query?"No study sets match that search":"Your study sets begin here"}</strong><p>${state.query?"Try another name.":"Create a set, then add books and readings for a project."}</p></div>`}
+  const fieldTab=SHELF_FIELDS.some(([id])=>id===state.kind),hasEntries=selection.total+selection.fieldTotal+selection.setTotal>0
+  const label=state.kind==="dialogue"?`${count} ${count===1?"dialogue":"dialogues"}${shelfHasFilters(state)?` · ${selection.total} in your library`:""}`:selection.collection?`${count} of ${selection.base.length} volumes`:fieldTab?`${count} ${count===1?"reading":"readings"} · ${shelfFieldLabel(state.kind)}`:`${count} shelf ${count===1?"entry":"entries"} · ${selection.total} works${selection.fieldTotal?` · ${selection.fieldTotal} readings`:""}${selection.setTotal?` · ${selection.setTotal} study ${selection.setTotal===1?"set":"sets"}`:""}`
   const fieldEmpty=fieldTab&&!arr(data?.fields).some(field=>field.field===state.kind)
   return {selection,summary:`<span>${esc(label)}${state.kind==="collection"?" · Collections":""}</span>${shelfHasFilters(state)?'<button type="button" data-shelf-reset>Clear filters</button>':`<span>${state.kind==="dialogue"?"Follow a thought through different voices":selection.collection?"Choose a volume to begin":selection.fieldTotal?"Books, connections and their source routes":"Collections open to their own shelves"}</span>`}`,cards:selection.items.map(book=>shelfCard(book,data)).join("")||`<div class="library-empty"><strong>${fieldEmpty?`No ${esc(shelfFieldLabel(state.kind))} saved yet`:hasEntries?"No titles on this shelf":state.kind==="dialogue"?"Your dialogue shelf begins here":"Your library begins here"}</strong><p>${fieldEmpty?"Saved readings appear here, ready to open alongside their sources.":hasEntries?"Try another title, author, or combination of filters.":state.kind==="dialogue"?"Add a conversation to bring its voices into your library.":"Add a book to start your collection."}</p>${hasEntries&&!fieldEmpty?'<button type="button" data-shelf-reset>Clear filters</button>':""}</div>`}
+}
+const STUDY_SET_MARK='<svg viewBox="0 0 28 28" aria-hidden="true"><rect x="5" y="5" width="13" height="17" rx="2"/><path d="M21 8h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H11M9 10h5m-5 4h5m-5 4h3"/></svg>'
+const SHELF_CONTROL_PATHS={
+  category:"M4 5h3v11H4zm3 0h3v11H7zm5 1 3-1 3 10-3 1z",
+  sort:"M4 5h10M4 9h7M4 13h4m5-3v6m-2-2 2 2 2-2",
+  filter:"M3 5h14l-5.5 6v5h-3v-5z",
+  select:"M4 4h12v12H4z m3 6 2 2 4-4",
+  add:"M10 4v12M4 10h12"
+}
+const shelfControlIcon=name=>`<svg class="library-control-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="${SHELF_CONTROL_PATHS[name]}"/></svg>`
+function shelfCategory(data,state,collection){
+  if(shelfScope(data))return ""
+  const tabs=data.active_study_set?SHELF_TABS.filter(([id])=>id!=="collection"):studySetsAvailable(data)&&!collection?[...SHELF_TABS,["study_sets","Study sets"]]:SHELF_TABS
+  const label=tabs.find(([id])=>id===state.kind)?.[1]||"All"
+  return `<details class="library-category" data-shelf-category data-shelf-actions>
+    <summary title="Browse library, ${label}" aria-label="Browse library, ${label}">${shelfControlIcon("category")}<span data-shelf-category-label>${label}</span></summary>
+    <div class="library-more-panel" role="group" aria-label="Library categories">${tabs.filter(([id])=>!collection||!["collection","lateral","corpus"].includes(id)).map(([id,label])=>`<button type="button" data-shelf-kind="${id}" class="${state.kind===id?"active":""}" aria-pressed="${state.kind===id}">${label}</button>`).join("")}${data.web_study_sets?'<button type="button" data-open-web-study-sets>Study sets</button>':""}</div>
+  </details>`
+}
+function studySetCard(set){
+  const count=Number(set.count)||0,members=arr(set.members),front=members[0]||{}
+  const leafImage=book=>book.cover_url?`<img src="${esc(book.cover_url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`:""
+  const leaves=members.length>1?members.slice(1,4).reverse():[{}]
+  const fan=leaves.map(book=>`<i class="study-set-leaf" style="--cloth:${esc(book.cloth||"#365148")}">${leafImage(book)}</i>`).join("")
+  return `<div class="book-card book-study-set"><button type="button" class="book-open" data-study-set-action="study_set_open" data-study-set-id="${esc(set.id)}" aria-label="${esc(`Open study set: ${set.title}`)}"><span class="book-object" aria-hidden="true"><span class="study-set-fan">${fan}</span><span class="book-cover study-set-jacket" style="--cloth:${esc(front.cloth||"#274238")};--foil:${esc(front.foil||"#d9d1ad")}"><span class="book-cover-fallback">${STUDY_SET_MARK}<strong>${esc(set.title)}</strong><small>CARE Study set</small></span>${leafImage(front)}</span></span><span class="book-copy"><strong>${esc(set.title)}</strong><span>${count} ${count===1?"item":"items"}</span><span class="book-layers"><b class="book-kind">Study set</b></span></span></button></div>`
+}
+const STUDY_SET_DRAG_TYPE="application/x-care-study-set-items"
+const STUDY_SET_ADD_LIMIT=500
+const STUDY_SET_PICKER_CATEGORIES=[["book","Books"],["dialogue","Dialogues"],["lateral","Laterals"],["corpus","Corpora"],["collection","Collections"],["lecture","Lectures"],...SHELF_FIELDS.slice(2)]
+const studySetPickerKey=item=>JSON.stringify([item.kind,item.id])
+
+function studySetPickerRows(items,picker){
+  const terms=shelfText(picker.query).trim().split(/\s+/).filter(Boolean)
+  const category=items.filter(item=>item.kind===picker.kind)
+  const matches=category.filter(item=>terms.every(term=>shelfText(`${item.title} ${item.author}`).includes(term)))
+  return matches.map(item=>{
+    const key=studySetPickerKey(item)
+    return `<label class="study-set-picker-row" data-study-set-drag-item="${esc(key)}" draggable="true">
+      <input type="checkbox" data-study-set-pick="${esc(key)}" ${picker.selected.has(key)?"checked":""}>
+      <span class="study-set-picker-cover" aria-hidden="true"${item.cloth?` style="--picker-cloth:${esc(item.cloth)}"`:""}>${item.cover_url?`<img src="${esc(item.cover_url)}" alt="" loading="lazy" draggable="false">`:""}</span>
+      <span class="study-set-picker-copy"><strong title="${esc(item.title)}">${esc(item.title)}</strong>${item.author?`<small>${esc(item.author)}</small>`:""}</span>
+      <span class="study-set-picker-grip" aria-hidden="true"></span>
+    </label>`
+  }).join("")||`<p class="study-set-picker-empty">${category.length?"Nothing in this category matches the search.":"Nothing to add in this category."}</p>`
+}
+
+function studySetPickerPane(data){
+  const picker=data.study_set_picker_state||{kind:"book",query:"",selected:new Set()},setId=data.active_study_set.id
+  const items=data.study_set_picker_items,availableKinds=new Set(items.map(item=>item.kind))
+  const categories=STUDY_SET_PICKER_CATEGORIES.filter(([kind],index)=>index<4||availableKinds.has(kind)||picker.kind===kind)
+  return `<aside class="study-set-picker" id="study-set-picker" aria-labelledby="study-set-picker-title">
+    <header class="study-set-picker-head"><div><h3 id="study-set-picker-title">Library picker</h3><p>Choose what you want to add to this set.</p></div><button type="button" class="study-set-picker-close" aria-label="Close Library picker" data-study-set-action="study_set_picker" data-study-set-id="${esc(setId)}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></header>
+    <label class="study-set-picker-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4"/></svg><input type="search" data-study-set-query aria-label="Find Library items" placeholder="Find a title or author…" value="${esc(picker.query)}"></label>
+    <label class="study-set-picker-category">Category <select data-study-set-kind>${categories.map(([kind,label])=>`<option value="${kind}" ${picker.kind===kind?"selected":""}>${esc(label)}</option>`).join("")}</select></label>
+    <div class="study-set-picker-results" data-study-set-picker-results>${studySetPickerRows(items,picker)}</div>
+    <footer class="study-set-picker-footer"><span role="status" aria-live="polite" data-study-set-picked-count>${picker.selected.size} selected</span><button type="button" class="study-set-button study-set-primary" data-study-set-add-picked ${picker.selected.size?"":"disabled"}>Add selected</button></footer>
+  </aside>`
+}
+
+function setupStudySetPicker(runtime){
+  const root=runtime.root
+  runtime.syncStudySetPicker=data=>{
+    const id=data?.active_study_set?.id,items=data?.study_set_picker_items
+    if(!id||!Array.isArray(items)){runtime.studySetPicker=null;runtime.studySetDrag=null;return}
+    if(runtime.studySetPicker?.id!==id){runtime.studySetPicker={id,kind:"book",query:"",selected:new Set()};runtime.studySetDrag=null}
+    const picker=runtime.studySetPicker
+    picker.available=new Map(items.map(item=>[studySetPickerKey(item),item]))
+    for(const key of picker.selected)if(!picker.available.has(key))picker.selected.delete(key)
+  }
+  runtime.paintStudySetPickerSelection=()=>{
+    const selected=runtime.studySetPicker.selected
+    const count=root.querySelector("[data-study-set-picked-count]"),button=root.querySelector("[data-study-set-add-picked]")
+    if(count)count.textContent=`${selected.size} selected`
+    if(button)button.disabled=!selected.size
+  }
+  runtime.onStudySetPickerInput=event=>{
+    const picker=runtime.studySetPicker,target=event.target
+    if(!picker)return false
+    const control=target.matches?.("[data-study-set-query]")?"query":target.matches?.("[data-study-set-kind]")?"kind":""
+    if(control){
+      if(target.value===picker[control])return true
+      picker[control]=target.value
+      const results=root.querySelector("[data-study-set-picker-results]")
+      if(results){results.innerHTML=studySetPickerRows(runtime.data.study_set_picker_items,picker);results.scrollTop=0}
+      return true
+    }
+    const key=target.dataset?.studySetPick
+    if(!picker.available.has(key))return false
+    if(!target.checked)picker.selected.delete(key)
+    else if(picker.selected.size<STUDY_SET_ADD_LIMIT||picker.selected.has(key))picker.selected.add(key)
+    else target.checked=false
+    runtime.paintStudySetPickerSelection()
+    return true
+  }
+  const addPicked=keys=>{
+    const picker=runtime.studySetPicker
+    if(!picker)return false
+    const members=keys.map(key=>picker.available.get(key)).filter(Boolean).map(({kind,id})=>({kind,id}))
+    if(!members.length)return false
+    runtime.studySetPickerFocus="search"
+    return runtime.emitLibrarySelection("study_set_add_picked",{
+      set_id:picker.id,work_ids:[],members,
+    })
+  }
+  runtime.onStudySetPickerClick=event=>{
+    const button=event.target.closest?.("[data-study-set-add-picked]")
+    if(!button||!runtime.studySetPicker)return false
+    if(!button.disabled)addPicked([...runtime.studySetPicker.selected])
+    return true
+  }
+  const clearDrag=()=>{
+    const canvas=root.querySelector("[data-study-set-drop]")
+    canvas?.removeAttribute("data-drop-ready");canvas?.removeAttribute("data-drop-active")
+    runtime.studySetDrag=null
+  }
+  const dropCanvas=event=>{
+    if(!runtime.studySetDrag||runtime.studySetDrag.setId!==runtime.studySetPicker?.id)return null
+    if(!Array.from(event.dataTransfer?.types||[]).includes(STUDY_SET_DRAG_TYPE))return null
+    return event.target.closest?.("[data-study-set-drop]")
+  }
+  root.addEventListener?.("dragstart",event=>{
+    const row=event.target.closest?.("[data-study-set-drag-item]"),picker=runtime.studySetPicker
+    if(!row||!picker||!event.dataTransfer)return
+    const key=row.dataset.studySetDragItem
+    if(!picker.available.has(key))return
+    const keys=picker.selected.has(key)?[...picker.selected]:[key]
+    event.dataTransfer.setData(STUDY_SET_DRAG_TYPE,picker.id)
+    event.dataTransfer.effectAllowed="copy"
+    runtime.studySetDrag={setId:picker.id,keys}
+    root.querySelector("[data-study-set-drop]")?.setAttribute("data-drop-ready","")
+  })
+  root.addEventListener?.("dragover",event=>{
+    const canvas=dropCanvas(event)
+    if(!canvas)return
+    event.preventDefault()
+    event.dataTransfer.dropEffect="copy"
+    canvas.setAttribute("data-drop-active","")
+  })
+  root.addEventListener?.("dragleave",event=>{
+    const canvas=dropCanvas(event)
+    if(canvas&&!canvas.contains(event.relatedTarget))canvas.removeAttribute("data-drop-active")
+  })
+  root.addEventListener?.("drop",event=>{
+    if(!dropCanvas(event))return
+    event.preventDefault()
+    const {keys}=runtime.studySetDrag
+    clearDrag()
+    addPicked(keys)
+  })
+  root.addEventListener?.("dragend",clearDrag)
+}
+
+function studySetHeading(set,pickerOpen=false){
+  if(!set)return ""
+  const wb=Number(set.wb_count)||0,corpus=Number(set.corpus_count??set.wb_count)||0,missing=Number(set.missing_count)||0
+  return `<header class="library-head study-set-heading"><div><button type="button" class="library-back" data-study-set-action="study_set_close">← Study sets</button><h2 tabindex="-1">${esc(set.title)}</h2><p>${corpus?`${corpus} ${corpus===1?"book":"books"} with CARE readings`:"Saved CARE readings appear here"}${missing?` · ${missing} unavailable ${missing===1?"item":"items"}`:""}</p></div><div class="study-set-actions"><button type="button" class="study-set-button study-set-primary" data-study-set-picker-toggle data-study-set-action="study_set_picker" data-study-set-id="${esc(set.id)}" aria-expanded="${pickerOpen}"${pickerOpen?' aria-controls="study-set-picker"':""}>${pickerOpen?"Hide Library picker":"+ Add from Library"}</button><button type="button" class="study-set-button" data-study-set-action="study_set_edit">Edit set</button>${wb>=2?'<button type="button" class="study-set-button study-set-lateral" data-study-set-action="study_set_lateral">Prepare lateral</button>':""}${corpus?'<button type="button" class="study-set-button study-set-corpus" data-study-set-action="study_set_corpus">Prepare corpus</button>':""}</div></header>`
 }
 function library(data,state=shelfDefaults()){
   state=shelfStateFor(data,state)
@@ -1891,13 +2972,52 @@ function library(data,state=shelfDefaults()){
   const authors=[...new Set(all.flatMap(book=>[book.author,...arr(book.author_names)]).filter(Boolean))].sort((a,b)=>a.localeCompare(b))
   const languages=[...new Map(all.map(book=>[book.language_code,book.language_name||book.language_code]).filter(([code])=>code)).entries()].sort((a,b)=>a[1].localeCompare(b[1]))
   const filterCount=[state.author,state.language,state.layer,state.era].filter(Boolean).length
-  return `<div class="library-window" data-library-scope="${scope}" data-selecting="${librarySelectionAvailable(data)&&librarySelecting(data)}">${collection?`<header class="library-head"><div><button type="button" class="library-back" data-close-collection>← All library</button><h2>${esc(collection.title)}</h2></div>${collection.user_collection&&librarySelectionAvailable(data)?`<button type="button" class="library-edit-collection" data-library-edit-collection="${esc(collection.id)}">Edit collection</button>`:""}</header>`:""}<div class="library-toolbar"><div class="library-controls">${scope?"":`<div class="library-tabs" role="group" aria-label="Browse library">${SHELF_TABS.filter(([id])=>!collection||!["collection","lateral","corpus"].includes(id)).map(([id,label])=>`<button type="button" data-shelf-kind="${id}" class="${state.kind===id?"active":""}" aria-pressed="${state.kind===id}">${label}</button>`).join("")}</div>`}<div class="library-tools"><label class="library-search"><input type="search" data-shelf-input="query" aria-label="Find on this shelf" placeholder="Find a title or author…" value="${esc(state.query)}"></label><label class="library-sort"><span>Sort</span><select data-shelf-input="sort" aria-label="Sort library">${options(collection?[["collection","Collection order"],...SHELF_SORTS]:SHELF_SORTS,state.sort)}</select></label><button type="button" class="library-filter-toggle ${filterCount?"active":""}" data-shelf-filters aria-expanded="${state.filtersOpen}" aria-controls="shelf-filters">Filters${filterCount?` · ${filterCount}`:""}</button>${librarySelectionAvailable(data)?`<button type="button" class="library-select-toggle" data-library-selection-toggle aria-pressed="${librarySelecting(data)}">${librarySelecting(data)?"Done selecting":"Select books"}</button><button type="button" class="library-filter-toggle" data-library-selection-action="publish_beta">Publish to beta</button>`:""}${data.library_selection_enabled&&scope?'<button type="button" class="library-filter-toggle" data-library-selection-action="publish_beta">Publish to beta</button>':""}<button type="button" class="library-filter-toggle" data-portrait-open="directory">Books & thinkers</button><button type="button" class="library-archive" data-open-archive title="Open archived books"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h14v4H3zM4 7v10h12V7M8 10h4"/></svg><span>Archive</span></button></div></div>${librarySelectionAvailable(data)?`<div class="library-selection-tools" data-library-selection-tools ${librarySelecting(data)?"":"hidden"}><button type="button" data-library-select-visible>Select this shelf</button><button type="button" data-library-selection-clear>Clear selection</button><span>Open a collection to choose individual books.</span></div>`:""}<div class="library-filters" id="shelf-filters" ${state.filtersOpen?"":"hidden"}><label>Author<select data-shelf-input="author">${options([["","All authors"],...authors.map(author=>[author,author])],state.author)}</select></label><label>Language<select data-shelf-input="language">${options([["","All languages"],...languages],state.language)}</select></label><label>Available reading<select data-shelf-input="layer">${options([["","Any reading"],["source","Source text"],["CH","Chapter · CH"],["CL","Cluster · CL"],["MC","Macro · MC"],["WB","Whole book · WB"],["unprocessed","Awaiting CARE"]],state.layer)}</select></label><label>Year<select data-shelf-input="era" title="Original writing year">${options([["","All periods"],["before1800","Before 1800"],["1800","1800–1899"],["1900","1900–1999"],["2000","2000 onwards"],["undated","Undated"]],state.era)}</select></label></div></div><div class="library-summary" data-shelf-summary role="status" aria-live="polite">${result.summary}</div><div class="library-grid" data-shelf-grid>${result.cards}</div>${librarySelectionAvailable(data)?`<aside class="library-selection-tray" data-library-selection-tray aria-label="Selected books" ${librarySelecting(data)?"":"hidden"}>${librarySelectionTray(data)}</aside>`:""}</div>`
+  const filterLabel=`Filters${filterCount?` · ${filterCount}`:""}`
+  const setsTab=state.kind==="study_sets",canSelect=!setsTab&&librarySelectionAvailable(data),selecting=canSelect&&librarySelecting(data)
+  const selectionLabel=selecting?"Done selecting":"Select books"
+  const pickerOpen=Boolean(data.active_study_set)&&Array.isArray(data.study_set_picker_items)
+  const shelfResultsMarkup=`<div class="library-summary" data-shelf-summary role="status" aria-live="polite">${result.summary}</div><div class="library-grid" data-shelf-grid>${result.cards}</div>`
+  return `<div class="library-window" data-library-scope="${scope}" data-library-theme="${shelfTheme(data,state)}" data-selecting="${selecting}">
+    ${studySetHeading(data.active_study_set,pickerOpen)}
+    ${collection?`<header class="library-head"><div><button type="button" class="library-back" data-close-collection>← ${data.active_study_set?"Study set":"All library"}</button><h2>${esc(collection.title)}</h2></div>${collection.user_collection&&canSelect?`<button type="button" class="library-edit-collection" data-library-edit-collection="${esc(collection.id)}">Edit collection</button>`:""}</header>`:""}
+    <div class="library-toolbar">
+      <div class="library-controls">
+        ${shelfCategory(data,state,collection)}
+        <div class="library-tools">
+          <label class="library-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4"/></svg><input type="search" data-shelf-input="query" aria-label="Find on this shelf" placeholder="${setsTab?"Find a study set…":"Find a title or author…"}" value="${esc(state.query)}"></label>
+          <div class="library-tool-actions">
+            <label class="library-sort" title="Sort library"><select data-shelf-input="sort" aria-label="Sort library">${options(collection?[["collection","Collection order"],...SHELF_SORTS]:data.active_study_set?[["study_set","Set order"],...SHELF_SORTS]:SHELF_SORTS,state.sort)}</select>${shelfControlIcon("sort")}</label>
+            ${setsTab?`<button type="button" class="study-set-new" data-study-set-action="study_set_new" aria-label="New study set" title="New study set">${shelfControlIcon("add")}<span class="library-control-label">New study set</span></button>`:`<button type="button" class="library-filter-toggle ${filterCount?"active":""}" data-shelf-filters aria-label="${filterLabel}" title="${filterLabel}" aria-expanded="${state.filtersOpen}" aria-controls="shelf-filters">${shelfControlIcon("filter")}<span class="library-control-label">${filterLabel}</span></button>`}
+            ${canSelect?`<button type="button" class="library-select-toggle" data-library-selection-toggle aria-label="${selectionLabel}" title="${selectionLabel}" aria-pressed="${selecting}">${shelfControlIcon("select")}<span class="library-control-label">${selectionLabel}</span></button>`:""}
+            ${data.library_selection_enabled&&!data.studio_embed&&(scope==="corpus"||state.kind==="corpus")?`<button type="button" class="library-select-toggle" data-library-selection-action="compose_corpus" aria-label="Compose corpus" title="Compose corpus">${shelfControlIcon("add")}<span class="library-control-label">Compose corpus</span></button>`:""}
+            <details class="library-more" data-shelf-actions>
+              <summary aria-label="More library actions"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.45"/><circle cx="10" cy="10" r="1.45"/><circle cx="16" cy="10" r="1.45"/></svg><span>More</span></summary>
+              <div class="library-more-panel">
+                ${data.web_study_set_actions?'<button type="button" data-new-web-study-set>New study set…</button>':""}
+                <button type="button" data-web-browse-authors>Browse by author</button>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+      ${canSelect?`<div class="library-selection-tools" data-library-selection-tools ${selecting?"":"hidden"}><button type="button" data-library-select-visible>Select this shelf</button><button type="button" data-library-selection-clear>Clear selection</button><span>Open a collection to choose individual books.</span></div>`:""}
+      <div class="library-filters" id="shelf-filters" ${state.filtersOpen?"":"hidden"}>
+        <label>Author<select data-shelf-input="author">${options([["","All authors"],...authors.map(author=>[author,author])],state.author)}</select></label>
+        <label>Language<select data-shelf-input="language">${options([["","All languages"],...languages],state.language)}</select></label>
+        <label>Available reading<select data-shelf-input="layer">${options([["","Any reading"],["source","Source text"],["CH","Chapter · CH"],["CL","Cluster · CL"],["MC","Macro · MC"],["WB","Whole book · WB"],["unprocessed","Awaiting CARE"]],state.layer)}</select></label>
+        <label>Year<select data-shelf-input="era" title="Original writing year">${options([["","All periods"],["before1800","Before 1800"],["1800","1800–1899"],["1900","1900–1999"],["2000","2000 onwards"],["undated","Undated"]],state.era)}</select></label>
+      </div>
+    </div>
+    ${pickerOpen?`<div class="study-set-workspace"><section class="study-set-canvas" data-study-set-drop aria-label="Study set shelf"><div class="study-set-drop" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 2v10m-3-3 3 3 3-3M4 13v4h12v-4"/></svg>Drop items onto this set</div>${shelfResultsMarkup}</section>${studySetPickerPane(data)}</div>`:shelfResultsMarkup}
+    ${canSelect?`<aside class="library-selection-tray" data-library-selection-tray aria-label="Selected books" ${selecting?"":"hidden"}>${librarySelectionTray(data)}</aside>`:""}
+  </div>`
 }
 function centreSelectedReference(root,reference){
   if(!reference?.id)return false
   const card=root.querySelector(`.axiom-button[data-ref-id="${CSS.escape(String(reference.id))}"],.passage[data-ref-id="${CSS.escape(String(reference.id))}"],.route-source-card[data-ref-id="${CSS.escape(String(reference.id))}"]`)
   const pane=card?.closest("[data-pane]"),body=card?.closest(".window-body"),strip=root.querySelector("[data-strip]")
   if(!card||!pane||!body||!strip)return false
+  if(card.closest("[data-studio-filter-hidden]"))return pane.dataset.pane
   const section=card.closest("details");if(section)section.open=true
   // Centre within the real content bounds. Extra end padding would leave a
   // half-screen of blank space when visiting the first or last pane.
@@ -1929,10 +3049,12 @@ function drawRouteThreads(runtime){
   if(!isRouteReference(reference)||!strip){svg?.remove();return}
   if(!svg){svg=root.ownerDocument.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("class","route-threads");svg.setAttribute("data-route-threads","");svg.setAttribute("aria-hidden","true");root.append(svg)}
   const bounds=root.getBoundingClientRect(),clip=strip.getBoundingClientRect(),cards=new Map()
-  root.querySelectorAll(".route-card[data-ref-id],.route-source-card[data-ref-id],.axiom-button[data-ref-id]").forEach(card=>{if(!card.closest("[data-connection-book],[data-connection-field]"))cards.set(card.dataset.refId,card)})
-  const geometry=new Map(),edgeSlots=new Map()
+  root.querySelectorAll(".route-card[data-ref-id],.route-source-card[data-ref-id],.axiom-button[data-ref-id]").forEach(card=>{if(!card.closest("[data-connection-book],[data-connection-field],[data-studio-filter-hidden]"))cards.set(card.dataset.refId,card)})
+  const geometry=new Map(),edgeSlots=new Map(),rects=new Map()
+  const measured=element=>{if(!element)return null;if(!rects.has(element))rects.set(element,element.getBoundingClientRect());return rects.get(element)}
   cards.forEach((card,id)=>{
-    const rect=card.getBoundingClientRect(),body=card.closest(".window-body")?.getBoundingClientRect()
+    const group=card.closest("details[data-route-reading]:not([open])"),endpoint=group?.querySelector?.("summary")||card
+    const rect=measured(endpoint),body=measured(card.closest(".window-body"))
     if(!body||rect.width<=0||rect.height<=0||rect.right<=clip.left||rect.left>=clip.right)return
     const middle=rect.top+rect.height/2,offscreen=rect.bottom<=body.top+8?"above":rect.top>=body.bottom-8?"below":""
     let y=Math.max(body.top+10,Math.min(body.bottom-10,middle))
@@ -1979,7 +3101,7 @@ function drawConnectionThreads(runtime){
   const bounds=root.getBoundingClientRect(),clip=strip.getBoundingClientRect()
   const paths=groups.flatMap(group=>{
     const cards=new Map()
-    root.querySelectorAll("[data-connection-field] [data-ref-id],[data-connection-book] [data-ref-id]").forEach(card=>{const pane=card.closest("[data-connection-field],[data-connection-book]");if(group.kind==="book"&&pane.dataset.connectionBook!==group.workId||group.kind==="field"&&!pane.dataset.connectionField)return;cards.set(`${group.kind==="field"?(card.closest("[data-connection-source-pane]")?.dataset.connectionSourcePane||pane.dataset.connectionField):""}|${card.dataset.refId}`,card)})
+    root.querySelectorAll("[data-connection-field] [data-ref-id],[data-connection-book] [data-ref-id]").forEach(card=>{if(card.closest("[data-studio-filter-hidden]"))return;const pane=card.closest("[data-connection-field],[data-connection-book]");if(group.kind==="book"&&pane.dataset.connectionBook!==group.workId||group.kind==="field"&&!pane.dataset.connectionField)return;cards.set(`${group.kind==="field"?(card.closest("[data-connection-source-pane]")?.dataset.connectionSourcePane||pane.dataset.connectionField):""}|${card.dataset.refId}`,card)})
     const drawable=exactRouteEdges(group.reference).map(edge=>{
       const source=cards.get(`${group.kind==="field"?edge.source_pane||"":""}|${edge.source_id}`),target=cards.get(`${group.kind==="field"?edge.target_pane||"":""}|${edge.target_id}`)
       if(!source||!target)return null
@@ -2018,6 +3140,7 @@ function centreConnectionReference(runtime){
   if(!reference?.id)return false
   const pane=root.querySelector(`[data-connection-field="${CSS.escape(reference.source_pane||runtime.data.connection.pane_id||"")}"]`),card=pane?.querySelector(`[data-ref-id="${CSS.escape(reference.id)}"]`),body=card?.closest(".window-body"),strip=root.querySelector("[data-strip]")
   if(!card||!body||!strip)return false
+  if(card.closest("[data-studio-filter-hidden]"))return centreConnectionPane(runtime,pane)
   const section=card.closest("details");if(section)section.open=true
   card.classList.add("selected")
   // Centre once on each axis. A smooth strip movement followed by
@@ -2036,7 +3159,7 @@ function setupConnectionReader(runtime){
   runtime.onConnectionTabsScroll=event=>{if(event.target?.matches?.(".connection-tab-rail .desk-tabs"))runtime.paintConnectionTabs()}
   runtime.connectionStack=input=>{const workId=input?.closest?.("[data-connection-book]")?.dataset?.connectionBook;return workId?arr(runtime.data?.connection?.other_stacks).find(stack=>String(stack.work?.id)===workId):null}
   const inBookContext=(input,callback)=>{const stack=runtime.connectionStack(input);if(!stack)return callback();const saved=runtime.data,api=runtime.api;runtime.data={...saved,stack,reference:stack.reference||null};runtime.api={...api,setTriggerValue:(kind,value)=>{if(["open_chapter","open_sheet"].includes(kind))api?.setTriggerValue("connection_action",{action:kind==="open_chapter"?"chapter":"sheet",work_id:String(stack.work?.id),id:String(value)});else if(kind==="set_route_mode")api?.setTriggerValue("connection_action",{action:"set_book_route_mode",work_id:String(stack.work?.id),mode:value});else api?.setTriggerValue(kind,value)}};try{return callback()}finally{runtime.data=saved;runtime.api=api}}
-  for(const key of ["paintSlider","chooseSlider"]){const original=runtime[key];runtime[key]=(input,...args)=>inBookContext(input,()=>original(input,...args))}
+  for(const key of ["paintSlider","chooseSlider","stepSlider"]){const original=runtime[key];runtime[key]=(input,...args)=>inBookContext(input,()=>original(input,...args))}
   for(const key of ["onSliderInput","onSliderKey","onSliderClick","onRouteDirectionInput","onRouteDirectionChange","onSectionsClick"]){const original=runtime[key];runtime[key]=event=>inBookContext(event.target,()=>original(event))}
   runtime.paintConnectionSelection=()=>root.querySelectorAll("[data-connection-field],[data-connection-book]").forEach(pane=>{
     const server=runtime.data?.connection?.selection,selection=runtime.connectionSelection.get(pane.dataset.pane)||server
@@ -2056,19 +3179,26 @@ function setupConnectionReader(runtime){
     if(view?.CustomEvent){const event=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{kind:button.dataset.selectPassage||pane.dataset.layer==="SOURCE"?"passage":"axiom",id,scope,open:false}});view.dispatchEvent(event);if(event.defaultPrevented)return}
     runtime.connectionAction({action:"select_axiom",...selection})
   }
-  runtime.chooseConnectionLayer=(input,value)=>{
+  runtime.chooseConnectionLayer=(input,value,neighbors=true)=>{
     const pane=input.closest("[data-pane]"),control=input.closest("[data-connection-layer-control]"),stops=[...control.querySelectorAll("[data-connection-layer-stop]")],index=Math.max(0,Math.min(stops.length-1,Number(value)||0)),stop=stops[index],source=stop.dataset.connectionLayerReading
     input.value=String(index);input.setAttribute("aria-valuetext",stop.dataset.connectionLayerLabel)
     control.querySelector("[data-connection-layer-title]").textContent=stop.dataset.connectionLayerLabel
     control.querySelector("[data-connection-layer-count]").textContent=index?`${index} / ${stops.length-1}`:`${stops.length-1} readings`
-    stops.forEach((button,position)=>button.classList.toggle("active",position===index))
+    stops.forEach((button,position)=>{
+      const selected=position===index
+      button.classList.toggle("active",selected);button.setAttribute("aria-pressed",String(selected));button.tabIndex=selected?0:-1
+    })
+    paintSliderSteps(input,index,stops.length)
     pane.querySelectorAll("[data-connection-reading]").forEach(section=>{section.hidden=Boolean(source&&section.dataset.connectionReading!==source);if(!section.hidden)section.open=true})
+    paintStudioPaneFilter(runtime,pane);paintStudioFilterMenu(runtime)
     runtime.connectionLayerSelection=runtime.connectionLayerSelection||new Map();runtime.connectionLayerSelection.set(pane.dataset.pane,source)
     const body=pane.querySelector(".window-body");if(body)body.scrollTop=0
+    if(neighbors)keepSliderVisible(input,true)
     runtime.queueThreads()
   }
   runtime.restoreConnectionLayers=()=>root.querySelectorAll("[data-connection-layer-slider]").forEach(input=>{const pane=input.closest("[data-pane]"),saved=runtime.connectionLayerSelection?.get(pane.dataset.pane);if(!saved)return;const stops=[...pane.querySelectorAll("[data-connection-layer-stop]")],index=stops.findIndex(stop=>stop.dataset.connectionLayerReading===saved);if(index>=0)runtime.chooseConnectionLayer(input,index)})
-  const layerInput=runtime.onSliderInput;runtime.onSliderInput=event=>{const input=event.target.closest?.("[data-connection-layer-slider]");if(input){runtime.chooseConnectionLayer(input,input.value);return true}return layerInput(event)}
+  const layerInput=runtime.onSliderInput;runtime.onSliderInput=event=>{const input=event.target.closest?.("[data-connection-layer-slider]");if(input?.dataset?.connectionLayerSlider!==undefined){runtime.chooseConnectionLayer(input,input.value,false);return true}return layerInput(event)}
+  const layerChange=runtime.onSliderChange;runtime.onSliderChange=event=>{const input=event.target.closest?.("[data-connection-layer-slider]");if(input?.dataset?.connectionLayerSlider!==undefined){keepSliderVisible(input,true);return}return layerChange(event)}
   runtime.onConnectionClick=event=>{
     const target=event.target
     if(target.closest?.('[data-dialogue-thinker-runs]')){
@@ -2078,7 +3208,7 @@ function setupConnectionReader(runtime){
       return true
     }
     const layerStop=target.closest?.("[data-connection-layer-stop]")
-    if(layerStop){runtime.chooseConnectionLayer(layerStop.closest("[data-connection-layer-control]").querySelector("[data-connection-layer-slider]"),layerStop.dataset.connectionLayerStop);return true}
+    if(layerStop){const input=layerStop.closest("[data-connection-layer-control]").querySelector("[data-connection-layer-slider]");input.focus({preventScroll:true});runtime.chooseConnectionLayer(input,layerStop.dataset.connectionLayerStop);return true}
     const tabArrow=target.closest?.("[data-connection-tabs-scroll]")
     if(tabArrow){const tabs=root.querySelector(".connection-tab-rail .desk-tabs");tabs?.scrollBy({left:Number(tabArrow.dataset.connectionTabsScroll)*Math.max(120,tabs.clientWidth*.7),behavior:"smooth"});return true}
     const paneTab=target.closest?.("[data-pane-target]")
@@ -2104,10 +3234,8 @@ function setupConnectionReader(runtime){
   const onKey=runtime.onKey;runtime.onKey=event=>{
     const pane=event.target?.closest?.("[data-connection-field],[data-connection-book]")
     if(!pane)return onKey(event)
-    if(event.target.closest?.("[data-connection-layer-slider]"))return
-    const button=event.target.closest("[data-select-axiom],[data-select-passage]")
-    if(button&&["ArrowUp","ArrowDown","Home","End"].includes(event.key)){const buttons=runtime.visibleAxioms(pane),index=buttons.indexOf(button),next=event.key==="Home"?0:event.key==="End"?buttons.length-1:Math.max(0,Math.min(buttons.length-1,index+(event.key==="ArrowDown"?1:-1)));if(buttons[next]){event.preventDefault();select(buttons[next]);buttons[next].scrollIntoView({block:"nearest",inline:"nearest"})}return}
     if(["Enter"," "].includes(event.key)&&event.target.closest("[data-ref-id],[data-open-axiom-routes],[data-open-passage-routes],[data-clear-reference]")){event.preventDefault();runtime.onConnectionClick(event);return}
+    if(runtime.onSelectionKey(event,button=>button.closest("[data-connection-field],[data-connection-book]")?select(button):runtime.selectAxiom(button)))return
     if(runtime.onSliderKey(event))return
     if(["[","]"].includes(event.key)){event.preventDefault();runtime.step(event.key==="["?-1:1)}
   }
@@ -2145,12 +3273,97 @@ function setupTypesetPassageDismissal(runtime){
   runtime.cleanupTypesetPassageDismissal=cleanup
   return cleanup
 }
-function setup(root){
+const readingKeyControl='input,textarea,select,button,a[href],summary,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="textbox"],[role="slider"],[role="scrollbar"],[role="separator"],[role="menuitem"],[role="tab"],[role="dialog"]'
+const readingKeyCard='[data-select-axiom],[data-select-passage]'
+const sliderArrowControl='[data-sheet-slider],[data-connection-layer-slider],[data-slider-step],[data-slider-stop],[data-connection-layer-stop]'
+const readingArrowDirections={ArrowLeft:-1,ArrowRight:1,ArrowUp:-1,ArrowDown:1}
+function readingSelectionKeyAllowed(event){
+  return !event.defaultPrevented&&!event.isComposing&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!event.shiftKey
+}
+function liveReadingSelection(root){
+  const selection=axiomCodeSelection(root)
+  return selection?.isCollapsed===false&&Boolean(String(selection))
+}
+function readingPaneAvailable(pane){
+  return pane&&!pane.hidden&&!pane.inert&&!pane.classList.contains('folded')&&!pane.classList.contains('care-pane-minimized')
+}
+function readingPaneBounds(pane){
+  return (pane.querySelector('.window-body,.pane-body')||pane).getBoundingClientRect()
+}
+function readingCardNear(cards,bounds,y=bounds.top){
+  let closest=null,distance=Infinity,visible=false
+  y=Math.max(bounds.top,Math.min(bounds.bottom,y))
+  for(const card of cards){
+    const {top,bottom}=card.getBoundingClientRect(),gap=Math.max(top-y,y-bottom,0),inView=top<bounds.bottom&&bottom>bounds.top
+    if((inView&&!visible)||(inView===visible&&gap<distance)){
+      closest=card;distance=gap;visible=inView
+      if(inView&&gap===0)break
+    }
+  }
+  return closest
+}
+function moveReadingSelection(event,pane,card,cardsInPane,select){
+  const {key}=event,direction=readingArrowDirections[key],horizontal=key==='ArrowLeft'||key==='ArrowRight'
+  if(!readingPaneAvailable(pane)||(!direction&&key!=='Home'&&key!=='End'))return false
+  const cards=cardsInPane(pane),current=cards.includes(card)?card:cards.find(item=>['aria-pressed','aria-current'].some(name=>item.getAttribute(name)==='true'))
+  let destination=null
+  if(horizontal){
+    const bounds=readingPaneBounds(pane),{top,bottom}=bounds,rect=current?.getBoundingClientRect()
+    const y=rect?Math.max(top,Math.min(bottom,(rect.top+rect.bottom)/2)):top
+    const panes=[...pane.parentElement.children],index=panes.indexOf(pane)
+    for(let i=index+direction;i>=0&&i<panes.length;i+=direction){
+      const neighbor=panes[i]
+      if(!neighbor.matches('[data-pane]')||!readingPaneAvailable(neighbor))continue
+      destination=readingCardNear(cardsInPane(neighbor),readingPaneBounds(neighbor),y)
+      if(destination)break
+    }
+    if(!destination&&!current)destination=readingCardNear(cards,bounds,y)
+  }else if(cards.length){
+    const index=cards.indexOf(current)
+    if(key==='Home')destination=cards[0]
+    else if(key==='End')destination=cards.at(-1)
+    else if(index>=0)destination=cards[index+direction]
+    else destination=readingCardNear(cards,readingPaneBounds(pane))
+  }
+  if(!destination&&!current)return false
+  event.preventDefault()
+  if(destination){destination.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});select(destination)}
+  return true
+}
+function readingPaneSlider(root,pane){
+  if(!readingPaneAvailable(pane)||pane.closest("[data-study-desk]")!==root||root.dataset.view==="outline")return null
+  const input=pane.querySelector("[data-sheet-slider],[data-connection-layer-slider]")
+  return input&&!input.disabled?input:null
+}
+function focusPaneReadingBody(pane){
+  const body=pane?.querySelector(".window-body")
+  if(!body||!readingPaneAvailable(pane))return
+  if(!body.hasAttribute("tabindex"))body.tabIndex=-1
+  body.focus({preventScroll:true})
+}
+function rememberPaneReadingFocus(runtime,active){
+  const slider=active?.matches?.(sliderInputSelector)||active?.matches?.("[data-slider-step]")
+  const pane=(slider||active?.matches(".window-body"))?active?.closest("[data-pane]"):null
+  if(readingPaneAvailable(pane))return {id:pane.dataset.pane,layer:paneLayerKey(pane),book:pane.dataset.connectionBook,field:pane.dataset.connectionField,slider,direction:active?.dataset?.sliderStep}
+}
+function restorePaneReadingFocus(root,saved){
+  if(!saved||root.querySelector(":focus"))return
+  // A chapter redraw can replace both the sheet ID and its focused card.
+  // Restore the same lane without scrolling.
+  const panes=[...root.querySelectorAll("[data-pane]")].filter(pane=>pane.dataset.connectionBook===saved.book&&pane.dataset.connectionField===saved.field&&readingPaneAvailable(pane)&&(!saved.slider||readingPaneSlider(root,pane)))
+  const pane=panes.find(pane=>pane.dataset.pane===saved.id)||panes.find(pane=>paneLayerKey(pane)===saved.layer)
+  if(!saved.slider){focusPaneReadingBody(pane);return}
+  const input=readingPaneSlider(root,pane)
+  if(!input)return
+  const step=saved.direction&&root.dataset.careSliderArrows==="true"&&input.closest("[data-slider-row]")?.querySelector(`[data-slider-step="${saved.direction}"]:not(:disabled)`)
+  ;(step||input).focus({preventScroll:true})
+}
+function setup(root,studioEmbed=false){
   let savedTextScale=1
-  try{savedTextScale=Number(root.ownerDocument.defaultView?.sessionStorage?.getItem(TEXT_SCALE_KEY)??1)}catch(_){}
+  try{if(!studioEmbed)savedTextScale=Number(root.ownerDocument.defaultView?.sessionStorage?.getItem(TEXT_SCALE_KEY)??1)}catch(_){}
   let savedSkin="care"
   try{
-    const storage=root.ownerDocument.defaultView?.sessionStorage
+    const storage=studioEmbed?null:root.ownerDocument.defaultView?.sessionStorage
     savedSkin=String(storage?.getItem(SKIN_KEY)||"")
     if(!savedSkin){const legacy=String(storage?.getItem(LEGACY_SKIN_KEY)||"");savedSkin=["library","classic"].includes(legacy)?legacy:"care"}
   }catch(_){}
@@ -2191,7 +3404,7 @@ function setup(root){
     }
     return true
   }
-  runtime.readingPassageVisible=button=>!button.closest("[hidden]")&&(root.dataset.beautifulText!=="true"||button.dataset.beautifulFolded===undefined)
+  runtime.readingPassageVisible=button=>!button.closest("[hidden],[data-studio-filter-hidden]")&&(root.dataset.beautifulText!=="true"||button.dataset.beautifulFolded===undefined)
   runtime.readingPassageTarget=button=>{
     if(!button?.dataset.selectPassage||root.dataset.beautifulText!=="true"||button.dataset.beautifulFolded===undefined||runtime.isRouting())return button
     const passages=[...(button.closest('[data-pane]')?.querySelectorAll('[data-select-passage]')||[])],index=passages.indexOf(button),visible=candidate=>!candidate.disabled&&runtime.readingPassageVisible(candidate)
@@ -2258,18 +3471,19 @@ function setup(root){
     }
     if(changed)runtime.api?.setStateValue("selected_axiom",selection)
   }
-  runtime.onSelectionKey=event=>{
-    const button=event.target?.closest?.("[data-select-axiom],[data-select-passage]")
-    if(!button||button.disabled)return false
-    if(["Enter"," "].includes(event.key)){event.preventDefault();runtime.selectAxiom(button);return true}
-    if(!["ArrowUp","ArrowDown","Home","End"].includes(event.key))return false
-    const pane=button.closest(button.dataset.selectPassage||runtime.isRouting()?"[data-pane]":"[data-reading-sheet]"),buttons=runtime.visibleAxioms(pane),index=buttons.indexOf(button)
-    if(index<0)return false
-    event.preventDefault()
-    const next=event.key==="Home"?0:event.key==="End"?buttons.length-1:Math.max(0,Math.min(buttons.length-1,index+(event.key==="ArrowDown"?1:-1)))
-    runtime.selectAxiom(buttons[next])
-    buttons[next].scrollIntoView({block:"nearest",inline:"nearest",behavior:"auto"})
-    return true
+  runtime.onSelectionKey=(event,select=runtime.selectAxiom)=>{
+    if(!readingSelectionKeyAllowed(event)||(!readingArrowDirections[event.key]&&!['Enter',' ','Home','End'].includes(event.key)))return false
+    const target=event.target,control=target?.closest?.(readingKeyControl),card=target?.closest?.(readingKeyCard)
+    const fromSlider=readingArrowDirections[event.key]&&target?.closest?.(sliderArrowControl)
+    if(target?.isContentEditable||card?.disabled||(control&&control!==card&&!fromSlider))return false
+    if(card&&['Enter',' '].includes(event.key)){event.preventDefault();select(card);return true}
+    if((!card&&!fromSlider&&!target?.closest?.('.window-body'))||liveReadingSelection(root))return false
+    return moveReadingSelection(event,target.closest('[data-pane]'),card,runtime.visibleAxioms,button=>{
+      select(button)
+      runtime.focused=button.closest('[data-pane]').dataset.pane
+      runtime.focusScrollLeft=root.querySelector('[data-strip]')?.scrollLeft
+      runtime.paintFocus()
+    })
   }
   runtime.rememberSections=pane=>runtime.sectionMemory.set(pane.dataset.pane,[...pane.querySelectorAll(".care-section")].map(section=>section.open))
   runtime.onSectionsClick=event=>{
@@ -2292,34 +3506,85 @@ function setup(root){
   }
   runtime.shelf=shelfDefaults()
   setupLibrarySelection(runtime)
+  setupStudySetPicker(runtime)
   // Reading destinations start fresh; only the sort order is a preference.
-  try{const saved=JSON.parse(root.ownerDocument.defaultView?.sessionStorage?.getItem(SHELF_STATE_KEY)||"{}");if(SHELF_SORTS.some(([id])=>id===saved.sort))runtime.shelf.sort=saved.sort}catch(_){}
+  try{const saved=JSON.parse((!studioEmbed&&root.ownerDocument.defaultView?.sessionStorage?.getItem(SHELF_STATE_KEY))||"{}");if(SHELF_SORTS.some(([id])=>id===saved.sort))runtime.shelf.sort=saved.sort}catch(_){}
+  runtime.mainShelfSort=runtime.shelf.sort
   runtime.syncShelf=data=>{
-    const signature=JSON.stringify([shelfScope(data),data?.shelf_request||""])
+    const setId=String(data?.active_study_set?.id||""),previousSet=runtime.shelfSetId
+    const signature=JSON.stringify([shelfScope(data),data?.shelf_request||"",setId])
     if(runtime.shelfSignature===signature)return false
     runtime.shelfSignature=signature
-    const sort=SHELF_SORTS.some(([id])=>id===runtime.shelf.sort)?runtime.shelf.sort:"title"
+    runtime.shelfSetId=setId
+    const sort=!previousSet&&SHELF_SORTS.some(([id])=>id===runtime.shelf.sort)?runtime.shelf.sort:runtime.mainShelfSort
+    runtime.mainShelfSort=sort
     runtime.shelf={...shelfDefaults(shelfScope(data)),sort}
+    if(setId){runtime.shelf.kind="all";runtime.shelf.sort="study_set"}
+    else if(previousSet&&studySetsAvailable(data)&&!shelfScope(data)&&!runtime.browseLibraryFromSet)runtime.shelf.kind="study_sets"
+    runtime.browseLibraryFromSet=false
     return true
   }
-  runtime.saveShelf=()=>{try{root.ownerDocument.defaultView?.sessionStorage?.setItem(SHELF_STATE_KEY,JSON.stringify(runtime.shelf))}catch(_){}}
+  runtime.saveShelf=()=>{
+    if(runtime.data?.active_study_set)return
+    if(SHELF_SORTS.some(([id])=>id===runtime.shelf.sort))runtime.mainShelfSort=runtime.shelf.sort
+    try{if(!studioEmbed)root.ownerDocument.defaultView?.sessionStorage?.setItem(SHELF_STATE_KEY,JSON.stringify({...runtime.shelf,sort:runtime.mainShelfSort}))}catch(_){}
+  }
+  runtime.closeShelfActions=(details,{restoreFocus=false}={})=>{
+    if(!details?.open)return
+    details.open=false
+    if(restoreFocus)details.querySelector("summary")?.focus({preventScroll:true})
+  }
+  runtime.onShelfActionsOutside=event=>{
+    if(runtime.data?.mode!=="library")return
+    const path=event.composedPath?.()||[event.target]
+    root.querySelectorAll("[data-shelf-actions][open]").forEach(details=>{
+      if(!path.includes(details))runtime.closeShelfActions(details)
+    })
+  }
+  runtime.paintShelfTheme=()=>{
+    const theme=shelfTheme(runtime.data,runtime.shelf)
+    const shelf=root.querySelector(".library-window")
+    if(shelf&&shelf.dataset.libraryTheme!==theme)shelf.dataset.libraryTheme=theme
+    // Only the main Library advertises its local category to the shared chrome.
+    const host=root.getRootNode?.()?.host
+    if(host&&!studioEmbed&&host.dataset.careShelfTheme!==theme)host.dataset.careShelfTheme=theme
+  }
   runtime.paintShelfControls=()=>{
-    root.querySelectorAll("[data-shelf-kind]").forEach(button=>{const active=button.dataset.shelfKind===runtime.shelf.kind;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active))})
+    root.querySelectorAll("[data-shelf-kind]").forEach(button=>{
+      const active=button.dataset.shelfKind===runtime.shelf.kind
+      button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active))
+      if(!active)return
+      const summary=root.querySelector("[data-shelf-category]")?.querySelector("summary"),label=root.querySelector("[data-shelf-category-label]")
+      if(label)label.textContent=button.textContent
+      if(summary){
+        summary.title=`Browse library, ${button.textContent}`
+        summary.setAttribute("aria-label",summary.title)
+      }
+    })
     const filterCount=[runtime.shelf.author,runtime.shelf.language,runtime.shelf.layer,runtime.shelf.era].filter(Boolean).length,toggle=root.querySelector("[data-shelf-filters]")
-    if(toggle){toggle.textContent=`Filters${filterCount?` · ${filterCount}`:""}`;toggle.classList.toggle("active",filterCount>0);toggle.setAttribute("aria-expanded",String(runtime.shelf.filtersOpen))}
+    if(toggle){
+      const text=toggle.querySelector(".library-control-label")
+      const label=`Filters${filterCount?` · ${filterCount}`:""}`
+      if(text)text.textContent=label
+      toggle.title=label
+      toggle.setAttribute("aria-label",label)
+      toggle.classList.toggle("active",filterCount>0)
+      toggle.setAttribute("aria-expanded",String(runtime.shelf.filtersOpen))
+    }
     const filters=root.querySelector(".library-filters");if(filters)filters.hidden=!runtime.shelf.filtersOpen
   }
   runtime.paintShelf=(full=false)=>{
     runtime.closeBookMenu()
     runtime.saveShelf()
-    if(full){root.innerHTML=library(runtime.librarySelectionData(),runtime.shelf);runtime.applySkin();runtime.paintLibrarySelection();return}
+    if(full){root.innerHTML=library(runtime.librarySelectionData(),runtime.shelf);runtime.paintShelfTheme();runtime.applySkin();runtime.paintLibrarySelection();return}
     const result=shelfResults(runtime.librarySelectionData(),runtime.shelf),grid=root.querySelector("[data-shelf-grid]"),summary=root.querySelector("[data-shelf-summary]")
     if(grid)grid.innerHTML=result.cards
     if(summary)summary.innerHTML=result.summary
+    runtime.paintShelfTheme()
     runtime.paintShelfControls()
     runtime.paintLibrarySelection()
   }
-  runtime.onShelfInput=event=>{const input=event.target.closest?.("[data-shelf-input]");if(!input||!["query","sort","author","language","layer","era"].includes(input.dataset.shelfInput)||runtime.shelf[input.dataset.shelfInput]===input.value)return;runtime.shelf[input.dataset.shelfInput]=input.value;runtime.paintShelf()}
+  runtime.onShelfInput=event=>{if(runtime.onStudySetPickerInput(event))return;const input=event.target.closest?.("[data-shelf-input]");if(!input||!["query","sort","author","language","layer","era"].includes(input.dataset.shelfInput)||runtime.shelf[input.dataset.shelfInput]===input.value)return;runtime.shelf[input.dataset.shelfInput]=input.value;runtime.paintShelf()}
   runtime.listen=(node,event,handler,options)=>{node.addEventListener(event,handler,options)}
   runtime.onRouteDirectionInput=event=>{
     const input=event.target?.closest?.("[data-route-direction]")
@@ -2337,6 +3602,16 @@ function setup(root){
     if(mode!==routeMode(runtime.data.reference))runtime.api?.setTriggerValue("set_route_mode",mode)
   }
   runtime.onClick=event=>{
+    if(runtime.data?.mode==="library"){
+      const details=event.target.closest("button")?.closest("[data-shelf-actions][open]")
+      if(details)runtime.closeShelfActions(details,{restoreFocus:true})
+      if(event.target.closest("summary")){
+        const active=event.target.closest("[data-shelf-actions]")
+        if(active)root.querySelectorAll("[data-shelf-actions][open]").forEach(menu=>{
+          if(menu!==active)runtime.closeShelfActions(menu)
+        })
+      }
+    }
     if(portraitMenuAction(runtime,event))return
     if(runtime.onOriginalClick?.(event))return
     if(runtime.onBookMenuClick(event))return
@@ -2352,10 +3627,22 @@ function setup(root){
     const routes=event.target.closest("[data-open-axiom-routes],[data-open-passage-routes]")
     if(routes&&!routes.hidden){runtime.openPreparedReference(routes.dataset.openPassageRoutes||routes.dataset.openAxiomRoutes);return}
     if(runtime.onSliderClick?.(event))return
-    const collection=event.target.closest("[data-open-collection]");if(collection){runtime.shelf={...shelfDefaults(),kind:"all",collection:collection.dataset.openCollection,sort:"collection"};runtime.paintShelf(true);root.querySelector(".library-back")?.focus();return}
-    const closeCollection=event.target.closest("[data-close-collection]");if(closeCollection){const previous=runtime.shelf.collection;runtime.shelf={...shelfDefaults()};runtime.paintShelf(true);root.querySelector(`[data-open-collection="${CSS.escape(previous)}"]`)?.focus();return}
-    const kind=event.target.closest("[data-shelf-kind]");if(kind){if(runtime.shelf.kind!==kind.dataset.shelfKind){runtime.shelf.kind=kind.dataset.shelfKind;runtime.paintShelf()}return}
+    const collection=event.target.closest("[data-open-collection]");if(collection){runtime.shelf={...shelfDefaults(),kind:"all",collection:collection.dataset.openCollection,sort:"collection"};runtime.paintShelf(true);root.querySelector("[data-close-collection]")?.focus();return}
+    const closeCollection=event.target.closest("[data-close-collection]");if(closeCollection){const previous=runtime.shelf.collection;runtime.shelf={...shelfDefaults(),...(runtime.data?.active_study_set?{kind:"all",sort:"study_set"}:{})};runtime.paintShelf(true);root.querySelector(`[data-open-collection="${CSS.escape(previous)}"]`)?.focus();return}
+    if(runtime.data?.web_study_sets&&event.target.closest("[data-open-web-study-sets],[data-new-web-study-set]")){
+      runtime.api?.setTriggerValue("open_study_sets",{create:Boolean(event.target.closest("[data-new-web-study-set]"))})
+      return
+    }
+    if(event.target.closest("[data-web-browse-authors]")){
+      runtime.shelf.filtersOpen=true
+      runtime.paintShelf()
+      root.querySelector('[data-shelf-input="author"]')?.focus({preventScroll:true})
+      return
+    }
+    const kind=event.target.closest("[data-shelf-kind]");if(kind){if(runtime.shelf.kind!==kind.dataset.shelfKind){const next=kind.dataset.shelfKind,full=runtime.shelf.kind==="study_sets"||next==="study_sets";runtime.shelf.kind=next;runtime.paintShelf(full);if(full)root.querySelector("[data-shelf-category] summary")?.focus({preventScroll:true})}return}
     const archive=event.target.closest("[data-open-archive]");if(archive){runtime.api?.setTriggerValue("open_archive",true);return}
+    const inbox=event.target.closest("[data-care-inbox]");if(inbox){runtime.api?.setTriggerValue("open_care_inbox",true);return}
+    const received=event.target.closest("[data-received-books]");if(received){runtime.api?.setTriggerValue("received_books",true);return}
     const filters=event.target.closest("[data-shelf-filters]");if(filters){runtime.closeBookMenu();runtime.shelf.filtersOpen=!runtime.shelf.filtersOpen;runtime.saveShelf();runtime.paintShelfControls();return}
     const reset=event.target.closest("[data-shelf-reset]");if(reset){runtime.shelf={...shelfDefaults(shelfScope(runtime.data)),kind:runtime.shelf.kind,sort:runtime.shelf.sort,collection:runtime.shelf.collection,filtersOpen:runtime.shelf.filtersOpen};runtime.paintShelf(true);root.querySelector("[data-shelf-input='query']")?.focus();return}
     const field=event.target.closest("[data-open-field]");if(field){runtime.api?.setTriggerValue("open_field",String(field.dataset.openField));return}
@@ -2365,12 +3652,12 @@ function setup(root){
     const clear=event.target.closest("[data-clear-reference]");if(clear){runtime.api?.setTriggerValue("clear_reference",true);return}
     const reference=event.target.closest("[data-ref-id]");if(reference&&!reference.disabled){const id=String(reference.dataset.refId||"");if(id&&id===runtime.referenceId)runtime.api?.setTriggerValue("clear_reference",true);else runtime.openPreparedReference(id);return}
     const rate=event.target.closest("[data-rate]");if(rate){runtime.api?.setTriggerValue("rate",{id:rate.dataset.rateId,score:Number(rate.dataset.rate)});return}
-    const skin=event.target.closest("[data-skin-value]");if(skin){runtime.skin=["care","library","classic"].includes(skin.dataset.skinValue)?skin.dataset.skinValue:"care";try{root.ownerDocument.defaultView?.sessionStorage?.setItem(SKIN_KEY,runtime.skin)}catch(_){};runtime.applySkin();return}
-    const textSize=event.target.closest("[data-text-size]");if(textSize){runtime.textScaleIndex=Math.max(0,Math.min(TEXT_SCALES.length-1,runtime.textScaleIndex+Number(textSize.dataset.textSize||0)));try{root.ownerDocument.defaultView?.sessionStorage?.setItem(TEXT_SCALE_KEY,String(runtime.textScaleIndex))}catch(_){};runtime.applyTextScale();return}
+    const skin=event.target.closest("[data-skin-value]");if(skin){runtime.skin=["care","library","classic"].includes(skin.dataset.skinValue)?skin.dataset.skinValue:"care";try{if(!studioEmbed)root.ownerDocument.defaultView?.sessionStorage?.setItem(SKIN_KEY,runtime.skin)}catch(_){};runtime.applySkin();return}
+    const textSize=event.target.closest("[data-text-size]");if(textSize){runtime.textScaleIndex=Math.max(0,Math.min(TEXT_SCALES.length-1,runtime.textScaleIndex+Number(textSize.dataset.textSize||0)));try{if(!studioEmbed)root.ownerDocument.defaultView?.sessionStorage?.setItem(TEXT_SCALE_KEY,String(runtime.textScaleIndex))}catch(_){};runtime.applyTextScale();return}
     const pane=event.target.closest("[data-pane-target]");if(pane){runtime.focus(pane.dataset.paneTarget);return}
     const step=event.target.closest("[data-step]");if(step){runtime.step(Number(step.dataset.step));return}
   }
-  runtime.paintSlider=(input,position)=>{
+  runtime.paintSlider=(input,position,neighbors=false)=>{
     const options=sliderOptions(runtime.data?.stack,input.dataset.sheetSlider),index=sliderIndex(position,options.length),option=options[index]
     if(!option)return
     const title=sliderTitle(option),control=input.closest?.("[data-slider-control]")
@@ -2388,14 +3675,15 @@ function setup(root){
         if(next){next.classList.toggle("active",true);next.setAttribute("aria-pressed","true");next.tabIndex=0}
       }
     }
+    paintSliderSteps(input,index,options.length)
     paintSliderHeading(input,option,index)
-    keepSliderVisible(input)
+    keepSliderVisible(input,neighbors)
   }
   runtime.chooseSlider=(input,position)=>{
     if(!input||input.disabled||runtime.isRouting())return
     const layer=input.dataset.sheetSlider,options=sliderOptions(runtime.data?.stack,layer),index=sliderIndex(position,options.length),option=options[index]
     if(!option)return
-    runtime.paintSlider(input,index)
+    runtime.paintSlider(input,index,!runtime.sliderGesture)
     if(layer==="ORIGINAL"){runtime.sliderJumpFocus=null;runtime.originalGo?.(option.id);return}
     const activeUnit=arr(runtime.data?.stack?.care_path).find(unit=>sheetLayerKey(unit)===layer||(!unit.reader_slot&&unit.type===layer)),active=layer==="SOURCE"?runtime.data?.stack?.active_raw_unit_id:activeUnit?.reader_option_id||activeUnit?.id
     if(String(option.id)===String(active))return
@@ -2407,6 +3695,18 @@ function setup(root){
     if(studyNavigationChoose(runtime,layer,String(option.id)))return
     root.setAttribute("aria-busy","true")
     runtime.api?.setTriggerValue(layer==="SOURCE"?"open_chapter":"open_sheet",String(option.id))
+  }
+  runtime.stepSlider=(input,direction)=>{
+    const layer=input?.dataset?.sheetSlider,connection=input?.dataset?.connectionLayerSlider!==undefined
+    if(![-1,1].includes(direction)||(!layer&&!connection)||(!connection&&runtime.isRouting()))return false
+    const length=connection?Number(input.max)+1:sliderOptions(runtime.data?.stack,layer).length
+    if(!length)return false
+    const current=sliderIndex(input.value,length),next=sliderIndex(current+direction,length)
+    if(!input.disabled&&next!==current){
+      if(connection)runtime.chooseConnectionLayer(input,next)
+      else runtime.chooseSlider(input,next)
+    }
+    return true
   }
   runtime.onSliderStart=event=>{
     const input=event.target.closest?.('[data-sheet-slider]')
@@ -2438,6 +3738,16 @@ function setup(root){
     if(input)runtime.chooseSlider(input,input.value)
   }
   runtime.onSliderClick=event=>{
+    const step=event.target.closest?.("[data-slider-step]")
+    if(step){
+      if(step.disabled||root.dataset?.careSliderArrows!=="true")return true
+      const input=step.closest("[data-slider-row]")?.querySelector(sliderInputSelector)
+      if(input&&!input.disabled){
+        if(!step.matches(":focus"))input.focus({preventScroll:true})
+        runtime.stepSlider(input,Number(step.dataset.sliderStep))
+      }
+      return true
+    }
     const stop=event.target.closest?.("[data-slider-stop]")
     if(!stop)return false
     const input=stop.closest("[data-slider-control]")?.querySelector("[data-sheet-slider]")
@@ -2447,17 +3757,21 @@ function setup(root){
     return true
   }
   runtime.onSliderKey=event=>{
-    if(event.metaKey||event.ctrlKey||event.altKey||event.shiftKey)return false
-    const stop=event.target.closest?.("[data-slider-stop]"),input=event.target.closest?.("[data-sheet-slider]")||stop?.closest("[data-slider-control]")?.querySelector("[data-sheet-slider]")
-    if(!input)return false
-    const options=sliderOptions(runtime.data?.stack,input.dataset.sheetSlider),moves={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-10,PageUp:10}
-    let position
-    if(event.key in moves)position=sliderIndex(input.value,options.length)+moves[event.key]
-    else if(event.key==="Home"||event.key==="End")position=event.key==="Home"?0:options.length-1
-    else return false
+    if(!readingSelectionKeyAllowed(event))return false
+    if(readingArrowDirections[event.key]&&event.target?.closest?.(sliderArrowControl)){event.preventDefault();return true}
+    const target=event.target,step=target.closest?.("[data-slider-step]"),stop=target.closest?.("[data-slider-stop]"),connectionStop=target.closest?.("[data-connection-layer-stop]")
+    if(step&&(step.disabled||root.dataset?.careSliderArrows!=="true"))return false
+    const input=target.closest?.("[data-sheet-slider]")||target.closest?.("[data-connection-layer-slider]")||stop?.closest("[data-slider-control]")?.querySelector("[data-sheet-slider]")||connectionStop?.closest("[data-connection-layer-control]")?.querySelector("[data-connection-layer-slider]")||step?.closest("[data-slider-row]")?.querySelector(sliderInputSelector)
+    if(!input||input.disabled)return false
+    const moves={PageDown:-10,PageUp:10}
+    if(!Object.hasOwn(moves,event.key)&&event.key!=="Home"&&event.key!=="End")return false
     event.preventDefault()
-    if(stop)input.focus({preventScroll:true})
-    runtime.chooseSlider(input,position)
+    if(stop||connectionStop)input.focus({preventScroll:true})
+    const direction=moves[event.key]
+    const connection=input.dataset.connectionLayerSlider!==undefined,length=connection?Number(input.max)+1:sliderOptions(runtime.data?.stack,input.dataset.sheetSlider).length
+    const position=event.key==="Home"?0:event.key==="End"?length-1:sliderIndex(input.value,length)+direction
+    if(connection)runtime.chooseConnectionLayer(input,position)
+    else runtime.chooseSlider(input,position)
     return true
   }
   runtime.onSliderWheel=event=>{
@@ -2476,15 +3790,36 @@ function setup(root){
   runtime.refreshSliders=(scope=root)=>scope.querySelectorAll("[data-sheet-slider]").forEach(input=>{
     const track=input.closest("[data-slider-track]"),saved=runtime.sliderScrollPositions.get(sliderMemoryKey(input))
     if(track&&saved!==undefined)track.scrollLeft=saved
-    runtime.paintSlider(input,input.value)
+    runtime.paintSlider(input,input.value,!runtime.sliderGesture)
   })
+  runtime.attachPaneKeyFocus=()=>{
+    const click=event=>{
+      if(event.defaultPrevented||event.detail!==1||event.metaKey||event.ctrlKey||event.altKey||event.shiftKey)return
+      const target=event.target,pane=target?.closest?.("[data-pane]"),control=target?.closest?.(readingKeyControl)
+      if((control&&!control.matches(readingKeyCard))||!target?.closest?.('.window-body')||!readingPaneAvailable(pane)||liveReadingSelection(root))return
+      // Capture before the native text listener stops prose clicks from
+      // selecting an axiom. Leave actual text selection and controls alone.
+      if(!control?.matches(":focus"))focusPaneReadingBody(pane)
+    }
+    root.addEventListener("click",click,true)
+    return ()=>root.removeEventListener("click",click,true)
+  }
   runtime.onKey=event=>{
     if(runtime.onBookMenuKey(event))return
-    if(event.target?.closest?.("[data-route-direction]"))return
-    if(event.defaultPrevented||event.isComposing||event.metaKey||event.ctrlKey||event.altKey||event.shiftKey||event.target?.isContentEditable||event.target?.closest?.('textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]')||event.target?.matches?.("input:not([data-sheet-slider])"))return
+    const shelfMenu=event.key==="Escape"&&event.target?.closest?.("[data-shelf-actions][open]")
+    if(shelfMenu){
+      event.preventDefault();runtime.closeShelfActions(shelfMenu,{restoreFocus:true});return
+    }
+    const target=event.target
+    if(target?.closest?.("[data-route-direction]"))return
+    if(!readingSelectionKeyAllowed(event)||target?.isContentEditable||target?.closest?.('textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]')||(target?.matches?.('input')&&!target.matches(sliderInputSelector)))return
     if(event.key==='Escape'&&runtime.clearTypesetPassageSelection()){event.preventDefault();return}
     if(runtime.onSelectionKey(event))return
-    if(runtime.onSliderKey?.(event))return;if(event.metaKey||event.ctrlKey||event.altKey||event.shiftKey||event.target?.matches?.("input,textarea,select"))return;const reference=event.target?.closest?.("[data-ref-id]");if(reference&&!reference.disabled&&["Enter"," "].includes(event.key)){event.preventDefault();const id=String(reference.dataset.refId||"");if(id&&id===runtime.referenceId)runtime.api?.setTriggerValue("clear_reference",true);else runtime.openPreparedReference(id);return}const movement={"[":-1,"]":1}[event.key];if(movement){event.preventDefault();runtime.step(movement)}
+    if(runtime.onSliderKey(event))return
+    if(event.target?.matches?.("input,textarea,select"))return
+    const reference=event.target?.closest?.("[data-ref-id]")
+    if(reference&&!reference.disabled&&["Enter"," "].includes(event.key)){event.preventDefault();const id=String(reference.dataset.refId||"");if(id&&id===runtime.referenceId)runtime.api?.setTriggerValue("clear_reference",true);else runtime.openPreparedReference(id);return}
+    const movement={"[":-1,"]":1}[event.key];if(movement){event.preventDefault();runtime.step(movement)}
   }
   runtime.focus=id=>{
     const strip=root.querySelector("[data-strip]"),target=root.querySelector(`[data-pane="${CSS.escape(id)}"]`)
@@ -2560,6 +3895,7 @@ function setup(root){
   setupSheetVersionMenu(runtime)
   setupPaneBookmarks(runtime)
   setupAxiomFavourites(runtime)
+  setupAxiomStudioUses(runtime)
   setupTrackZoom(runtime)
   setupOutlineView(runtime)
   setupDialoguePlayer(runtime)
@@ -2570,8 +3906,383 @@ function setup(root){
   setupOriginalFormats(runtime)
   setupReaderMenus(runtime)
   setupConnectionView(runtime)
+  setupRoutePresentation(runtime)
+  setupStudioPaneFilters(runtime)
+  setupReadingFocus(runtime)
+  runtime.paneFind=installReadingFind(root,{
+    isShelf:()=>runtime.data?.mode==='library',isEmbedded:()=>Boolean(runtime.data?.studio_embed),
+    prepare:()=>{if(runtime.readerView==='outline')runtime.setReaderView?.('normal')},
+    repaintText:()=>runtime.paintBeautifulText?.(),
+  })
   return runtime
 }
+
+const readingFindLimit=3000
+const readingFindOwners=new WeakMap()
+const readingFindSkip='button,input,textarea,select,script,style,summary,[aria-hidden="true"],[data-pane-find],[data-pane-find-overlay],.axiom-id,.axiom-trace,.passage-address,.item-address,.item-links,.source-head,.care-head,.pane-intro,.inspector-empty'
+const readingFindBoundary='p,div,h1,h2,h3,h4,h5,h6,blockquote,pre,li,td,th,br,hr'
+
+function readingFindScopes(root){
+  const roots=[root]
+  for(let index=0;index<roots.length;index++){
+    for(const host of roots[index].querySelectorAll('[data-native-book],[data-native-input],[data-native-corpus],[data-native-route]')){
+      if(host.shadowRoot&&host.getClientRects().length)roots.push(host.shadowRoot)
+    }
+  }
+  return roots
+}
+function readingFindPanes(root){
+  const result=[]
+  for(const [index,scope]of readingFindScopes(root).entries()){
+    for(const pane of scope.querySelectorAll('[data-pane]')){
+      if(pane.hidden||pane.closest('[hidden]'))continue
+      const body=pane.querySelector('.window-body,.pane-body')
+      if(!body||body.closest('[data-pane]')!==pane)continue
+      if(body.querySelector?.('iframe')&&!body.querySelector('.passage-text,.axiom-text,.item-copy,.field-prose,.care-reading-text'))continue
+      const heading=pane.querySelector('.window-titlebar .reader-full-title,.window-titlebar strong,.pane-top strong')
+      const name=(heading?.textContent||pane.dataset.layer||pane.dataset.pane||'Reading').replace(/\s+/g,' ').trim()
+      const host=scope.host,bookTitle=(host?.closest?.('.ct-row')?.querySelector('.ct-book-copy strong')?.textContent||
+        host?.getAttribute?.('aria-label')||'').replace(/\s+(?:Library panes|saved whole book|saved reading)$/i,'').trim()
+      const title=bookTitle?`${bookTitle} · ${name}`:name
+      result.push({id:`${index}:${pane.dataset.pane}`,key:pane.dataset.pane,pane,body,scope,title,
+        source:pane.dataset.layer==='SOURCE'||pane.dataset.pane==='source'||/(?:^|:)SOURCE$/.test(pane.dataset.pane||'')})
+    }
+  }
+  return result
+}
+function readingFindSegments(body){
+  const segments=[]
+  let text='',runs=[]
+  const finish=()=>{if(runs.length)segments.push({text,runs});text='';runs=[]}
+  const visit=node=>{
+    if(node.nodeType===3){if(node.data){runs.push({node,offset:text.length});text+=node.data}return}
+    if(node.nodeType!==1||node.matches(readingFindSkip))return
+    const boundary=node.matches(readingFindBoundary)
+    if(boundary)finish()
+    for(const child of node.childNodes)visit(child)
+    if(boundary)finish()
+  }
+  for(const node of body.childNodes)visit(node)
+  finish()
+  return segments
+}
+function readingFindMatches(body,query){
+  const matches=[]
+  if(!query)return matches
+  const pattern=new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'giu')
+  for(const segment of readingFindSegments(body)){
+    for(const found of segment.text.matchAll(pattern)){
+      const end=found.index+found[0].length,slices=[]
+      for(const run of segment.runs){
+        if(run.offset>=end)break
+        if(run.offset+run.node.length<=found.index)continue
+        slices.push({node:run.node,start:Math.max(0,found.index-run.offset),end:Math.min(run.node.length,end-run.offset)})
+      }
+      if(slices.length){
+        if(matches.length===readingFindLimit){matches.limited=true;return matches}
+        matches.push(slices)
+      }
+    }
+  }
+  return matches
+}
+function readingFindRange(match){
+  if(!match?.length)return null
+  const first=match[0],last=match.at(-1),range=first.node.ownerDocument.createRange()
+  range.setStart(first.node,first.start);range.setEnd(last.node,last.end)
+  return range
+}
+function readingFindOwns(root,node){
+  for(let current=node;current;current=current.getRootNode?.().host){if(root.contains(current))return true}
+  return false
+}
+function readingFindSelection(root){
+  const scope=root.getRootNode(),selection=scope.getSelection?.()||root.ownerDocument.getSelection?.()
+  const range=selection?.rangeCount?selection.getRangeAt(0):null
+  if(range&&readingFindOwns(root,range.startContainer)&&readingFindOwns(root,range.endContainer))return range.cloneRange()
+  const shadows=readingFindScopes(root).filter(scope=>scope.host)
+  if(scope.host)shadows.unshift(scope)
+  const composed=selection?.getComposedRanges?.({shadowRoots:shadows})?.[0]
+  if(!composed||!readingFindOwns(root,composed.startContainer)||!readingFindOwns(root,composed.endContainer))return null
+  const result=root.ownerDocument.createRange()
+  result.setStart(composed.startContainer,composed.startOffset);result.setEnd(composed.endContainer,composed.endOffset)
+  return result
+}
+function revealReadingFindPane(pane){
+  // A corpus book lives in its own shadow root. Bring that book into view
+  // through its reader containers while leaving the application page still.
+  for(let node=pane.parentElement||pane.getRootNode?.().host;node;node=node.parentElement||node.getRootNode?.().host){
+    if(!node.matches?.('[data-strip],.ct-viewport,[data-corpus-viewport]'))continue
+    const bounds=node.getBoundingClientRect(),target=pane.getBoundingClientRect()
+    const scaleX=node.offsetWidth?bounds.width/node.offsetWidth:1,scaleY=node.offsetHeight?bounds.height/node.offsetHeight:1
+    if(target.left<bounds.left||target.right>bounds.right){
+      node.scrollLeft+=(target.left-bounds.left-Math.max(12,(bounds.width-target.width)/2))/(scaleX||1)
+    }
+    if(node.matches('.ct-viewport,[data-corpus-viewport]')&&(target.top<bounds.top||target.bottom>bounds.bottom)){
+      node.scrollTop+=(target.top-bounds.top-Math.max(12,(bounds.height-target.height)/2))/(scaleY||1)
+    }
+  }
+}
+function installReadingFind(root,options={}){
+  if(root.carePaneFind)return root.carePaneFind
+  const doc=root.ownerDocument,view=doc.defaultView
+  let panel,input,selector,count,previous,next,overlay,observer,resizeObserver,watchedScope,frame=0,opened=false,index=0,matches=[],panes=[],paneId='',initialFocus=null,initialRange=null,focusInPanel=false
+  let query='',toolbarOpen=false,shelfSession=false
+  const subscribers=new Set()
+  const isShelf=()=>Boolean(options.isShelf?.())
+  const shelfInput=()=>root.querySelector('[data-shelf-input="query"]')
+  const connected=()=>Boolean(root.isConnected&&root.getClientRects?.().length)
+  const make=(tag,className,text)=>{const node=doc.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node}
+  const currentPane=()=>panes.find(pane=>pane.id===paneId)
+  function ensurePanel(){
+    if(!panel){
+      panel=make('section','care-pane-find');panel.dataset.paneFind='';panel.setAttribute('role','search');panel.setAttribute('aria-label','Find in reading panes')
+      const top=make('div','care-pane-find-top'),icon=make('span')
+      icon.innerHTML='<svg class="care-pane-find-icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4"/></svg>'
+      selector=make('select');selector.setAttribute('aria-label','Pane to search')
+      count=make('span','care-pane-find-count');count.setAttribute('role','status');count.setAttribute('aria-live','polite')
+      const button=(label,path)=>{const node=make('button');node.type='button';node.setAttribute('aria-label',label);node.title=label;node.innerHTML=`<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${path}"/></svg>`;return node}
+      previous=button('Previous match (Shift Enter)','m4 10 4-4 4 4');next=button('Next match (Enter)','m4 6 4 4 4-4')
+      const closeButton=button('Close Find (Escape)','m4 4 8 8m0-8-8 8')
+      top.append(icon,selector,count,previous,next,closeButton)
+      input=make('input');input.type='search';input.maxLength=500;input.setAttribute('aria-label','Find in selected reading pane');input.autocomplete='off';input.spellcheck=false
+      panel.append(top,input)
+      selector.addEventListener('change',()=>{paneId=selector.value;refresh(0,true);input.focus({preventScroll:true})})
+      input.addEventListener('input',()=>{query=input.value;refresh(0,true)})
+      previous.addEventListener('click',()=>step(-1));next.addEventListener('click',()=>step(1));closeButton.addEventListener('click',()=>close())
+      panel.addEventListener('keydown',event=>{
+        if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close()}
+        else if(event.key==='Enter'&&event.target===input&&!event.isComposing){event.preventDefault();event.stopPropagation();step(event.shiftKey?-1:1)}
+      })
+      panel.addEventListener('focusin',()=>{focusInPanel=true})
+    }
+    if(panel.parentNode!==root){root.append(panel);if(focusInPanel)input.focus({preventScroll:true})}
+    panel.hidden=false
+  }
+  function ensureOverlay(){
+    if(!overlay){overlay=make('div','care-pane-find-overlay');overlay.dataset.paneFindOverlay='';overlay.setAttribute('aria-hidden','true')}
+    if(overlay.parentNode!==root)root.append(overlay)
+    root.classList.add('care-pane-find-owner')
+  }
+  function paint(){
+    frame=0
+    if(!opened||!overlay)return
+    const chosen=currentPane(),body=chosen?.body
+    overlay.replaceChildren()
+    if(!body?.isConnected)return
+    const viewport=body.getBoundingClientRect(),origin=overlay.getBoundingClientRect(),scale=overlay.offsetWidth?origin.width/overlay.offsetWidth:1
+    if(!viewport.width||!viewport.height||!scale)return
+    const highlights=[],blocks=new Map(),order=matches.length?[index,...matches.keys()].filter((number,at)=>at===0||number!==index):[]
+    for(const number of order){
+      const match=matches[number]
+      if(match.some(slice=>!slice.node.isConnected||!body.contains(slice.node)))continue
+      const element=match[0].node.parentElement,block=element.closest('.passage-text,.axiom-text,.item-copy,p,li')||element
+      if(!blocks.has(block))blocks.set(block,block.getBoundingClientRect())
+      const bounds=blocks.get(block)
+      if(bounds.bottom<=viewport.top||bounds.top>=viewport.bottom||bounds.right<=viewport.left||bounds.left>=viewport.right)continue
+      for(const rect of readingFindRange(match).getClientRects()){
+        const left=Math.max(rect.left,viewport.left),right=Math.min(rect.right,viewport.right),top=Math.max(rect.top,viewport.top),bottom=Math.min(rect.bottom,viewport.bottom)
+        if(right<=left||bottom<=top)continue
+        const mark=make('span','care-pane-find-highlight');if(number===index)mark.dataset.current=''
+        Object.assign(mark.style,{left:`${(left-origin.left)/scale}px`,top:`${(top-origin.top)/scale}px`,width:`${(right-left)/scale}px`,height:`${(bottom-top)/scale}px`})
+        highlights.push(mark)
+        if(highlights.length>=400)break
+      }
+      if(highlights.length>=400)break
+    }
+    overlay.replaceChildren(...highlights)
+  }
+  function schedulePaint(){if(opened&&!frame)frame=view.requestAnimationFrame(paint)}
+  function watch(){
+    if(!opened)return
+    observer?.disconnect()
+    for(const scope of shelfSession?[root]:readingFindScopes(root))observer?.observe(scope,{subtree:true,childList:true,characterData:true})
+    const chosen=shelfSession?null:currentPane()
+    if(watchedScope!==chosen?.scope){
+      watchedScope?.removeEventListener('scroll',schedulePaint,true);watchedScope?.removeEventListener('toggle',schedulePaint,true)
+      watchedScope=chosen?.scope
+      if(watchedScope&&watchedScope!==root){watchedScope.addEventListener('scroll',schedulePaint,true);watchedScope.addEventListener('toggle',schedulePaint,true)}
+    }
+    resizeObserver?.disconnect()
+    if(chosen?.body)resizeObserver?.observe(chosen.body)
+  }
+  function reveal(){
+    const chosen=currentPane(),match=matches[index]
+    if(!chosen||!match)return
+    const pane=chosen.pane
+    const unfold=pane.classList.contains('care-pane-minimized')?pane.querySelector('[data-pane-control="minimize"]'):
+      pane.classList.contains('folded')?pane.querySelector('[data-fold]'):null
+    if(unfold){unfold.click();view.requestAnimationFrame(()=>{refresh(index,true);publish()});return}
+    for(let node=match[0].node.parentElement;node&&node!==chosen.body;node=node.parentElement){if(node.localName==='details')node.open=true}
+    const passage=match[0].node.parentElement.closest('[data-beautiful-folded]')
+    if(passage){passage.dataset.beautifulCompact='false';passage.dataset.beautifulOpeningFoldable='false';options.repaintText?.()}
+    const range=readingFindRange(match),rect=range.getBoundingClientRect(),bodyRect=chosen.body.getBoundingClientRect(),panelRect=toolbarOpen?null:panel?.getBoundingClientRect()
+    if(!rect.width&&!rect.height)return
+    const scale=chosen.body.offsetHeight?bodyRect.height/chosen.body.offsetHeight:1
+    const top=panelRect&&panelRect.left<bodyRect.right&&panelRect.right>bodyRect.left?Math.max(bodyRect.top,panelRect.bottom+8):bodyRect.top
+    if(rect.top<top+12||rect.bottom>bodyRect.bottom-12){chosen.body.scrollTop+=(rect.top-top-Math.max(12,(bodyRect.bottom-top-rect.height)/2))/(scale||1)}
+    revealReadingFindPane(pane)
+    schedulePaint()
+  }
+  function refresh(requested=index,show=false){
+    if(!opened||shelfSession)return
+    observer?.disconnect()
+    ensureOverlay()
+    panes=readingFindPanes(root)
+    if(!panes.some(pane=>pane.id===paneId))paneId=(panes.find(pane=>pane.source)||panes[0])?.id||''
+    const chosen=currentPane()
+    matches=chosen?readingFindMatches(chosen.body,query):[]
+    index=matches.length?((requested%matches.length)+matches.length)%matches.length:0
+    if(!toolbarOpen){
+      ensurePanel()
+      const choices=panes.map(pane=>{const option=make('option',null,pane.title);option.value=pane.id;return option})
+      selector.replaceChildren(...choices);selector.value=paneId
+      input.disabled=!chosen;input.placeholder=panePlaceholder(chosen)
+      if(input.value!==query)input.value=query
+      const style=chosen&&view.getComputedStyle(chosen.pane)
+      panel.style.setProperty('--find-accent',style?.getPropertyValue('--pane-accent').trim()||style?.getPropertyValue('--color').trim()||'#bba075')
+      updateLocalCount()
+    }
+    watch()
+    if(show)reveal();else schedulePaint()
+  }
+  const panePlaceholder=pane=>pane?`Find in ${pane.title.split(' / ')[0]}…`:'No reading pane is open'
+  function updateLocalCount(){
+    count.textContent=matches.length?`${index+1} of ${matches.length}${matches.limited?'+':''}`:query?'No matches':''
+    previous.disabled=next.disabled=matches.length<2
+  }
+  function toolbarState(){
+    if(shelfSession){
+      const search=shelfInput(),summary=root.querySelector('[data-shelf-summary] > span:first-child')
+      const status=summary?.textContent?.replace(/\s+/g,' ').trim()||''
+      return {query:search?.value||'',count:0,index:-1,placeholder:search?.placeholder||'Find on this shelf…',status}
+    }
+    return {query,count:matches.length,index:matches.length?index:-1,limited:Boolean(matches.limited),
+      scope:paneId,scopes:panes.map(pane=>({id:pane.id,label:pane.title})),placeholder:panePlaceholder(currentPane())}
+  }
+  function publish(){
+    if(!toolbarOpen||!subscribers.size)return
+    const available=root.isConnected&&shelfSession===isShelf()&&(shelfSession?shelfInput():panes.length)
+    const state=available?toolbarState():false
+    for(const subscriber of subscribers)subscriber(state)
+  }
+  function step(direction){
+    if(matches.length){index=(index+direction+matches.length)%matches.length;if(!toolbarOpen)updateLocalCount();reveal();schedulePaint()}
+    return toolbarState()
+  }
+  function startWatching(){
+    if(view.MutationObserver&&!observer){observer=new view.MutationObserver(records=>{
+      if(records.every(record=>panel?.contains(record.target)||overlay?.contains(record.target)||
+        record.type==='childList'&&record.addedNodes.length+record.removedNodes.length>0&&
+        [...record.addedNodes,...record.removedNodes].every(node=>node===panel||node===overlay)))return
+      refresh(index)
+      publish()
+    })}
+    if(view.ResizeObserver&&!resizeObserver)resizeObserver=new view.ResizeObserver(schedulePaint)
+    watch()
+  }
+  function open(id,useToolbar=false){
+    const owner=readingFindOwners.get(doc)
+    if(isShelf()){
+      const search=shelfInput()
+      if(!search)return false
+      owner?.close(false)
+      if(!useToolbar){search.focus({preventScroll:true});search.select();return true}
+      opened=toolbarOpen=shelfSession=true
+      readingFindOwners.set(doc,api);startWatching()
+      return true
+    }
+    options.prepare?.()
+    const choices=readingFindPanes(root)
+    if(!choices.length)return false
+    if(owner&&owner!==api)owner.close(false)
+    if(opened&&(shelfSession||toolbarOpen!==useToolbar))close(false)
+    if(!opened&&!useToolbar){initialFocus=doc.activeElement;const scope=root.getRootNode();initialFocus=scope.activeElement||initialFocus;initialRange=readingFindSelection(root)}
+    paneId=(choices.find(pane=>pane.pane===id||pane.id===id||pane.key===id)||choices.find(pane=>pane.source)||choices[0]).id
+    opened=true;toolbarOpen=useToolbar;readingFindOwners.set(doc,api)
+    refresh(0,true);startWatching()
+    if(!useToolbar){input.focus({preventScroll:true});input.select()}
+    return true
+  }
+  function close(restore=true){
+    if(!opened)return
+    opened=toolbarOpen=shelfSession=focusInPanel=false
+    if(panel)panel.hidden=true
+    overlay?.replaceChildren();observer?.disconnect();resizeObserver?.disconnect()
+    if(readingFindOwners.get(doc)===api)readingFindOwners.delete(doc)
+    watchedScope?.removeEventListener('scroll',schedulePaint,true);watchedScope?.removeEventListener('toggle',schedulePaint,true);watchedScope=null
+    if(frame)view.cancelAnimationFrame(frame);frame=0
+    if(restore){
+      if(initialFocus?.isConnected&&readingFindOwns(root,initialFocus))initialFocus.focus?.({preventScroll:true})
+      else root.focus?.({preventScroll:true})
+      if(initialRange?.startContainer.isConnected&&initialRange.endContainer.isConnected){
+        const scope=initialRange.startContainer.getRootNode(),selection=scope.getSelection?.()||doc.getSelection?.()
+        try{selection?.setBaseAndExtent(initialRange.startContainer,initialRange.startOffset,initialRange.endContainer,initialRange.endOffset)}catch(_){}
+      }
+    }
+    matches=[];initialRange=null;initialFocus=null
+  }
+  const paneFromPath=path=>path.find(node=>node?.dataset?.pane)
+  const sharedToolbar={
+    start:(path=[])=>open(paneFromPath(path),true)?toolbarState():false,
+    setQuery(value){
+      const nextQuery=String(value??'').slice(0,500)
+      if(shelfSession){
+        const search=shelfInput()
+        if(search&&search.value!==nextQuery){search.value=nextQuery;search.dispatchEvent(new view.Event('input',{bubbles:true}))}
+      }else{query=nextQuery;refresh(0,true)}
+      return toolbarState()
+    },
+    close:()=>{if(toolbarOpen)close(false)},
+    subscribe(callback){subscribers.add(callback);return ()=>subscribers.delete(callback)},
+  }
+  const shelfToolbar={...sharedToolbar,label:'Find on this shelf'}
+  const readingToolbar={...sharedToolbar,label:'Find in reading panes',step,setScope(id){
+    if(panes.some(pane=>pane.id===id)){paneId=id;refresh(0,true)}
+    return toolbarState()
+  }}
+  const command=event=>{if(event.target===root&&open(event.detail?.pane)){event.preventDefault();event.stopPropagation()}}
+  const key=event=>{
+    if(event.defaultPrevented||event.isComposing||event.altKey||event.shiftKey||Boolean(event.metaKey)===Boolean(event.ctrlKey)||String(event.key).toLowerCase()!=='f'||event.getModifierState?.('AltGraph'))return
+    const path=event.composedPath?.()||[event.target]
+    const nearestReader=path.find(node=>node?.carePaneFind)
+    if(nearestReader&&nearestReader!==root)return
+    const request=view?.CustomEvent&&new view.CustomEvent('care-find-request',{cancelable:true,detail:{path,toolbarOnly:true}})
+    if(request)doc.dispatchEvent(request)
+    const platform=view?.navigator?.userAgentData?.platform||view?.navigator?.platform||''
+    const localShortcut=!(event.ctrlKey&&/mac|iphone|ipad|ipod/i.test(platform))
+    if(request?.defaultPrevented||localShortcut&&open(paneFromPath(path))){event.preventDefault();event.stopPropagation()}
+  }
+  const nested=()=>Boolean(root.getRootNode().host?.matches('[data-native-book],[data-native-input],[data-native-corpus],[data-native-route]'))
+  const collect=event=>{
+    if(!connected())return
+    const shelf=isShelf()
+    event.detail?.targets?.push({root,kind:shelf?'shelf':'reading',main:!options.isEmbedded?.()&&!nested(),open:()=>open(),toolbar:shelf?shelfToolbar:readingToolbar})
+  }
+  const embeddedKey=event=>{if(options.isEmbedded?.()&&!nested()&&!event.defaultPrevented&&!event.composedPath?.().some(node=>node?.carePaneFind))key(event)}
+  const pointer=event=>{if(!panel?.contains(event.target))focusInPanel=false}
+  const focused=event=>{if(panel&&!panel.contains(event.target)&&!event.composedPath?.().includes(panel))focusInPanel=false}
+  const resize=()=>schedulePaint()
+  root.addEventListener?.('care-pane-find',command)
+  root.addEventListener?.('keydown',key)
+  root.addEventListener?.('pointerdown',pointer,true)
+  root.addEventListener?.('scroll',resize,true)
+  root.addEventListener?.('toggle',resize,true)
+  doc.addEventListener?.('care-find-targets',collect)
+  doc.addEventListener?.('keydown',embeddedKey)
+  doc.addEventListener?.('focusin',focused)
+  view?.addEventListener?.('resize',resize)
+  const api={open,close,refresh:()=>{refresh(index);publish()},checkDetached:()=>queueMicrotask(()=>{if(root.isConnected===false)api.destroy()}),destroy(){
+    if(toolbarOpen)for(const subscriber of subscribers)subscriber(false)
+    close(false);subscribers.clear();observer?.disconnect();panel?.remove();overlay?.remove();root.classList.remove('care-pane-find-owner')
+    root.removeEventListener?.('care-pane-find',command);root.removeEventListener?.('keydown',key);root.removeEventListener?.('pointerdown',pointer,true);root.removeEventListener?.('scroll',resize,true);root.removeEventListener?.('toggle',resize,true)
+    doc.removeEventListener?.('care-find-targets',collect);doc.removeEventListener?.('keydown',embeddedKey);doc.removeEventListener?.('focusin',focused);view?.removeEventListener?.('resize',resize)
+    if(root.carePaneFind===api)delete root.carePaneFind
+  }}
+  root.carePaneFind=api
+  return api
+}
+
 
 const workspaceSnapshots = new Map()
 const WORKSPACE_READER_PREFIX = 'care-study-workspace-reader-v1:'
@@ -2757,8 +4468,11 @@ function fitPaneSize(pane){
   const neighbour=peers.find(other=>other===pane.nextElementSibling)||peers.find(other=>other===pane.previousElementSibling)
   const neighbourWidth=neighbour?(neighbour.dataset.paneSize?Number(neighbour.dataset.paneStandardWidth):neighbour.offsetWidth)||0:0
   const beside=neighbour?available-neighbourWidth-(parseFloat(style.columnGap)||0):available
-  // When two readings fit, leave the neighbouring chapter fully visible.
-  const width=pane.dataset.paneSize==='full'?available:Math.min(available,Math.max(standard,Math.min(Math.max(680,available*.62),beside)))
+  // Keep the neighbour fully visible when there is room. When it cannot fit,
+  // let it move partly offscreen so Wide still enlarges the selected pane.
+  const wide=Math.max(standard*1.2,Math.min(Math.max(680,available*.62),beside))
+  const wideLimit=available-Math.min(56,Math.max(0,(available-standard)*.35))
+  const width=pane.dataset.paneSize==='full'?available:Math.min(wideLimit,wide)
   const value=width+'px'
   if(pane.style.getPropertyValue('--care-pane-sized-width')!==value)pane.style.setProperty('--care-pane-sized-width',value)
 }
@@ -2944,6 +4658,7 @@ function installPaneControls(root,states,onChange=()=>{},scope=""){
 }
 
 const PANE_READING_KEY=Symbol.for('care.pane-reading/1')
+const STUDIO_PANE_READING_REQUEST=Symbol.for('care.studio-pane-reading-request/1')
 function paneReadingContains(outer,node){
   for(let current=node;current;current=current.parentElement||current.getRootNode?.().host){if(current===outer)return true}
   return false
@@ -2954,6 +4669,16 @@ function paintPaneReadingControl(button,pane){
   button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${active?'M1 4h3V1M8 1v3h3M1 8h3v3M8 11V8h3':'M4 1H1v3M8 1h3v3M1 8v3h3M11 8v3H8'}"/></svg>`
 }
 function togglePaneReading(pane){pane.ownerDocument?.[PANE_READING_KEY]?.toggle(pane)}
+function startStudioPaneReading(runtime){
+  const {root,data}=runtime,doc=root.ownerDocument,view=doc.defaultView
+  if(!data?.studio_embed||data.mode==='library'||!view?.parent||view.parent===view)return
+  const query=new URL(view.location.href).searchParams,request=query.get('care_studio_request')
+  if(!request||query.get('care_studio_pane_reading')!=='1'||doc[STUDIO_PANE_READING_REQUEST]===request)return
+  const manager=doc[PANE_READING_KEY]
+  if(!manager?.records.has(root)||!root.querySelector(':scope > [data-strip] [data-pane]'))return
+  doc[STUDIO_PANE_READING_REQUEST]=request
+  if(!manager.owner)manager.toggle(root)
+}
 function syncPaneReadingChrome(root){
   const active=root.dataset.paneReading==='true'||root.dataset.paneReadingChild==='true',doc=root.ownerDocument
   if(active&&doc.querySelector('#care-native-window-inset'))root.dataset.paneReadingNative='true';else delete root.dataset.paneReadingNative
@@ -3286,7 +5011,11 @@ function setupOutlineView(runtime){
   runtime.paintOutlineSwitch=()=>root.querySelectorAll('[data-reader-view]').forEach(button=>{const connected=Boolean(runtime.data?.connection?.reference),active=button.dataset.readerView===(connected?'normal':runtime.readerView);button.disabled=connected&&button.dataset.readerView==='outline';button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))})
   runtime.outlineContent=(option,group)=>{
     const state=runtime.outlineState(),loaded=state.cache.get(option.id),reference=runtime.data?.reference,template=root.ownerDocument.createElement('template')
-    if(loaded?.chapter){template.innerHTML=sourcePane({...runtime.data.stack,active_chapter:loaded.chapter},String(reference?.id||''),null)}
+    if(loaded?.chapter){
+      const bookmarks=bookBookmarks(runtime.data),chapter=loaded.chapter
+      template.innerHTML=sourcePane({...runtime.data.stack,active_chapter:chapter},String(reference?.id||''),null,bookmarks)
+        .replace('<header class="source-head">','<header class="source-head">'+(isRouteReference(reference)?'':sourceBookmarkButton(chapter.raw_unit_id,'',bookmarks,chapter.title)))
+    }
     else if(loaded?.unit){template.innerHTML=carePane(loaded.unit,0,'',null,{},new Set(),false)}
     else {
       const nodes=routeNodeIndex(reference),items=option.routeIds.map(id=>nodes.get(id)).filter(Boolean),error=state.errors.get(option.id)
@@ -4259,7 +5988,8 @@ function setupOriginalReader(runtime){
     if(themeLabel)themeLabel.textContent=light?'Dark':'Light'
     if(themeIcon)themeIcon.innerHTML=light?'<path d="M13.4 9.2A5.7 5.7 0 0 1 6.8 2.6 5.7 5.7 0 1 0 13.4 9.2Z"/>':'<circle cx="8" cy="8" r="3"/><path d="M8 1v1M8 14v1M1 8h1M14 8h1M3 3l.7.7M12.3 12.3l.7.7M3 13l.7-.7M12.3 3.7l.7-.7"/>'
     if(select)select.value=state.location
-    const slider=root.querySelector('[data-sheet-slider="ORIGINAL"]');if(slider&&index>=0)runtime.paintSlider(slider,index)
+    const slider=root.querySelector('[data-sheet-slider="ORIGINAL"]')
+    if(slider&&index>=0)runtime.paintSlider(slider,index,!runtime.sliderGesture&&Number(slider.value)!==index)
     root.querySelectorAll('[data-original-step]').forEach(button=>{button.disabled=Number(button.dataset.originalStep)<0?index<=0:index<0||index>=payload.locations.length-1})
     if(status)status.textContent=payload.available===false?payload.message||'Original source unavailable':!state.follow?'Reading independently':chapter?(state.pending?'Following chapter…':'Chapters linked'):'Unlinked '+originalLocationNoun(payload.kind)
   }
@@ -4514,9 +6244,9 @@ function setupOriginalReader(runtime){
       if(!event.target?.closest?.('.original-reading-dock'))runtime.originalWake()
       if(event.key==='Escape'&&runtime.originalCloseNotes?.()){event.preventDefault();event.stopPropagation();return}
       if(event.key==='Escape'&&state.expanded){event.preventDefault();event.stopPropagation();runtime.onOriginalClick({target:root.querySelector('[data-original-expand]')});return}
-      if(event.ctrlKey||event.metaKey||event.altKey||event.target?.closest?.('input,select,textarea,button,a,[contenteditable="true"]'))return
+      if(event.isComposing||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||event.target?.isContentEditable||event.target?.closest?.('input,select,textarea,button,a,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))return
       const direction={ArrowLeft:-1,ArrowRight:1}[event.key]
-      if(direction){event.preventDefault();event.stopPropagation();const rows=arr(payload.locations),index=rows.findIndex(row=>row.id===state.location),next=rows[index+direction];if(next)runtime.originalGo(next.id)}
+      if(direction&&!liveReadingSelection(root)){event.preventDefault();event.stopPropagation();const rows=arr(payload.locations),index=rows.findIndex(row=>row.id===state.location),next=rows[index+direction];if(next)runtime.originalGo(next.id)}
     }
     body.addEventListener('scroll',scroll,{passive:true});pane.addEventListener('change',change);pane.addEventListener('keydown',key)
     body.addEventListener('pointerdown',resumeReading,{passive:true})
@@ -4789,6 +6519,7 @@ function beautifulTypesetSource(source){
   for(const row of source.querySelectorAll(':scope>.passage-row')){
     const article=row.querySelector(':scope>.passage'),container=article?.querySelector(':scope>.passage-text')
     if(!container)continue
+    const studio=row.querySelector(':scope>.studio-passage-use')
     const wrapper=container.querySelector(':scope>.care-reading-text')||container
     const blocks=[...wrapper.children].filter(node=>!node.matches('.beautiful-source-notes'))
     const first=blocks[0],last=blocks.at(-1),id=article.dataset.refId
@@ -4804,7 +6535,8 @@ function beautifulTypesetSource(source){
       const label=block.textContent.trim()
       if(block.tagName==='P'&&beautifulTextOpeningLabel(label)==='heading'){
         const title=source.querySelector(':scope>.source-head h2')?.textContent||''
-        attr(block,'data-beautiful-chapter-label',beautifulTextHeadingKey(title).includes(beautifulTextHeadingKey(label))?'duplicate':'true')
+        const duplicate=!studio&&beautifulTextHeadingKey(title).includes(beautifulTextHeadingKey(label))
+        attr(block,'data-beautiful-chapter-label',duplicate?'duplicate':'true')
       }
       else if(block.tagName==='P'&&label.length<420&&/^(?:concerning\b|dionysius\b|to\s+\w+.*:|sur\b|de\s+[“"«])/i.test(label))attr(block,'data-beautiful-subtitle','true')
       else opening=false
@@ -4822,8 +6554,9 @@ function beautifulTypesetSource(source){
       attr(address,'title',text);attr(address,'aria-label','Passage '+text)
       address.textContent=article.dataset.beautifulPassageNumber||text
       undo.push(()=>{address.textContent=text;style===null?address.removeAttribute('style'):address.setAttribute('style',style)})
-      for(const control of [mark,routes].filter(Boolean)){const style=control.getAttribute('style');undo.push(()=>style===null?control.removeAttribute('style'):control.setAttribute('style',style))}
-      markers.push({article,container,address,mark,routes})
+      for(const control of [mark,routes,studio].filter(Boolean)){const style=control.getAttribute('style');undo.push(()=>style===null?control.removeAttribute('style'):control.setAttribute('style',style))}
+      if(studio)undo.push(()=>studio.removeAttribute('data-studio-source-positioned'))
+      markers.push({article,container,address,mark,routes,studio})
     }
     previous={id,last,row}
   }
@@ -4864,7 +6597,7 @@ function beautifulTypesetSource(source){
     const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
     let previousTop=-Infinity,nextControl=-Infinity
     for(const marker of markers){
-      const {container,address,mark,routes}=marker
+      const {container,address,mark,routes,studio}=marker
       const walker=document.createTreeWalker(container,4)
       let node,rect=null
       while(node=walker.nextNode()){
@@ -4876,7 +6609,8 @@ function beautifulTypesetSource(source){
       }
       if(!rect)continue
       const natural=(rect.top-bounds.top)/(scale||1),top=Math.max(natural,previousTop+26)
-      address.style.top=top+'px';previousTop=top
+      address.style.top=top+'px';previousTop=top+(studio?12:0)
+      if(studio){studio.style.top=(top+16)+'px';studio.setAttribute('data-studio-source-positioned','')}
       const controlTop=Math.max(natural,nextControl)
       marker.controlTop=controlTop
       if(mark)mark.style.top=controlTop+'px'
@@ -4917,6 +6651,8 @@ function setupBeautifulText(runtime){
   const watch=()=>observer?.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-beautiful-compact','data-beautiful-opening-foldable','data-beautiful-opening-titles']})
   const mutate=callback=>{discardChangedProse(observer?.takeRecords?.()||[]);observer?.disconnect();updating=true;try{return callback()}finally{updating=false;if(!disposed)watch()}}
   const routeContext=()=>!!(runtime.data?.reference||runtime.data?.connection?.reference)
+  const studioFiltered=node=>Boolean(node.closest('[data-studio-filtered]'))
+  const studioMarked=article=>Boolean(article.parentElement?.querySelector(':scope>.studio-passage-use'))
   const fold=(article,record)=>{
     record.text.hidden=true
     article.dataset.beautifulFolded='true'
@@ -4936,7 +6672,7 @@ function setupBeautifulText(runtime){
     for(const [node,previous] of openings){if(root.contains(node)){if(previous===null)node.removeAttribute('data-beautiful-opening');else node.setAttribute('data-beautiful-opening',previous)}}
     openings.clear()
     for(const [container,nodes] of originals){if(!root.contains(container)){originals.delete(container);continue}if(!enabled){container.replaceChildren(...nodes);originals.delete(container);prepared.delete(container)}}
-    for(const [article,record] of details){if(!root.contains(article)){details.delete(article);continue}if(!enabled||routeContext()||(record.kind==='heading'?article.dataset.beautifulOpeningFoldable!=='true':article.dataset.beautifulCompact!=='true')){restoreDetail(article,record);details.delete(article)}}
+    for(const [article,record] of details){if(!root.contains(article)){details.delete(article);continue}if(!enabled||routeContext()||studioFiltered(article)||studioMarked(article)||(record.kind==='heading'?article.dataset.beautifulOpeningFoldable!=='true':article.dataset.beautifulCompact!=='true')){restoreDetail(article,record);details.delete(article)}}
     paint()
     if(!enabled){runtime.paintSelection?.();return}
     for(const container of root.querySelectorAll('.source-copy .passage>.passage-text')){
@@ -4947,7 +6683,7 @@ function setupBeautifulText(runtime){
     }
     const headingDuplicates=new Set()
     for(const source of root.querySelectorAll('.source-copy')){
-      if(source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
+      if(studioFiltered(source)||source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
       const leading=[...source.querySelectorAll(':scope>.passage-row>.passage,:scope>.passage')],titles=beautifulTextOpeningTitles(source)
       let count=0
       for(const article of leading.slice(0,8)){
@@ -4962,7 +6698,7 @@ function setupBeautifulText(runtime){
     for(const [article,record] of details)if(record.kind==='heading'&&!headingDuplicates.has(article)){restoreDetail(article,record);details.delete(article)}
     const candidates=[...[...root.querySelectorAll('.source-copy .passage[data-beautiful-compact="true"]')].map(article=>({article,kind:'source'})),...[...headingDuplicates].map(article=>({article,kind:'heading'}))]
     for(const {article,kind} of candidates){
-      if(routeContext()||article.closest('.route-pane,.route-source-card,.inspector-pane,.inspect-card'))continue
+      if(routeContext()||studioFiltered(article)||studioMarked(article)||article.closest('.route-pane,.route-source-card,.inspector-pane,.inspect-card'))continue
       let record=details.get(article)
       if(!record){
         const text=article.querySelector(':scope>.passage-text'),row=article.parentElement
@@ -4973,7 +6709,7 @@ function setupBeautifulText(runtime){
       fold(article,record)
     }
     if(!routeContext())for(const source of root.querySelectorAll('.source-copy')){
-      if(source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
+      if(studioFiltered(source)||source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
       const typeset=beautifulTypesetSource(source)
       if(typeset){typesets.set(source,typeset);marginObserver?.observe(source)}
     }
@@ -5054,6 +6790,7 @@ function setupBeautifulText(runtime){
   refresh()
   return cleanup
 }
+
 
 const TITLE_VIEW_KEY='care-title-view-v1'
 const TITLE_VIEW_EVENT='care-title-view-change'
@@ -5358,25 +7095,49 @@ function setupAxiomCopy(runtime){
   return cleanup
 }
 
+
+function studioSourceClipboardToken(view,packet){
+  try{
+    // Keep exact source wording inside this tab, even if the clipboard is
+    // pasted into a different app or synced to another device.
+    const bytes=view.crypto.getRandomValues(new Uint8Array(16))
+    const token=Array.from(bytes,byte=>byte.toString(16).padStart(2,"0")).join("")
+    view.sessionStorage.setItem("care-studio-source-clipboard-v1",JSON.stringify({token,packet}))
+    return token
+  }catch(_){return ""}
+}
+
+function notifyStudioReaderReady(root,data){
+  if(root.dataset.studioEmbed!=="true")return
+  const view=root.ownerDocument.defaultView
+  if(view?.parent&&view.parent!==view){
+    const request=new URL(view.location.href).searchParams.get("care_studio_request")
+    if(request)view.parent.postMessage({type:"care-studio-reader-ready",request,...(data?.mode==="library"?{shelfTitle:data.active_study_set?.title||""}:{})},view.location.origin)
+  }
+}
 function renderStudyDesk(component,localNavigation=false){
   const {parentElement,setStateValue,setTriggerValue}=component
   let data=component.data
   const root=parentElement.querySelector("[data-study-desk]");if(!root)return
   try {
-    let runtime=INSTANCES.get(parentElement);if(!runtime||runtime.root!==root){runtime?.renderCleanup?.();runtime=setup(root);INSTANCES.set(parentElement,runtime)}
+    root.dataset.studioEmbed=String(Boolean(data?.studio_embed))
+    let runtime=INSTANCES.get(parentElement);if(!runtime||runtime.root!==root){runtime?.renderCleanup?.();runtime=setup(root,Boolean(data?.studio_embed));INSTANCES.set(parentElement,runtime)}
     data=studyNavigationReceive(runtime,component,localNavigation)
     runtime.renderNavigation=next=>renderStudyDesk({...studyNavigationState(runtime).component,data:next},true)
     data=runtime.prepareOriginalFormats(data||{})
     const renderSignature=studyDeskRenderSignature(data)
+    runtime.paintReadingFocus()
     const reused=reuseStudyDeskRender(runtime,{...component,data},renderSignature)
     if(reused){studyNavigationPrefetch(runtime);return reused}
     const finishRender=beginStudyDeskRender(runtime)
     root.ownerDocument.defaultView?.addEventListener("care-reference-viewer-ready",runtime.onViewerReady)
     root.addEventListener("click",runtime.onClick)
     root.addEventListener("keydown",runtime.onKey)
+    const stopPaneKeyFocus=runtime.attachPaneKeyFocus()
     root.addEventListener("contextmenu",runtime.onBookContextMenu)
     root.addEventListener("scroll",runtime.onBookMenuScroll,true)
     root.ownerDocument.addEventListener("pointerdown",runtime.onBookMenuOutside,true)
+    if(data?.mode==="library")root.ownerDocument.addEventListener("pointerdown",runtime.onShelfActionsOutside,true)
     root.ownerDocument.defaultView?.addEventListener("resize",runtime.onBookMenuResize)
     root.addEventListener("pointerdown",runtime.onSliderStart)
     root.ownerDocument.addEventListener("pointerup",runtime.onSliderEnd)
@@ -5395,12 +7156,14 @@ function renderStudyDesk(component,localNavigation=false){
     root.addEventListener("scroll",runtime.queueThreads,true)
     root.addEventListener("toggle",runtime.queueThreads,true)
     root.addEventListener("toggle",runtime.onSectionToggle,true)
+    root.addEventListener("toggle",runtime.onRouteReadingToggle,true)
     for(const event of ["pointerover","pointerout","focusin","focusout"])root.addEventListener(event,runtime.onRouteHover)
     runtime.beforeOutlineRender?.()
     const previousData=runtime.data,previousConnection=runtime.data?.connection,previousFocused=runtime.focused
     refreshStudyDeskOutlineContext(runtime,data)
     runtime.api=studyNavigationAPI(runtime,component);runtime.data=data||{}
     const shelfReset=data?.mode==="library"&&runtime.syncShelf(data)
+    runtime.syncStudySetPicker(data)
     if(data?.mode==="library")runtime.syncLibrarySelection(data)
     runtime.attachConnectionDiscovery?.()
     runtime.attachBuildVersionMenu?.()
@@ -5422,7 +7185,7 @@ function renderStudyDesk(component,localNavigation=false){
     // Replacing chapter markup must not reset the user's position on each line.
     // Keep offsets while Routes temporarily hides the sliders; reset for a new book.
     if(sameWork)runtime.rememberSliders();else runtime.sliderScrollPositions.clear()
-    const resumedSnapshot=(!sameWork||!sameConnection)?workspaceReadSnapshot(root,String(stack?.work?.id||""),nextSignature,nextReference,studyDeskWorkspaceContext(data),String(data?.connection?.id||"")):null
+    const resumedSnapshot=!data?.studio_embed&&(!sameWork||!sameConnection)?workspaceReadSnapshot(root,String(stack?.work?.id||""),nextSignature,nextReference,studyDeskWorkspaceContext(data),String(data?.connection?.id||"")):null
     if(!sameWork){runtime.sectionMemory.clear();runtime.clearedSelectionContext=null;runtime.selectedAxiom=data?.selected_axiom||null}
     workspaceRestoreRuntime(runtime,resumedSnapshot)
     runtime.viewerSelectionPending=Boolean(resumedSnapshot?.selectedAxiom)
@@ -5433,8 +7196,11 @@ function renderStudyDesk(component,localNavigation=false){
       const selection=runtime.selectedAxiom,valid=selection.passage_id?String(stack.active_chapter?.raw_unit_id)===selection.unit_id&&arr(stack.active_chapter?.passages).some(item=>String(item.id)===selection.passage_id):arr(stack.care_path).some(unit=>String(unit.id)===selection.unit_id&&arr(unit.sections).some(section=>arr(section.items).some(item=>String(item.id)===selection.axiom_id)))
       if(!valid)runtime.selectedAxiom=null
     }
-    const hadDeskFocus=Boolean(root.querySelector(":focus")),activeReading=root.querySelector("[data-select-axiom]:focus,[data-open-axiom-routes]:focus,[data-select-passage]:focus,[data-open-passage-routes]:focus"),readingFocus=activeReading?{id:activeReading.dataset.selectPassage||activeReading.dataset.openPassageRoutes||activeReading.dataset.selectAxiom||activeReading.dataset.openAxiomRoutes,passage:Boolean(activeReading.dataset.selectPassage||activeReading.dataset.openPassageRoutes),routes:Boolean(activeReading.dataset.openPassageRoutes||activeReading.dataset.openAxiomRoutes)}:null
+    const activeDeskElement=root.querySelector(":focus"),hadDeskFocus=Boolean(activeDeskElement),activeReading=root.querySelector("[data-select-axiom]:focus,[data-open-axiom-routes]:focus,[data-select-passage]:focus,[data-open-passage-routes]:focus"),readingFocus=activeReading?{id:activeReading.dataset.selectPassage||activeReading.dataset.openPassageRoutes||activeReading.dataset.selectAxiom||activeReading.dataset.openAxiomRoutes,passage:Boolean(activeReading.dataset.selectPassage||activeReading.dataset.openPassageRoutes),routes:Boolean(activeReading.dataset.openPassageRoutes||activeReading.dataset.openAxiomRoutes)}:null
+    const paneKeyFocus=rememberPaneReadingFocus(runtime,activeDeskElement)
+    const studioFilterFocus=root.querySelector("[data-studio-pane-filter]:focus")?.closest("[data-pane]")?.dataset.pane
     const favouriteFocus=root.querySelector("[data-favourite-axiom]:focus")?.dataset.favouriteAxiom
+    const sourceMark=root.querySelector('[data-bookmark-layer="SOURCE"][data-bookmark-toggle]:focus'),sourceMarkFocus=sourceMark?{unit:sourceMark.dataset.bookmarkToggle,passage:sourceMark.dataset.bookmarkPassage||""}:null
     if(sameWork&&!runtime.referenceId)root.querySelectorAll("[data-reading-sheet]").forEach(runtime.rememberSections)
     const previousLayer=paneLayerKey(root.querySelector(`[data-pane="${CSS.escape(runtime.focused)}"]`))
     const readingPositions=new Map([...root.querySelectorAll(".window-body")].map(body=>[body.dataset.readingId||body.closest("[data-pane]")?.dataset.pane,{top:body.scrollTop,sections:[...body.querySelectorAll(".care-section")].map(section=>section.open)}]))
@@ -5446,7 +7212,6 @@ function renderStudyDesk(component,localNavigation=false){
     runtime.workspaceContext=data?.workspace_context||""
     runtime.workspaceContentContext=studyDeskWorkspaceContext(data)
     const returningToBook=sameWork&&Boolean(runtime.referenceId)&&!nextReference
-    const sliderFocused=Boolean(root.querySelector("[data-sheet-slider]:focus"))
     const directionFocused=Boolean(root.querySelector("[data-route-direction]:focus"))
     const historyButton=root.querySelector("[data-route-history]:focus,[data-connection-route-history]:focus")
     const historyAttribute=historyButton?.hasAttribute("data-connection-route-history")?"data-connection-route-history":"data-route-history",historyFocused=historyButton?.getAttribute(historyAttribute)
@@ -5457,17 +7222,36 @@ function renderStudyDesk(component,localNavigation=false){
     const reuseShelf=mode==="library"&&runtime.renderSignature===renderSignature
     if(!reuseReading&&!reuseShelf){runtime.closeReaderMenu?.();runtime.closeSliderJumpMenu?.();runtime.closeBookMenu();runtime.closeConnectionDiscovery?.();runtime.closeBuildVersionMenu?.();runtime.closeOriginalFormats?.();runtime.closeOriginalDownloads?.();runtime.closeSheetVersionMenu?.();runtime.closeConnectionResolution?.();runtime.closeBookmarkMenu?.();replaceStudyDeskMarkup(runtime,mode==="library"?library(runtime.librarySelectionData(),runtime.shelf):workspace(studyNavigationRenderData(runtime,originalReaderRenderData(runtime,data),previousData,localNavigation)))}
     runtime.renderSignature=renderSignature
-    if(mode==="library"){root.querySelector(".library-window").scrollTop=shelfReset?0:previousShelfTop;runtime.paintLibrarySelection()}
+    startStudioPaneReading(runtime)
+    if(mode==="library"){
+      root.querySelector(".library-window").scrollTop=shelfReset?0:previousShelfTop;runtime.paintLibrarySelection()
+      runtime.paintShelfTheme()
+      if(runtime.studySetPickerFocus&&!reuseShelf){
+        const selector=runtime.studySetPickerFocus==="search"?"[data-study-set-query]":"[data-study-set-picker-toggle]"
+        root.querySelector(selector)?.focus({preventScroll:true})
+        runtime.studySetPickerFocus=null
+      }
+      if(shelfReset&&runtime.focusStudySetNavigation){
+        root.querySelector(data?.active_study_set?".study-set-heading h2":"[data-shelf-category] summary")?.focus({preventScroll:true})
+        runtime.focusStudySetNavigation=false
+      }
+    }
     root.removeAttribute("aria-busy")
     runtime.pendingSlider=null
     runtime.applySkin()
     runtime.applyTextScale()
+    paintStudioPaneFilters(runtime)
+    decoratePassageStudioUses(runtime)
     setupBeautifulText(runtime)
     setupTitleView(runtime)
     setupVibrantView(runtime)
     setupAxiomCopy(runtime)
+    const stopStudioCopy=setupStudioDeskCopy(runtime)
     setupTypesetPassageDismissal(runtime)
     runtime.paintConnectionView?.()
+    runtime.paintToolbarLabels?.()
+    runtime.paintSliderArrows?.()
+    runtime.applyRoutePresentation?.()
     runtime.restoreReaderMenu?.()
     if(sameWork)runtime.restoreVersionMenus(versionMenus)
     runtime.refreshSliders?.()
@@ -5485,9 +7269,11 @@ function renderStudyDesk(component,localNavigation=false){
     }
     runtime.paintSelection()
     decorateReadingActions(runtime)
+    if(!reuseReading&&sameWork&&sourceMarkFocus)root.querySelector(`[data-bookmark-toggle="${CSS.escape(sourceMarkFocus.unit)}"][data-bookmark-passage="${CSS.escape(sourceMarkFocus.passage)}"]`)?.focus({preventScroll:true})
+    if(!reuseReading&&sameWork&&studioFilterFocus)root.querySelector(`[data-pane="${CSS.escape(studioFilterFocus)}"]`)?.querySelector("[data-studio-pane-filter]")?.focus({preventScroll:true})
     if(!reuseReading&&sameWork&&favouriteFocus)root.querySelector(`[data-favourite-axiom="${CSS.escape(favouriteFocus)}"]`)?.focus({preventScroll:true})
     const restoreFocus=readingFocus||(returningToBook&&hadDeskFocus&&runtime.selectedAxiom?{id:runtime.selectedAxiom.passage_id||runtime.selectedAxiom.axiom_id,passage:Boolean(runtime.selectedAxiom.passage_id),routes:false}:null)
-    if(!reuseReading&&sameWork&&restoreFocus){const kind=restoreFocus.passage?"passage":"axiom",attribute=restoreFocus.routes?`data-open-${kind}-routes`:`data-select-${kind}`,target=root.querySelector(`[${attribute}="${CSS.escape(restoreFocus.id)}"]`);if(target){const section=target.closest("details");if((restoreFocus.passage||section?.open||(runtime.isRouting()&&!section))&&!target.hidden)target.focus({preventScroll:true});else section?.querySelector("summary")?.focus({preventScroll:true})}}
+    if(!reuseReading&&sameWork&&restoreFocus){const kind=restoreFocus.passage?"passage":"axiom",attribute=restoreFocus.routes?`data-open-${kind}-routes`:`data-select-${kind}`,target=root.querySelector(`[${attribute}="${CSS.escape(restoreFocus.id)}"]`);if(target){const section=target.closest("details");if((restoreFocus.passage||section?.open||(runtime.isRouting()&&!section))&&!target.closest("[hidden],[data-studio-filter-hidden]"))target.focus({preventScroll:true});else section?.querySelector("summary")?.focus({preventScroll:true})}}
     const alignedLayer=runtime.pendingLayer||(returningToBook?runtime.bookPosition?.layer:null)||previousLayer,alignedPane=paneForLayer(root,alignedLayer)
     runtime.focused=sameWork?(alignedPane?.dataset.pane||"source"):"source"
     const preserveRoutePosition=sameWork&&sameReference&&!signatureChanged&&Boolean(nextReference)&&root.querySelector(`[data-pane="${CSS.escape(previousFocused||"")}"]`)
@@ -5501,12 +7287,12 @@ function renderStudyDesk(component,localNavigation=false){
     else if(!sameConnection&&data?.connection&&!resumedSnapshot){const pane=root.querySelector("[data-connection-field]");centreConnectionPane(runtime,pane)}
     if(referenceChanged)root.querySelector(".route-arrival")?.classList.add("route-arrival-new")
     runtime.paintFocus()
-    if(sliderFocused&&runtime.pendingLayer)root.querySelector(`[data-sheet-slider="${CSS.escape(runtime.pendingLayer)}"]`)?.focus({preventScroll:true})
     if(directionFocused)root.querySelector("[data-route-direction]")?.focus({preventScroll:true})
     if(historyFocused){const target=root.querySelector(`[${historyAttribute}="${historyFocused}"]:not(:disabled)`)||root.querySelector(`[${historyAttribute}]:not(:disabled)`)||root.querySelector(".route-history-actions .route-close");target?.focus({preventScroll:true})}
     if(returningToConnection&&runtime.connectionReadingPosition){const saved=runtime.connectionReadingPosition;root.querySelectorAll(".window-body[data-reading-id]").forEach(body=>{const position=saved.positions.get(body.dataset.readingId);if(position){body.querySelectorAll(".care-section").forEach((section,index)=>{section.open=position.sections[index]??section.open});body.scrollTop=position.top}});if(strip)strip.scrollLeft=saved.left;runtime.focused=saved.focused;runtime.paintFocus()}
     runtime.syncConnectionShelf?.()
     installPaneControls(root,runtime.paneControlState||(runtime.paneControlState={}),()=>{runtime.queueTrackZoom();runtime.queueThreads();runtime.positionDialoguePlayer?.()},String(data?.stack?.work?.id||""))
+    const stopReadingFocus=runtime.watchReadingFocus()
     runtime.mountDialoguePlayer()
     runtime.restoreSliderJumpMenu(reuseReading)
     if(bookmarkMenuWork===String(data?.stack?.work?.id||""))runtime.openBookmarkMenu(root.querySelector("[data-bookmark-menu]"),{restore:true})
@@ -5516,21 +7302,41 @@ function renderStudyDesk(component,localNavigation=false){
     workspaceRestorePosition(runtime,resumedSnapshot)
     runtime.stopOriginalReader=runtime.mountOriginalReader({sameWork,resumed:Boolean(resumedSnapshot),formatSwitch:Boolean(runtime.originalFormatEntry?.preferred&&runtime.originalState?.id!==data?.stack?.original_reader?.id)})
     runtime.resumeOriginalFormat?.()
+    if(!reuseReading&&sameWork&&sameConnection)restorePaneReadingFocus(root,paneKeyFocus)
     let resumeOnResize=applySavedPaneFocus(runtime)?null:resumedSnapshot
     let initialRouteLayout=true
     const stopTrackZoom=runtime.watchTrackZoom()
     const stopPaneScrollbar=installPaneScrollbar(root)
-    const stopWorkspaceWatch=workspaceWatchReader(runtime)
+    const stopWorkspaceWatch=data?.studio_embed?()=>{}:workspaceWatchReader(runtime)
     const stopDialogueWatch=runtime.watchDialoguePlayer()
-    const resize=view?.ResizeObserver?new view.ResizeObserver(()=>{if(resumeOnResize){workspaceRestorePosition(runtime,resumeOnResize);resumeOnResize=null}else if(initialRouteLayout&&data?.connection?.reference){if(!preserveConnectionPosition&&centreConnectionReference(runtime))runtime.paintFocus()}else if(initialRouteLayout&&data?.reference&&!preserveRoutePosition){const selected=centreSelectedReference(root,data.reference);if(selected){runtime.focused=selected;runtime.paintFocus()}}if(applySavedPaneFocus(runtime))resumeOnResize=null;initialRouteLayout=false;runtime.queueThreads()}):null
-    if(resize){resize.observe(root);const text=root.querySelector(".axiom-button.selected .axiom-text");if(text)resize.observe(text)}
+    const sliderWidths=new WeakMap()
+    const resize=view?.ResizeObserver?new view.ResizeObserver(entries=>{
+      if(resumeOnResize){workspaceRestorePosition(runtime,resumeOnResize);resumeOnResize=null}else if(initialRouteLayout&&data?.connection?.reference){if(!preserveConnectionPosition&&centreConnectionReference(runtime))runtime.paintFocus()}else if(initialRouteLayout&&data?.reference&&!preserveRoutePosition){const selected=centreSelectedReference(root,data.reference);if(selected){runtime.focused=selected;runtime.paintFocus()}}
+      if(applySavedPaneFocus(runtime))resumeOnResize=null
+      initialRouteLayout=false;runtime.queueThreads()
+      for(const {target} of entries){
+        if(!target.matches?.("[data-slider-track]")||runtime.sliderGesture||sliderWidths.get(target)===target.clientWidth)continue
+        sliderWidths.set(target,target.clientWidth)
+        const input=target.querySelector("[data-sheet-slider],[data-connection-layer-slider]")
+        if(input)keepSliderVisible(input,true)
+      }
+    }):null
+    if(resize){
+      resize.observe(root)
+      root.querySelectorAll("[data-slider-track]").forEach(track=>resize.observe(track))
+      const text=root.querySelector(".axiom-button.selected .axiom-text");if(text)resize.observe(text)
+      const sourceBody=runtime.pendingPassageFocus&&root.querySelector('[data-pane="source"] .window-body')
+      if(sourceBody)resize.observe(sourceBody)
+    }
     if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)
     const loader=root.querySelector("[data-load-screen]")
     // The reader data and DOM are ready; do not add a timed input-blocking delay.
     loader?.remove()
+    notifyStudioReaderReady(root,data)
     runtime.applyOutline?.()
+    const stopContextMenus=mountWorkspaceReaderMenus(runtime,mode==='workspace'&&data.workspace_managed&&!data.corpus_nested&&stack.work?.id?'study:'+stack.work.id:'')
     studyNavigationPrefetch(runtime)
-    return finishRender(()=>{stopPaneReading();runtime.cleanupAxiomCopy?.();runtime.cleanupTypesetPassageDismissal?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopPaneScrollbar();stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
+    return finishRender(()=>{stopPaneKeyFocus();stopContextMenus();stopReadingFocus();stopPaneReading();stopStudioCopy();runtime.cleanupAxiomStudioUses?.();runtime.cleanupAxiomCopy?.();runtime.cleanupTypesetPassageDismissal?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onShelfActionsOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopPaneScrollbar();stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);root.removeEventListener("toggle",runtime.onRouteReadingToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`

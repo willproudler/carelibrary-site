@@ -178,13 +178,15 @@ class AuthStore:
     def token_hash(token):
         return hashlib.sha256(token.encode("ascii")).hexdigest()
 
-    def session(self, token):
+    def session(self, token, *, connection=None):
         if not isinstance(token, str) or not 20 <= len(token) <= 128 or not token.isascii():
             return None
-        with self.connect(readonly=True) as db:
-            row = db.execute("""SELECT users.email,users.name FROM sessions JOIN users USING(email)
-                WHERE token_hash=? AND expires_at>? AND enabled=1""",
-                (self.token_hash(token), time.time())).fetchone()
+        if connection is None:
+            with self.connect(readonly=True) as db:
+                return self.session(token, connection=db)
+        row = connection.execute("""SELECT users.email,users.name FROM sessions JOIN users USING(email)
+            WHERE token_hash=? AND expires_at>? AND enabled=1""",
+            (self.token_hash(token), time.time())).fetchone()
         return dict(row) if row else None
 
     @staticmethod

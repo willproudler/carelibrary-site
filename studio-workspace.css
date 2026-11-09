@@ -1,0 +1,95 @@
+.studio-web {
+  --st-background-color: #0d1016;
+  --st-text-color: #ecece9;
+  --st-secondary-background-color: #171b22;
+  --st-font: var(--care-web-sans);
+  --st-code-font: var(--care-web-mono);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+  background: var(--st-background-color);
+  color: var(--st-text-color);
+  font: 400 .95rem/1.45 var(--st-font);
+}
+
+.studio-web[hidden], .studio-web [hidden] { display: none !important; }
+
+.studio-web > [data-studio-native] {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.studio-web__native-editor { inline-size: 100%; }
+.studio-web .native-draft-reader-status,
+.studio-web__message {
+  position: absolute;
+  z-index: 3;
+  inset: 1.6rem auto auto 50%;
+  transform: translateX(-50%);
+  max-inline-size: calc(100% - 2rem);
+  margin: 0;
+  padding: .75rem 1rem;
+  border: 1px solid #465552;
+  border-radius: .65rem;
+  background: #182125;
+}
+.studio-web__message p { margin: 0 0 .25rem; }
+.studio-web__recovery {
+  position: absolute;
+  z-index: 4;
+  inset: auto 1rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: center;
+  max-inline-size: 46rem;
+  margin-inline: auto;
+  padding: .65rem .8rem;
+  border: 1px solid #997251;
+  border-radius: .65rem;
+  background: #26201c;
+  color: #f0d4b4;
+}
+
+.studio-web__dialog {
+  width: min(26rem, calc(100% - 2rem));
+  max-height: 75dvh;
+  padding: 1.05rem 1.2rem;
+  border: 1px solid #465552;
+  border-radius: .75rem;
+  background: #182125;
+  color: #e9eee7;
+}
+.studio-web__dialog::backdrop { background: #090d10b8; }
+.studio-web__dialog h2 { margin: 0 2rem .35rem 0; font-size: 1.15rem; }
+.studio-web__dialog p { margin: 0 0 .75rem; color: #bac8c0; }
+.studio-web__dialog [data-studio-dialog-drafts] { display: grid; gap: .3rem; }
+.studio-web :is(button, [data-studio-signin]) {
+  padding: .34rem .6rem;
+  border: 1px solid #465552;
+  border-radius: .4rem;
+  background: #1e2b2d;
+  color: #e0ece4;
+  font: inherit;
+}
+.studio-web button:hover { background: #293b3c; }
+.studio-web__close { float: right; }
+/* The desktop Library dock hosts the reviewed beta workspace in its own
+   frame. Keep a shelf return and Spotlight without duplicating the shell. */
+[data-library-companion] .beta-workbench {
+  grid-template-columns: auto minmax(34px, 1fr);
+  gap: .4rem;
+  min-height: 37px;
+}
+[data-library-companion] .beta-workbench nav,
+[data-library-companion] .beta-workbench .workbench-history,
+[data-library-companion] .beta-workbench .brand-name,
+[data-library-companion] .beta-workbench .brand small,
+[data-library-companion] .reading-tabbar { display: none !important; }
+[data-library-companion] .beta-workbench .brand,
+[data-library-companion] .beta-workbench .brand .brand-mark { width: 2.35rem; height: 1.8rem; }
+[data-library-companion] .beta-workbench .workbench-search { min-height: 28px; }

@@ -1,0 +1,39 @@
+/* Generated from care_platform/writing_studio_picker.py by tools/export_native_studio_picker.py. */
+.studio-mode-hint {position:fixed;inset:auto;z-index:101;margin:0;padding:.33rem .52rem;border:1px solid #446358;border-radius:.38rem;background:#1c2a24;color:#e5ede7;white-space:nowrap;pointer-events:none;box-shadow:0 .32rem .85rem #090f0c66;font-size:.69rem}
+.studio-picker-panel {position:fixed;inset:auto;z-index:100;display:flex;flex-direction:column;gap:.65rem;width:min(25rem,calc(100vw - 1rem));max-height:min(31rem,calc(100dvh - var(--picker-top,3.5rem) - .6rem));overflow:hidden;margin:0;padding:.85rem;border:1px solid #3b5a4e;border-radius:.72rem;color:#e5ede7;background:#14211d;box-shadow:0 1rem 2.65rem #030805a6}
+.studio-picker-panel[popover]:not(:popover-open) {display:none}
+.studio-picker-header {display:flex;justify-content:space-between;align-items:center;gap:.6rem}
+.studio-picker-header span {display:block;margin-bottom:.16rem;color:#9ac0b1;font:650 .57rem/1.2 ui-monospace,monospace;letter-spacing:.12em}
+.studio-picker-header strong {font:500 1.1rem/1.2 Georgia,serif}
+.studio-picker-new {flex:none;padding:.4rem .56rem;border:1px solid #437c6d;border-radius:.4rem;background:#255447;color:#f1faf6}
+.studio-picker-new:hover {background:#34705d}
+.studio-picker-search {display:flex;align-items:center;gap:.42rem;padding:0 .5rem;border:1px solid #38554a;border-radius:.38rem;background:#101a17;color:#9eb8ae}
+.studio-picker-search:focus-within {border-color:#85b9a6}
+.studio-picker-search input {width:100%;min-width:0;min-height:2.05rem;padding:0;border:0;outline:none;background:transparent;color:#e5ede7}
+.studio-picker-search input:focus-visible {outline:none}
+.studio-picker-results {min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#49685d transparent}
+.studio-picker-results h3 {margin:.55rem .24rem .2rem;color:#a4bfb4;font:650 .58rem/1.35 ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase}
+.studio-picker-results h3:first-child {margin-top:.15rem}
+.studio-picker-row {display:flex;align-items:center;gap:.46rem;width:100%;min-width:0;padding:.4rem .35rem;border:0;border-radius:.32rem;text-align:start;background:transparent}
+.studio-picker-row:hover,.studio-picker-row:focus-visible {background:#203a31}
+.studio-picker-row svg {color:#9bc7b6}
+.studio-picker-row span {display:grid;min-width:0;flex:1}
+.studio-picker-row :is(strong,small) {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.studio-picker-row strong {font-size:.76rem;font-weight:570}
+.studio-picker-row small,.studio-picker-empty {color:#a1b8ae;font-size:.65rem}
+.studio-picker-empty {margin:.3rem .28rem .2rem;padding:.4rem 0}
+.studio-picker-reading-head {display:flex;align-items:center;justify-content:space-between;gap:.4rem;margin-top:.52rem;padding-top:.18rem;border-top:1px solid #345147}
+.studio-picker-results .studio-picker-reading-head h3 {margin:.25rem .24rem;color:#a5cdb8}
+.studio-picker-link {padding:.22rem .35rem;border:0;border-radius:.25rem;background:transparent;color:#a9cbbd;font-size:.65rem}
+.studio-picker-link:hover {background:#203a31;color:#e5ede7}
+.studio-picker-crumbs {display:flex;align-items:center;gap:.18rem;flex-wrap:wrap;margin:0 0 .45rem;padding-bottom:.3rem;border-bottom:1px solid #345147;color:#a4bfb4}
+.studio-picker-crumbs button {max-width:13rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:.16rem .22rem;border:0;border-radius:.2rem;background:transparent;color:#aed4c7}
+.studio-picker-crumbs button:hover {background:#253f36}
+[data-studio-picker] :is(.studio-picker-panel,.studio-mode-hint)[hidden] {display:none}
+.studio-picker-panel {font:500 .77rem/1.3 var(--care-web-sans)}
+:where(.studio-picker-panel) button {color:inherit}
+.studio-picker-panel button:focus-visible {outline:2px solid #98c9bc;outline-offset:-2px}
+.beta-workbench .studio-picker-panel svg {width:1.05rem;height:1.05rem;flex:none}
+.beta-workbench .studio-picker-panel .studio-picker-crumbs {justify-content:flex-start;margin:0 0 .45rem;gap:.18rem}
+.beta-workbench .studio-picker-panel .studio-picker-crumbs button {min-width:0;min-height:0;padding:.16rem .22rem;border:0;border-radius:.2rem;background:transparent;color:#aed4c7;font:inherit}
+.beta-workbench .studio-picker-panel .studio-picker-crumbs button:hover {background:#253f36}

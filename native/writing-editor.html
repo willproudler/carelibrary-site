@@ -1,0 +1,477 @@
+<section class="studio" data-writing-studio aria-label="CARE Studio">
+  <header class="studio-head">
+    <div class="drawer-actions" role="group" aria-label="Write beside controls">
+      <button type="button" data-action="compact-axiom" title="Back to Axiom viewer" aria-label="Back to Axiom viewer" hidden>
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m7 5-5 5 5 5m-5-5h8a5 5 0 0 1 5 5v1"/></svg>
+      </button>
+      <label class="drawer-draft-picker">
+        <span data-drawer-draft-label aria-hidden="true">Choose a draft</span>
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></svg>
+        <select data-documents aria-label="Switch draft" title="Switch draft"></select>
+      </label>
+      <button type="button" data-action="new" class="drawer-new-draft" title="New draft" aria-label="New draft">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>
+      </button>
+      <button type="button" data-action="drawer-tools" title="More writing tools" aria-label="More writing tools" aria-controls="care-writing-drawer-tools" aria-expanded="false">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h.1m5.85 0h.1m5.85 0h.1" stroke-width="2.4"/></svg>
+      </button>
+      <button type="button" data-action="studio" class="open-studio" title="Open full draft in CARE Studio" aria-label="Open full draft in CARE Studio" hidden>
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4h6v6m0-6-7 7m7 1v4H4V4h4"/></svg>
+      </button>
+      <button type="button" data-action="close" class="close-notes" title="Close Write beside" aria-label="Close Write beside" hidden>
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+      </button>
+    </div>
+    <div class="top-actions" id="care-writing-drawer-tools">
+      <div class="document-actions">
+        <button type="button" data-action="files" title="Browse drafts" aria-label="Browse drafts" hidden>
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 5.5h5l1.7 2H17v8H3v-10Z"/></svg>
+          <span>Drafts</span>
+        </button>
+        <input class="document-title" data-title aria-label="Rename draft" title="Rename draft" placeholder="Draft name" maxlength="240" autocomplete="off" hidden>
+      </div>
+      <div class="view-actions" role="group" aria-label="Writing views">
+        <button type="button" data-action="layout" aria-pressed="true" aria-label="Page view" title="Page view" hidden>
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3h8l3 3v11H5V3Zm8 0v3h3M8 10h5m-5 3h5"/></svg>
+          <span>Page view</span>
+        </button>
+        <select data-footnote-mode aria-label="Footnote style" title="Footnote style" hidden>
+          <option value="citation">Scholarly citation</option>
+          <option value="citation_id">Scholarly + axiom ID</option>
+          <option value="citation_id_text">Scholarly + axiom ID + text</option>
+          <option value="compact">Reference ID</option>
+          <option value="detailed">ID + text</option>
+        </select>
+        <button type="button" data-action="formatting" aria-expanded="false" aria-controls="care-writing-tools" aria-label="Formatting" title="Formatting" hidden>
+          <svg class="icon type-icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m2 15 4-10 4 10M3.5 11h5m8.5 4v-4a2.5 2.5 0 0 0-4.5-1.5M17 12h-2.7a1.5 1.5 0 0 0 0 3H17"/></svg>
+          <span>Format</span>
+        </button>
+        <button type="button" data-action="outline" aria-expanded="false" aria-controls="care-writing-outline" aria-label="Document outline" title="Document outline" hidden>
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 5h14M6 10h11M9 15h8"/></svg>
+          <span>Outline</span>
+        </button>
+        <button type="button" data-action="panel" aria-expanded="false" aria-controls="care-writing-research" aria-label="CARE the Librarian" title="CARE the Librarian" hidden>
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 2.8 17.2 7v6L10 17.2 2.8 13V7L10 2.8ZM2.8 7 10 11l7.2-4M10 11v6.2"/></svg>
+          <span>Librarian</span>
+        </button>
+        <button type="button" data-action="focus" aria-pressed="false" aria-label="Hide controls" title="Hide controls" hidden>
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 7V3h4m6 0h4v4m0 6v4h-4m-6 0H3v-4"/></svg>
+          <span>Hide controls</span>
+        </button>
+      </div>
+      <div class="document-utilities">
+        <button type="button" data-action="copy" title="Copy selected text or the draft body" hidden>Copy text</button>
+        <button type="button" data-action="paste" title="Paste at the cursor" hidden>Paste</button>
+        <button type="button" data-action="save" title="Save now" hidden>Save</button>
+      </div>
+    </div>
+  </header>
+  <dialog class="clipboard-dialog" data-clipboard-dialog aria-labelledby="care-clipboard-title" aria-describedby="care-clipboard-hint">
+    <form>
+      <h2 id="care-clipboard-title" data-clipboard-title>Paste text</h2>
+      <p id="care-clipboard-hint" data-clipboard-hint>Press ⌘V here, then choose Insert text.</p>
+      <textarea data-clipboard-field aria-label="Text to paste" rows="7"></textarea>
+      <div class="clipboard-actions">
+        <button type="button" data-action="clipboard-close" data-clipboard-cancel>Cancel</button>
+        <button type="submit" class="new-draft" data-clipboard-insert>Insert text</button>
+      </div>
+    </form>
+  </dialog>
+  <div class="writing-launchers">
+    <button type="button" class="library-resume-launcher" data-action="resume-library" aria-controls="care-writing-library-dock" title="Return to your place in the Library pane" hidden>
+      <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3.5 14.5h13m-10-6L10 5l3.5 3.5M10 5v6.5"/></svg>
+      <span>Resume Library</span>
+    </button>
+    <button type="button" class="axiom-return-launcher" data-action="studio-axiom-return" title="Back to Axiom viewer" aria-label="Back to Axiom viewer" hidden>
+      <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M8 5 3 10l5 5m-5-5h9a4 4 0 0 1 4 4v1"/></svg>
+    </button>
+    <button type="button" class="peer-review-launcher" data-peer-review-toggle aria-label="Reader review" aria-expanded="false" aria-controls="care-writing-peer-review" title="Reader review" hidden>
+      <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 4.5h14v9.25H8.5L5 16.5v-2.75H3V4.5Z M6.5 8h7m-7 2.75h4"/></svg>
+      <span class="peer-review-launcher-label">Reader review</span>
+      <span class="peer-review-count" data-peer-review-count hidden></span>
+    </button>
+    <button type="button" class="librarian-launcher" data-action="peek-research" aria-label="CARE the Librarian" aria-expanded="false" aria-controls="care-writing-research" title="CARE the Librarian" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a2 2 0 0 1 2 2v14.5a2.7 2.7 0 0 0-2-1H6.5A2.5 2.5 0 0 1 4 16V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H15a2 2 0 0 0-2 2v14.5a2.7 2.7 0 0 1 2-1h2.5A2.5 2.5 0 0 0 20 16V5.5Z"/></svg>
+      <span data-librarian-launcher-label>CARE the Librarian</span>
+      <span class="peer-review-unread" data-peer-review-unread aria-hidden="true" hidden></span>
+    </button>
+  </div>
+  <div class="writing-tools-launchers" role="group" aria-label="Writing tools">
+    <button type="button" data-binder-edge aria-controls="care-writing-binder" aria-expanded="false"
+      title="Open Project Binder" aria-label="Open Project Binder" hidden>
+      <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M8 4v12m3-9h3m-3 3h3"/></svg>
+      <span>Binder</span>
+    </button>
+    <button type="button" data-action="open-formatting" title="Open Format"
+      aria-label="Open Format" aria-expanded="false" aria-controls="care-writing-tools" hidden>
+      <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m2 15 4-10 4 10M3.5 11h5m8.5 4v-4a2.5 2.5 0 0 0-4.5-1.5M17 12h-2.7a1.5 1.5 0 0 0 0 3H17"/></svg>
+      <span>Format</span>
+    </button>
+  </div>
+  <div class="writing-zoom" data-writing-zoom role="group" aria-label="Document zoom" hidden>
+    <button type="button" data-zoom-out title="Zoom out" aria-label="Zoom out">−</button>
+    <button type="button" data-zoom-reset title="Reset document zoom to 100%">100%</button>
+    <button type="button" data-zoom-in title="Zoom in" aria-label="Zoom in">+</button>
+  </div>
+  <div class="workspace" data-workspace hidden>
+    <div class="writing-surface">
+      <div class="format-rail">
+        <div class="toolbar" id="care-writing-tools" data-formatting role="group" aria-label="Text formatting" hidden>
+          <div class="format-tools">
+            <div class="format-section">
+              <div class="format-caption" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 20 20"><path d="m2 15 4-10 4 10M3.5 11h5m8.5 4v-4a2.5 2.5 0 0 0-4.5-1.5M17 12h-2.7a1.5 1.5 0 0 0 0 3H17"/></svg>
+                <span>Format</span>
+              </div>
+              <div class="format-group">
+                <select data-format aria-label="Paragraph style">
+                  <option value="p">Paragraph</option>
+                  <option value="" disabled hidden>Mixed styles</option>
+                  <option value="h1">Heading 1</option>
+                  <option value="h2">Heading 2</option>
+                  <option value="h3">Heading 3</option>
+                  <option value="blockquote">Quotation</option>
+                  <option value="pre">Preformatted</option>
+                </select>
+              </div>
+              <div class="format-group typography-group" data-format-min="36" aria-label="Typography" role="group">
+                <select data-font-family aria-label="Font family" title="Font family">
+                  <option value="default">Default font</option>
+                  <option value="" disabled hidden>Mixed fonts</option>
+                  <optgroup label="Serif">
+                    <option>Iowan Old Style</option>
+                    <option>Georgia</option>
+                    <option>Palatino</option>
+                    <option>Times New Roman</option>
+                  </optgroup>
+                  <optgroup label="Sans serif">
+                    <option>Helvetica</option>
+                    <option>Arial</option>
+                  </optgroup>
+                  <optgroup label="Monospace">
+                    <option>Menlo</option>
+                  </optgroup>
+                </select>
+                <label class="format-font-size">
+                  <input data-font-size type="number" aria-label="Font size in points" title="Font size in points (8–72)" placeholder="Auto" min="8" max="72" step="1" inputmode="numeric">
+                  <span aria-hidden="true">pt</span>
+                </label>
+                <button type="button" data-command="clearTypography" title="Reset font and size" aria-label="Reset font and size">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M5 5v4h4M5.3 9a5.4 5.4 0 1 1 .4 5.4"/></svg>
+                </button>
+              </div>
+              <div class="format-group" data-format-min="14" aria-label="Text style" role="group">
+                <button type="button" data-command="bold" class="bold" title="Bold" aria-label="Bold" aria-pressed="false">B</button>
+                <button type="button" data-command="italic" class="italic" title="Italic" aria-label="Italic" aria-pressed="false">I</button>
+                <button type="button" data-command="underline" class="underline" title="Underline" aria-label="Underline" aria-pressed="false">U</button>
+                <button type="button" data-command="strikeThrough" class="strikethrough" title="Strikethrough" aria-label="Strikethrough" aria-pressed="false">S</button>
+              </div>
+            </div>
+            <div class="format-section">
+              <div class="format-group" data-format-min="26" aria-label="Lists" role="group">
+                <button type="button" data-command="insertUnorderedList" title="Bullet list" aria-label="Bullet list" aria-pressed="false">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M8 5h9M8 10h9M8 15h9M3.5 5h.1M3.5 10h.1M3.5 15h.1"/></svg>
+                </button>
+                <button type="button" data-command="insertOrderedList" title="Numbered list" aria-label="Numbered list" aria-pressed="false">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M8 5h9M8 10h9M8 15h9M2.5 5l2-1v3m-2 4c0-1.2 2-1.2 2-.1 0 .6-1.1 1-2 2.1h2"/></svg>
+                </button>
+              </div>
+              <div class="format-group" data-format-min="44" aria-label="Alignment" role="group">
+                <select data-alignment aria-label="Paragraph alignment" title="Paragraph alignment">
+                  <option value="left">Align left</option>
+                  <option value="" disabled hidden>Mixed alignment</option>
+                  <option value="center">Center</option>
+                  <option value="right">Align right</option>
+                  <option value="justify">Justify</option>
+                </select>
+              </div>
+              <div class="format-group" data-format-min="18">
+                <button type="button" data-action="manual-footnote" title="Insert footnote" aria-label="Insert footnote">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 4h8M3 8h10M3 12h5m3-1h6m-3-3v6M3 16h6"/></svg>
+                </button>
+              </div>
+              <div class="format-group history" data-format-min="22" aria-label="Undo and redo" role="group">
+                <button type="button" data-action="select-all-text" title="Select the whole draft (⌘A)" aria-label="Select all text">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4M7 8h6m-6 4h6"/></svg>
+                  <span>Select all</span>
+                </button>
+                <button type="button" data-command="undo" title="Undo" aria-label="Undo">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m7 5-4 4 4 4M3 9h9a4 4 0 0 1 4 4v2"/></svg>
+                </button>
+                <button type="button" data-command="redo" title="Redo" aria-label="Redo">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m13 5 4 4-4 4m4-4H8a4 4 0 0 0-4 4v2"/></svg>
+                </button>
+              </div>
+              <div class="format-group format-footnotes" data-format-footnotes></div>
+            </div>
+            <details class="format-more" data-format-more hidden>
+              <summary title="More formatting options" aria-label="More formatting options">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><circle cx="4" cy="10" r=".8"/><circle cx="10" cy="10" r=".8"/><circle cx="16" cy="10" r=".8"/></svg>
+              </summary>
+              <div class="format-more-options" data-format-more-options>
+                <div class="format-overflow" data-format-overflow></div>
+              </div>
+            </details>
+          </div>
+          <button type="button" class="format-close" data-action="close-formatting" title="Close formatting" aria-label="Close formatting">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="studio-navigator" data-writing-navigator>
+        <div class="studio-navigator-views" role="group" aria-label="Studio sidebar" hidden>
+          <button type="button" data-navigator-view="outline" aria-controls="care-writing-outline" aria-pressed="true">Outline</button>
+          <button type="button" data-navigator-view="binder" aria-controls="care-writing-binder" aria-pressed="false">Binder</button>
+          <button type="button" data-close-writing-navigator title="Close Outline and Binder" aria-label="Close Outline and Binder">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+          </button>
+        </div>
+        <aside class="side-pane outline" id="care-writing-outline" data-outline aria-label="Document outline" hidden>
+          <details data-outline-disclosure open>
+            <summary title="Show or hide document headings">
+              <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 5h14M6 10h11M9 15h8"/></svg>
+              <span>Headings</span>
+              <svg class="icon outline-chevron" aria-hidden="true" viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></svg>
+            </summary>
+            <header class="pane-head">
+              <div class="pane-title">
+                <span class="eyebrow">THIS DRAFT</span>
+                <strong>Outline</strong>
+              </div>
+              <button type="button" data-action="close-outline" class="pane-close" title="Close outline" aria-label="Close outline">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+              </button>
+            </header>
+            <div class="outline-list" data-outline-list></div>
+          </details>
+        </aside>
+      </div>
+      <div class="page-well">
+        <article class="page">
+          <div class="paper" data-paper contenteditable="true" role="textbox" aria-multiline="true" aria-label="Document body" spellcheck="true"></div>
+          <section class="draft-footnotes" data-footnotes data-mode="citation" aria-label="Reference footnotes" hidden>
+            <ol data-footnote-list></ol>
+          </section>
+        </article>
+      </div>
+      <div class="peer-review-overlay" aria-hidden="true" hidden data-peer-review-overlay>
+        <div class="peer-review-marks" data-peer-review-marks></div>
+        <svg class="peer-review-threads" data-peer-review-threads></svg>
+      </div>
+      <aside class="peer-review-pane" id="care-writing-peer-review" data-peer-review-pane aria-label="Reader review" hidden>
+        <div class="peer-review-margin" data-peer-review-margin aria-label="Notes in the margin"></div>
+        <button type="button" class="peer-review-index-toggle" data-peer-review-index-toggle aria-controls="care-writing-peer-review-index" aria-expanded="false">
+          <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12"/></svg>
+          <span>All marks</span>
+          <span class="peer-review-index-count" data-peer-review-index-count></span>
+        </button>
+        <section class="peer-review-index" id="care-writing-peer-review-index" data-peer-review-index aria-labelledby="care-writing-peer-review-title" hidden>
+          <header class="peer-review-index-head">
+            <h2 id="care-writing-peer-review-title">Review notes</h2>
+            <div>
+              <button type="button" data-peer-review-import>Import review…</button>
+              <button type="button" data-peer-review-index-close aria-label="Return to margin notes" title="Return to margin notes">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+              </button>
+            </div>
+          </header>
+          <div class="peer-review-list" data-peer-review-list>
+            <div class="peer-review-located" data-peer-review-located></div>
+            <div class="peer-review-unplaced" data-peer-review-unplaced hidden>
+              <h3>Without a location</h3>
+              <div data-peer-review-unplaced-list></div>
+            </div>
+            <p class="peer-review-empty" data-peer-review-empty hidden>Reader marks and comments will appear here. Import the review file your reader sends back.</p>
+          </div>
+        </section>
+      </aside>
+      <footer class="page-footer">
+        <span data-count>0 words</span>
+        <span data-status role="status" aria-live="polite">Private draft</span>
+        <div class="footer-actions">
+          <button type="button" data-action="reload" hidden>Reload saved</button>
+        </div>
+        <div class="writing-collaboration-recovery" data-collaboration-recovery hidden>
+          <span role="alert" data-collaboration-message></span>
+          <div class="footer-actions">
+            <button type="button" data-collaboration-copy>Copy my draft</button>
+            <button type="button" data-collaboration-retry hidden>Retry sync</button>
+            <button type="button" data-collaboration-load>Load shared version</button>
+          </div>
+        </div>
+      </footer>
+    </div>
+    <aside class="library-dock" id="care-writing-library-dock" data-library-dock aria-labelledby="care-writing-library-title" hidden>
+      <header class="library-dock-head">
+        <span class="library-dock-mark" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 20 20"><path d="M10 18V6m0 0C8 3.8 5.4 3 2.5 3.8v11c2.9-.8 5.5 0 7.5 2.2m0-11C12 3.8 14.6 3 17.5 3.8v11c-2.9-.8-5.5 0-7.5 2.2"/></svg>
+        </span>
+        <div class="library-dock-heading">
+          <span class="eyebrow" data-library-label>Library beside draft</span>
+          <h2 id="care-writing-library-title" data-library-title>CARE Library</h2>
+        </div>
+        <div class="library-dock-controls" role="group" aria-label="Library pane controls">
+          <button type="button" data-action="library-shelf" title="Browse Library shelf beside draft" aria-label="Browse Library shelf beside draft">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v11h-13zM7 4.5v11m3.25-11v11m2.5-9.25 1.5 6.5"/></svg>
+          </button>
+          <button type="button" data-action="library-width" title="Expand Library to fill Studio" aria-label="Full Studio reading view" aria-pressed="false">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path class="library-expand-icon" d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/>
+              <path class="library-restore-icon" d="M3 7h4V3m6 0v4h4M7 17v-4H3m14 0h-4v4"/>
+            </svg>
+          </button>
+          <button type="button" data-action="library-full" title="Open in Library tab" aria-label="Open in Library tab">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10.5 4H16v5.5m0-5.5-7 7m5.5-.5V16H4V5.5h5.5"/></svg>
+          </button>
+          <button type="button" data-action="minimize-library" title="Minimize Library pane" aria-label="Minimize Library pane">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 15h13"/></svg>
+          </button>
+          <button type="button" data-action="close-library" title="Close Library pane" aria-label="Close Library pane">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>
+            <span class="drawer-back-label">Back to draft</span>
+          </button>
+        </div>
+      </header>
+      <div class="library-dock-body">
+        <iframe data-library-frame title="CARE Library reading workspace"></iframe>
+        <div class="library-dock-loading" data-library-loading role="status" hidden>
+          <span>Opening the Library…</span>
+        </div>
+      </div>
+    </aside>
+    <aside class="side-pane research" id="care-writing-research" data-research aria-label="CARE the Librarian" hidden>
+      <header class="pane-head">
+        <div class="pane-title">
+          <span class="eyebrow">LIBRARY MARGIN</span>
+          <strong>CARE the Librarian</strong>
+        </div>
+        <div class="pane-controls">
+          <button type="button" data-action="close-panel" class="pane-close" title="Close Librarian" aria-label="Close Librarian">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+          </button>
+        </div>
+      </header>
+      <button type="button" class="librarian-library" data-action="history-library" title="Browse the Library beside your draft">
+        <svg class="icon librarian-library-book" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 5.3C7.7 3.7 4.7 3.2 2.5 4v11c2.3-.8 5.3-.3 7.5 1.3 2.2-1.6 5.2-2.1 7.5-1.3V4c-2.2-.8-5.2-.3-7.5 1.3ZM10 5.3v11"/></svg>
+        <span><strong>Open Library</strong><small>Browse beside your draft</small></span>
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
+      </button>
+      <button type="button" class="librarian-peer-review" data-peer-review-menu aria-controls="care-writing-peer-review" hidden>
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 4.5h14v9.25H8.5L5 16.5v-2.75H3V4.5Z M6.5 8h7m-7 2.75h4"/></svg>
+        <span>Reader review</span>
+        <span class="peer-review-unread" data-peer-review-menu-unread aria-hidden="true" hidden></span>
+      </button>
+      <div class="research-tabs" role="group" aria-label="Librarian views">
+        <button type="button" data-tab="history" aria-pressed="false" aria-controls="care-librarian-history">History</button>
+        <button type="button" data-tab="suggestions" aria-pressed="true" aria-controls="care-writing-search">Find</button>
+        <button type="button" data-tab="references" aria-pressed="false">References <span data-ref-count></span></button>
+        <button type="button" data-tab="reading" aria-pressed="false" hidden>Reading</button>
+      </div>
+      <section class="research-body librarian-history" id="care-librarian-history" data-history aria-label="Reading history" hidden>
+        <header class="history-controls">
+          <div class="history-heading-row">
+            <span class="eyebrow">YOUR LIBRARY TRAIL</span>
+          </div>
+          <div class="history-kinds" role="group" aria-label="History categories">
+            <button type="button" data-history-kind="axioms" aria-pressed="true">Axioms</button>
+            <button type="button" data-history-kind="routes" aria-pressed="false">Routes</button>
+            <button type="button" data-history-kind="books" aria-pressed="false">Books</button>
+            <button type="button" data-history-kind="runs" aria-pressed="false">Runs</button>
+          </div>
+        </header>
+        <div class="history-feed" data-history-list></div>
+      </section>
+      <div class="research-body" id="care-writing-search" data-suggestions tabindex="0" aria-label="Search the Library">
+        <div class="history-kinds search-kinds" role="group" aria-label="Search source type">
+          <button type="button" data-search-kind="axiom" aria-pressed="true">Axioms</button>
+          <button type="button" data-search-kind="passage" aria-pressed="false">Passages</button>
+        </div>
+        <details class="search-settings" data-search-settings>
+          <summary>Search settings <span data-search-setting-summary>Thorough · Whole library</span></summary>
+          <div class="search-settings-fields">
+            <label>Search level
+              <select data-search-mode aria-label="Search level">
+                <option value="deep">Thorough</option>
+                <option value="classic">Classic</option>
+                <option value="explore">Explore</option>
+                <option value="wild">Wild connections</option>
+                <option value="challenge">Possible challenges</option>
+              </select>
+            </label>
+            <label>Search in
+              <select data-search-scope aria-label="Search in">
+                <option value="library">Whole library</option>
+                <option value="work" disabled>Current book</option>
+                <option value="book">Choose a book</option>
+              </select>
+            </label>
+          </div>
+          <div class="search-book-picker" data-search-book-picker hidden>
+            <label>Choose a book
+              <input type="search" data-search-book-filter aria-label="Filter books by title or author" placeholder="Filter titles or authors…" autocomplete="off">
+              <select data-search-book aria-label="Choose the book to search">
+                <option value="">Choose a book…</option>
+              </select>
+            </label>
+            <p data-search-book-status role="status"></p>
+          </div>
+          <p data-search-setting-help>Weighs wording, related concepts and connections across the Library.</p>
+          <span class="search-local">All levels run locally. No model or API cost.</span>
+        </details>
+        <form data-search-form>
+          <input type="search" data-query aria-label="Search axioms by idea or ID" placeholder="Search by idea or axiom ID…" maxlength="500" autocomplete="off" aria-describedby="care-writing-search-hint">
+          <button type="submit" data-search-submit>Search</button>
+        </form>
+        <p class="search-id-hint" id="care-writing-search-hint" data-search-hint>Try an idea, a phrase or an exact ID such as CH_KCPI:A3.</p>
+        <div class="scan-actions">
+          <button type="button" data-action="scan-passage">Scan passage</button>
+          <button type="button" data-action="scan-draft">Scan draft</button>
+        </div>
+        <label class="live-suggestions"><input type="checkbox" data-live> Suggest as I write</label>
+        <details class="draft-review" data-draft-review-pane>
+          <summary>After writing <span>Review a finished draft</span></summary>
+          <p class="draft-review-help">Reviews up to 12 sources from your citations and local search for support, possible challenges and gaps. Uses your API key; runs only when you request it.</p>
+          <label class="draft-review-model">Review model
+            <select data-draft-review-model aria-label="Model for the finished draft review"></select>
+          </label>
+          <div class="draft-review-actions">
+            <button type="button" data-action="review-draft">Review draft with model</button>
+            <button type="button" data-action="review-poll" hidden>Check progress</button>
+          </div>
+          <p class="draft-review-status" data-draft-review-status role="status"></p>
+          <p class="draft-review-revision" data-draft-review-revision hidden></p>
+          <div class="draft-review-findings" data-draft-review-findings></div>
+        </details>
+        <p class="anchor" data-anchor></p>
+        <p class="empty-results" data-search-status role="status"></p>
+        <p class="result-bookmark-status" data-suggestion-bookmark-status role="status"></p>
+        <div class="results" data-results></div>
+        <div class="search-deeper" data-search-deeper hidden>
+          <button type="button" data-action="scan-deeper">Search deeper</button>
+          <p role="status" data-search-depth-status></p>
+        </div>
+      </div>
+      <div class="research-body" data-references hidden>
+        <div class="results" data-reference-list></div>
+      </div>
+      <div class="research-body reading" data-reading hidden>
+        <div data-reading-content></div>
+      </div>
+    </aside>
+  </div>
+  <div class="empty" data-empty hidden>
+    <div class="empty-folio">
+      <svg class="empty-mark" aria-hidden="true" viewBox="0 0 58 58" fill="none">
+        <path d="m29 4 22 12.5v25L29 54 7 41.5v-25L29 4Z M7 16.5l22 12.75 22-12.75 M29 29.25V54 M18 10.25 40 23v25 M29 16.75 40 23 29 29.25 18 23l11-6.25Z"/>
+      </svg>
+      <span class="eyebrow">YOUR DRAFTS</span>
+      <strong>Start with a page.</strong>
+      <p>Write in private. Bring in axioms when a passage sends you back to the Library.</p>
+      <button type="button" data-action="new" class="new-draft">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>
+        Start a draft
+      </button>
+      <span data-empty-status role="status"></span>
+    </div>
+  </div>
+</section>

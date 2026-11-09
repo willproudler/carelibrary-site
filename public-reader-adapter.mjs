@@ -24,10 +24,10 @@ function publicSourceDetailHint(canonical, passage) {
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=d6fb94305f051e89';
-import * as publicReadingViews from './native/reading-views.mjs?v=b831bfdb675f0225';
+import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=02c607229a730280';
+import * as publicReadingViews from './native/reading-views.mjs?v=a11a60ccd6c2a530';
 const {publicReadingText, publicSourcePresentation = () => ({})} = publicReadingViews;
-import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=d6fb94305f051e89';
+import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=02c607229a730280';
 
 const array = value => Array.isArray(value) ? value : [];
 const unique = values => [...new Set(values)];
@@ -338,6 +338,7 @@ export function createPublicReaderAdapter(data) {
       outline_units:array(state.outlineUnits).filter(row => row.work_id === work.id).map(row=>outline(work.id,row,state)),
       build_versions:[],selected_build_id:work.id,version_action_result:'',
       bookmarks:array(state.bookmarks),favourite_axiom_ids:array(state.favouriteAxiomIds),
+      public_reading_languages:describeBookLanguages(work,state),
       connection_options:lateralWorks.some(member=>member.id===work.id)?[{...savedConnection,origin_work_id:work.id}]:[],
       discovery_books:[],connection:connection(work,state),hide_xa:true,
       reviewer:'Reader',rating:0,workspace_managed:true,workspace_context:context,

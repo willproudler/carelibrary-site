@@ -11,6 +11,9 @@
         <div class="crv-reference-row">
           <div class="crv-reference-id">Select an axiom or passage</div>
           <button class="crv-copy-id" type="button" aria-label="Copy reference ID" hidden>Copy ID</button>
+          <button class="crv-copy-id" type="button" data-copy-reading="mac_link" hidden>Copy Mac link</button>
+          <button class="crv-copy-id" type="button" data-copy-reading="mac_route_link" hidden>Copy Mac route</button>
+          <button class="crv-copy-id" type="button" data-copy-reading="web_link" title="Opens this reference if it is published in CARE Library Beta" hidden>Copy beta link</button>
         </div>
       </div>
       <div class="crv-header-actions">
@@ -20,6 +23,9 @@
         </div>
         <button class="crv-previous" type="button" aria-label="Previous axiom" title="Previous · ↑ or K">←</button>
         <button class="crv-next" type="button" aria-label="Next axiom" title="Next · ↓ or J">→</button>
+        <button class="crv-return-studio" type="button" aria-label="Back to CARE Studio" title="Back to CARE Studio" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m10 6-6 6 6 6M4 12h11a5 5 0 0 1 5 5" /></svg>
+        </button>
         <button class="crv-close" type="button" aria-label="Close reference viewer">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 7 17 17M17 7 7 17" /></svg>
         </button>
@@ -35,6 +41,7 @@
         <button class="crv-read-tab active" type="button" role="tab" aria-selected="true">Read</button>
         <button class="crv-tools-tab" type="button" role="tab" aria-selected="false">Tools</button>
         <button class="crv-edition-tab" type="button" role="tab" aria-selected="false" hidden>Edition</button>
+        <button class="crv-draft-uses-tab" id="crv-draft-uses-tab" type="button" role="tab" aria-selected="false" aria-controls="crv-draft-uses" hidden>Draft uses <span class="crv-draft-uses-count" hidden></span></button>
       </div>
       <div class="crv-read-surface">
         <h3 class="crv-title"></h3>
@@ -50,12 +57,45 @@
           </div>
         </div>
         <div class="crv-citation" tabindex="0"></div>
+        <div class="crv-reading-actions">
+          <button class="crv-write" type="button" hidden>Write beside this axiom</button>
+          <button class="crv-send" type="button" aria-haspopup="dialog" hidden>Send axiom…</button>
+        </div>
         <div class="crv-actions">
           <a class="crv-open" href="/">Open full axiom</a>
           <a class="crv-open-sheet" href="/">Open CARE sheet</a>
           <button class="crv-clear" type="button">Clear</button>
         </div>
       </div>
+      <section class="crv-draft-uses-surface" id="crv-draft-uses" role="tabpanel" aria-labelledby="crv-draft-uses-tab" hidden>
+        <div class="crv-text crv-draft-axiom" aria-label="Exact axiom wording" tabindex="0"></div>
+        <div class="crv-draft-uses-heading">
+          <span>WRITING STUDIO</span>
+          <h3>Where you used this</h3>
+        </div>
+        <a class="crv-draft-use-open crv-workspace-uses" target="_blank" rel="noopener noreferrer" hidden>Find published uses in CARE Remote</a>
+        <p class="crv-draft-uses-status" role="status" hidden></p>
+        <button class="crv-draft-uses-retry" type="button" hidden>Try again</button>
+        <ol class="crv-draft-uses-list"></ol>
+        <section class="crv-annotations" aria-labelledby="crv-annotations-heading" hidden>
+          <h4 id="crv-annotations-heading">Notes on this axiom</h4>
+          <div class="crv-annotation-groups"></div>
+          <details class="crv-annotation-composer">
+            <summary>Add a note</summary>
+            <form class="crv-annotation-form">
+              <div class="crv-annotation-fields">
+                <label>Type <select class="crv-annotation-type"></select></label>
+                <label class="crv-annotation-use-label" hidden>Attach to <select class="crv-annotation-use"></select></label>
+              </div>
+              <label>Note <textarea class="crv-annotation-text" rows="3" maxlength="4000" required></textarea></label>
+              <div class="crv-annotation-footer">
+                <p class="crv-annotation-status" role="status"></p>
+                <button class="crv-annotation-save" type="submit">Save note</button>
+              </div>
+            </form>
+          </details>
+        </section>
+      </section>
       <div class="crv-tools-surface" hidden>
         <div class="crv-tool-home">
           <h3>What would you like to do?</h3>

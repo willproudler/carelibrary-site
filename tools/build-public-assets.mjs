@@ -89,6 +89,38 @@ export function createPublicAssetPlan(data,{coverVariants={}}={}) {
   return {catalog,files};
 }
 
+// Keep index startup small. Published work files include reading layouts and
+// alternate editions that the Studio text index does not need to decode.
+function searchSections(unit) {
+  return rows(unit.sections).map(section=>({name:section.name,items:rows(section.items).map(item=>[
+    item.id,item.text,[...new Set([...rows(item.refs),...rows(item.deep_refs),...rows(item.passages).map(passage=>passage.id)])].slice(0,24),
+  ])}));
+}
+
+async function buildSearchProjection(root,data,revision) {
+  const directory=resolve(root,'search');
+  await mkdir(directory,{recursive:true});
+  const manifest={version:1,revision,works:Object.create(null)};
+  async function write(kind,value) {
+    const content=encode(value),sha256=digest(content);
+    const name=`${kind}-${sha256.slice(0,24)}.json`;
+    await writeFile(resolve(directory,name),content);
+    return {name,sha256,bytes:Buffer.byteLength(content)};
+  }
+  for(const {id,slug,title,author,year,sources,units} of data.works){
+    manifest.works[id]=await write('work',{id,slug,title,author,year,
+      sources:rows(sources).map(chapter=>({id:chapter.id,title:chapter.title,
+        paragraphs:rows(chapter.paragraphs).filter(passage=>passage.kind==='passage').map(passage=>[passage.id,passage.text])})),
+      units:rows(units).map(unit=>({id:unit.id,title:unit.title,layer:unit.layer,sections:searchSections(unit)})),
+    });
+  }
+  if(data.lateral?.id){
+    const {id,title,layer}=data.lateral;
+    manifest.lateral=await write('lateral',{id,title,layer,sections:searchSections(data.lateral)});
+  }
+  await writeFile(resolve(directory,'catalogue.json'),encode(manifest));
+}
+
 export async function buildPublicAssets(root=fileURLToPath(new URL('..',import.meta.url))) {
   await materializePublicLibrary(root);
   const data=JSON.parse(await readFile(resolve(root,'data/library.json'),'utf8'));
@@ -99,6 +131,7 @@ export async function buildPublicAssets(root=fileURLToPath(new URL('..',import.m
   const {catalog,files}=createPublicAssetPlan(data,{coverVariants});
   await mkdir(resolve(root,'data/chunks'),{recursive:true});
   for(const [url,contents] of files)await writeFile(resolve(root,url),contents);
+  await buildSearchProjection(root,data,catalog.public_assets.revision);
   // Publish the catalogue last so it never refers to files still being written.
   const encoded=encode(catalog);
   await writeFile(resolve(root,'data/catalogue.json'),encoded);

@@ -6,11 +6,13 @@ delivery method with a fake, so these tests cannot send email.
 from __future__ import annotations
 
 import asyncio
+import errno
 import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
+import runpy
 import smtplib
 import sqlite3
 import stat
@@ -233,6 +235,23 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(logout.json(), {"authenticated": False})
         self.assertIn("max-age=0", logout.headers["set-cookie"].lower())
         self.assertEqual((await self.client.get("/data/library.json", headers={"Cookie": cookie})).status_code, 401)
+
+    async def test_only_the_library_companion_can_be_framed_by_the_same_origin(self):
+        query = "?view=library&care_studio_embed=1&care_studio_pane_reading=1&care_studio_request=companion-token"
+        guest = await self.client.get("/library.html" + query)
+        self.assertEqual(guest.status_code, 303)
+        self.assertEqual(guest.headers["x-frame-options"], "DENY")
+        await self.authenticated()
+        companion = await self.client.get("/library.html" + query)
+        self.assertEqual(companion.status_code, 200)
+        self.assertEqual(companion.headers["x-frame-options"], "SAMEORIGIN")
+        self.assertIn("frame-ancestors 'self'", companion.headers["content-security-policy"])
+        for path in ("/library.html", "/library.html" + query + "&care_studio_embed=1",
+                     "/library.html" + query.replace("companion-token", "x"),
+                     "/login.html" + query, "/api/studio/drafts" + query):
+            response = await self.client.get(path)
+            self.assertEqual(response.headers["x-frame-options"], "DENY", path)
+            self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"], path)
 
     async def test_password_hashes_record_production_parameters_and_database_is_private(self):
         await self.add_user()
@@ -805,6 +824,266 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
                       "Owner <owner@example.test>", "owner@example.test\nother@example.test"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 create_app(env={**self.env, "CARE_SITE_ADMIN_EMAILS": value})
+
+    async def test_studio_draft_persists_and_revision_protects_save_and_delete(self):
+        await self.authenticated()
+        path = "/api/studio/drafts"
+        original_body = "<p>Plain text, not HTML.</p>\nΈνα προσχέδιο\t🌒"
+        created = await self.post(path, {"account": EMAIL, "title": "  ", "body": original_body})
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assert_no_store(created)
+        draft = created.json()["draft"]
+        self.assertEqual((draft["title"], draft["body"], draft["revision"]), ("Untitled", original_body, 1))
+        target = f"{path}/{draft['id']}"
+        listed = await self.client.get(path, headers={"X-Care-Account": EMAIL})
+        self.assertEqual(listed.json(), {"drafts": [{key: draft[key] for key in (
+            "id", "title", "revision", "updated_at")}]})
+        self.assert_no_store(listed)
+
+        restart = await asyncio.to_thread(create_app, env=self.env)
+        restored = self.new_client(app=restart)
+        restored.cookies.update(self.client.cookies)
+        opened = await restored.get(target, headers={"X-Care-Account": EMAIL})
+        self.assertEqual(opened.json(), {"draft": draft})
+        self.assert_no_store(opened)
+
+        headers = {"Origin": ORIGIN}
+        saved, other = sorted(await asyncio.gather(*(
+            restored.put(target, headers=headers, json={"account": EMAIL, "title": title,
+                         "body": f"{original_body}\n{title}", "revision": 1}) for title in ("First tab", "Second tab")
+        )), key=lambda response: response.status_code)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["draft"]["revision"], 2)
+        self.assertEqual((other.status_code, other.json()), (409, {"error": "draft_conflict"}))
+        self.assert_no_store(other)
+        self.assertEqual((await self.client.get(target)).json(), saved.json())
+
+        stale_delete = await restored.request("DELETE", target, headers=headers,
+                                              json={"account": EMAIL, "revision": 1})
+        self.assertEqual((stale_delete.status_code, stale_delete.json()), (409, {"error": "draft_conflict"}))
+        deleted = await restored.request("DELETE", target, headers=headers, json={"account": EMAIL, "revision": 2})
+        self.assertEqual((deleted.status_code, deleted.json()), (200, {"deleted": True}))
+        self.assertEqual((await restored.get(target)).status_code, 404)
+        self.assertEqual((await restored.get(path)).json(), {"drafts": []})
+
+    async def test_studio_drafts_remain_private_in_open_mode_and_when_accounts_switch(self):
+        await asyncio.to_thread(self.app.state.site_settings.update, False, 0)
+        path = "/api/studio/drafts"
+        value = {"account": EMAIL, "title": "Private title", "body": "Private document"}
+        for guest in (await self.client.get(path), await self.post(path, value)):
+            self.assertEqual((guest.status_code, guest.json()), (401, {"error": "login_required"}))
+            self.assert_no_store(guest)
+        first = await self.authenticated()
+        created = await self.post(path, value)
+        draft = created.json()["draft"]
+        target = f"{path}/{draft['id']}"
+        await self.add_user(email=OWNER_EMAIL, name="Another reader")
+        self.assertEqual((await self.login(email=OWNER_EMAIL)).status_code, 200)
+        self.assertEqual((await self.client.get(path)).json(), {"drafts": []})
+        self.assertEqual((await self.client.get(path, headers={"X-Care-Account": EMAIL})).json(),
+                         {"error": "account_changed"})
+        self.assertEqual((await self.client.get(target)).json(), {"error": "draft_not_found"})
+        self.assertEqual((await self.client.get(target, headers={
+            "Cookie": COOKIE_NAME + "=" + first.cookies[COOKIE_NAME]})).status_code, 401)
+        for method, resource, payload in (("POST", path, value),
+                                           ("PUT", target, {**value, "revision": 1}),
+                                           ("DELETE", target, {"account": EMAIL, "revision": 1})):
+            switched = await self.client.request(method, resource, headers={"Origin": ORIGIN}, json=payload)
+            self.assertEqual((switched.status_code, switched.json()), (403, {"error": "account_changed"}))
+        for method, payload in (("PUT", {**value, "account": OWNER_EMAIL, "revision": 1}),
+                                ("DELETE", {"account": OWNER_EMAIL, "revision": 1})):
+            denied = await self.client.request(method, target, headers={"Origin": ORIGIN}, json=payload)
+            self.assertEqual((denied.status_code, denied.json()), (404, {"error": "draft_not_found"}))
+            self.assertNotIn(value["body"], denied.text)
+        self.assertEqual((await self.client.get(path)).json(), {"drafts": []})
+        self.assertEqual((await self.login()).status_code, 200)
+        self.assertEqual((await self.client.get(target)).json(), {"draft": draft})
+        await asyncio.to_thread(self.app.state.auth.disable_user, EMAIL)
+        self.assertEqual((await self.client.get(target)).status_code, 401)
+        self.assertEqual((await self.post(path, value)).status_code, 401)
+
+    async def test_studio_validates_payload_origin_and_concurrent_draft_quota(self):
+        await self.authenticated()
+        path = "/api/studio/drafts"
+        value = {"account": EMAIL, "title": "Notes", "body": "Draft body"}
+        for headers in ({"Origin": "https://unrelated.example.test"}, {"Sec-Fetch-Site": "same-site"}):
+            denied = await self.post(path, value, headers=headers)
+            self.assertEqual(denied.status_code, 403)
+            self.assert_no_store(denied)
+        self.assertEqual((await self.client.post(path, json=value)).status_code, 403)
+        for invalid in ({"title": "Notes", "body": "Draft body"}, {**value, "title": 12},
+                        {**value, "body": "\x00"}, {**value, "body": "\ud800"}, {**value, "public": True}):
+            denied = await self.post(path, invalid)
+            self.assertEqual((denied.status_code, denied.json()), (400, {"error": "invalid_draft"}))
+        for oversized in ({**value, "title": "x" * 161}, {**value, "body": "é" * (128 * 1024 + 1)}):
+            denied = await self.post(path, oversized)
+            self.assertEqual((denied.status_code, denied.json()), (413, {"error": "draft_too_large"}))
+        oversized_request = await self.client.post(path, headers={"Origin": ORIGIN},
+                                                   json={**value, "body": "x" * (2 * 1024 * 1024)})
+        self.assertEqual(oversized_request.status_code, 413)
+        self.assertEqual((await self.client.get(path)).json(), {"drafts": []})
+
+        with patch("server.studio_drafts.MAX_DRAFTS", 1):
+            created, limited = sorted(await asyncio.gather(self.post(path, value), self.post(path, value)),
+                                      key=lambda response: response.status_code)
+            self.assertEqual(created.status_code, 201)
+            self.assertEqual((limited.status_code, limited.json()), (409, {"error": "draft_limit"}))
+            await self.add_user(email=OWNER_EMAIL, name="Another reader")
+            other = self.new_client()
+            self.assertEqual((await self.login(email=OWNER_EMAIL, client=other)).status_code, 200)
+            self.assertEqual((await self.post(path, {**value, "account": OWNER_EMAIL}, client=other)).status_code, 201)
+
+    async def test_studio_saves_native_html_and_footnotes_with_the_same_revision_guards(self):
+        await self.authenticated()
+        path = "/api/studio/drafts"
+        source = (
+            '<h2 data-block-id="heading">A section</h2>'
+            '<p data-block-id="body" onclick="alert(1)" style="text-align: center; color: red">'
+            '<span style="font-family: Georgia; font-size: 18pt; background: url(https://example.test)">'
+            '<em>Native formatting</em></span> and <a href="https://example.test?a=1&amp;b=2">a link</a>'
+            '<a href="jav&#x61;script:alert(1)">unsafe link</a><img src=x onerror=alert(1)>'
+            '<script>alert(2)</script><svg><a href="https://example.test">gone</a></svg></p>'
+            '<ol data-block-id="list" start="5"><li>First item</li></ol>'
+        )
+        safe_body = (
+            '<h2 data-block-id="heading">A section</h2>'
+            '<p data-block-id="body" style="text-align: center">'
+            '<span style="font-family: Georgia; font-size: 18pt"><em>Native formatting</em></span> '
+            'and <a href="https://example.test?a=1&amp;b=2" rel="noopener noreferrer">a link</a>'
+            '<a>unsafe link</a></p><ol data-block-id="list" start="5"><li>First item</li></ol>'
+        )
+        notes = [{"id": "footnote-1", "block_id": "body", "marker_offset": 18, "marker_order": 0,
+                  "note": "A plain note, with <angle brackets>."}]
+        value = {"account": EMAIL, "title": "A" * 240, "format": "html", "body": source, "footnotes": notes}
+        created = await self.post(path, value)
+        self.assertEqual(created.status_code, 201, created.text)
+        draft = created.json()["draft"]
+        self.assertEqual((draft["format"], draft["body"], draft["footnotes"]), ("html", safe_body, notes))
+        target = f"{path}/{draft['id']}"
+        listed = (await self.client.get(path)).json()["drafts"]
+        self.assertEqual(listed, [{key: draft[key] for key in ("id", "title", "revision", "updated_at")}])
+        self.assertEqual((await self.client.get(target)).json()["draft"], draft)
+
+        headers = {"Origin": ORIGIN}
+        revised = {**value, "body": safe_body.replace("A section", "A new section"), "revision": 1}
+        del revised["footnotes"]
+        saved = await self.client.put(target, headers=headers, json=revised)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["draft"]["footnotes"], notes)
+        self.assertEqual(saved.json()["draft"]["revision"], 2)
+        stale = await self.client.put(target, headers=headers, json={**value, "revision": 1})
+        self.assertEqual((stale.status_code, stale.json()), (409, {"error": "draft_conflict"}))
+        downgraded = await self.client.put(target, headers=headers,
+                                           json={"account": EMAIL, "title": "Old client", "body": "Text", "revision": 2})
+        self.assertEqual((downgraded.status_code, downgraded.json()), (409, {"error": "draft_format_required"}))
+        orphaned = await self.client.put(target, headers=headers, json={
+            **revised, "body": '<p data-block-id="other">No original anchor.</p>', "revision": 2})
+        self.assertEqual((orphaned.status_code, orphaned.json()), (400, {"error": "invalid_draft"}))
+        removed = await self.client.put(target, headers=headers, json={**revised, "footnotes": [], "revision": 2})
+        self.assertEqual(removed.status_code, 200, removed.text)
+        self.assertEqual(removed.json()["draft"]["footnotes"], [])
+
+    async def test_studio_migrates_plain_drafts_and_upgrades_only_explicit_html(self):
+        await self.authenticated()
+        path = "/api/studio/drafts"
+        created = await self.post(path, {"account": EMAIL, "title": "Legacy", "body": "<b>Literal characters</b>"})
+        draft = created.json()["draft"]
+        target = f"{path}/{draft['id']}"
+        with sqlite3.connect(self.database) as db:
+            db.execute("ALTER TABLE studio_drafts DROP COLUMN footnotes")
+            db.execute("ALTER TABLE studio_drafts DROP COLUMN document_format")
+
+        app = await asyncio.to_thread(create_app, env=self.env)
+        legacy = self.new_client(app=app)
+        legacy.cookies.update(self.client.cookies)
+        self.assertEqual((await legacy.get(target)).json(), {"draft": draft})
+        upgraded = await legacy.put(target, headers={"Origin": ORIGIN}, json={
+            "account": EMAIL, "title": draft["title"], "revision": draft["revision"], "format": "html",
+            "body": "<p>&lt;b&gt;Literal characters&lt;/b&gt;</p>",
+        })
+        self.assertEqual(upgraded.status_code, 200, upgraded.text)
+        saved = upgraded.json()["draft"]
+        self.assertEqual(saved["format"], "html")
+        self.assertRegex(saved["body"], r'^<p data-block-id="[a-f0-9]{32}">&lt;b&gt;Literal characters&lt;/b&gt;</p>$')
+        self.assertEqual(saved["footnotes"], [])
+        self.assertEqual(saved["revision"], 2)
+
+    async def test_studio_preview_uses_its_own_local_account_and_database(self):
+        preview = runpy.run_path(str(RELEASE_ROOT / "tools" / "preview-local.py"))
+        loopback = preview["HOST"]
+        local_origin = f"http://{loopback}:{preview['PORT']}"
+        database = self.root / "preview-private" / "preview.sqlite3"
+        local_app = await asyncio.to_thread(preview["make_preview"], self.web, database)
+        local = self.new_client(app=local_app, ip=loopback, base_url=local_origin)
+        foreign = self.new_client(app=local_app, ip="203.0.113.42", base_url=local_origin)
+        self.assertEqual((await foreign.get("/api/session")).status_code, 403)
+        self.assertEqual((await local.get("/api/session", headers={"Host": "foreign.example.test"})).status_code, 403)
+
+        current = await local.get("/api/session")
+        self.assertEqual(current.status_code, 200, current.text)
+        self.assertTrue(current.json()["authenticated"])
+        self.assertEqual(current.headers.get("x-care-local-preview"), "1")
+        self.assertNotIn("set-cookie", current.headers)
+        account = current.json()["user"]["email"]
+        path = "/api/studio/drafts"
+        value = {"account": account, "title": "Local preview", "body": "Test preview draft"}
+        same_origin = {"Origin": local_origin, "Sec-Fetch-Site": "same-origin"}
+        for origin in (preview["PREVIEW_ORIGIN"], "https://foreign.example.test"):
+            response = await local.post(path, headers={"Origin": origin}, json=value)
+            self.assertEqual(response.status_code, 403)
+        self.assertEqual((await local.post(path, json=value)).status_code, 403)
+        self.assertEqual((await local.post("/api/logout", headers=same_origin, json={})).status_code, 403)
+
+        created = await local.post(path, headers=same_origin, json=value)
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assert_no_store(created)
+        draft = created.json()["draft"]
+        target = f"{path}/{draft['id']}"
+        reloaded = self.new_client(app=local_app, ip=loopback, base_url=local_origin)
+        self.assertEqual((await reloaded.get(target, headers={"X-Care-Account": account})).json(), {"draft": draft})
+        saved = await reloaded.put(target, headers=same_origin, json={**value, "revision": 1, "body": "Edited"})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["draft"]["revision"], 2)
+        relaunched_app = await asyncio.to_thread(preview["make_preview"], self.web, database)
+        relaunched = self.new_client(app=relaunched_app, ip=loopback, base_url=local_origin)
+        self.assertEqual((await relaunched.get(target, headers={"X-Care-Account": account})).json(), saved.json())
+        await self.authenticated()
+        self.assertEqual((await self.client.get(path)).json(), {"drafts": []})
+        self.assertEqual((await self.client.get(target)).status_code, 404)
+        deleted = await relaunched.request("DELETE", target, headers=same_origin,
+                                           json={"account": account, "revision": 2})
+        self.assertEqual((deleted.status_code, deleted.json()), (200, {"deleted": True}))
+
+    async def test_studio_preview_duplicate_launcher_preserves_the_running_session(self):
+        preview = runpy.run_path(str(RELEASE_ROOT / "tools" / "preview-local.py"))
+        site = self.root / "preview-release"
+        catalogue = site / "dist" / "data" / "catalogue.json"
+        catalogue.parent.mkdir(parents=True)
+        catalogue.write_text("{}")
+        database = site / ".care-beta" / "browser-preview" / "preview.sqlite3"
+        running = await asyncio.to_thread(preview["make_preview"], site / "dist", database)
+        host, port = preview["HOST"], preview["PORT"]
+        local = self.new_client(app=running, ip=host, base_url=f"http://{host}:{port}")
+        self.assertTrue((await local.get("/api/session")).json()["authenticated"])
+
+        def account_rows():
+            with sqlite3.connect(database) as connection:
+                return (connection.execute("SELECT * FROM users").fetchall(),
+                        connection.execute("SELECT * FROM sessions").fetchall())
+
+        before = account_rows()
+        main = preview["main"]
+        with patch.dict(main.__globals__, {"SITE": site}), patch.object(preview["socket"], "socket") as socket:
+            listener = socket.return_value.__enter__.return_value
+            listener.bind.side_effect = OSError(errno.EADDRINUSE, "Address already in use")
+            with self.assertRaisesRegex(SystemExit, "already running.*Control-C"):
+                main()
+            listener.bind.assert_called_once_with((host, port))
+
+        self.assertEqual(account_rows(), before)
+        self.assertTrue((await local.get("/api/session")).json()["authenticated"])
+        drafts = await local.get("/api/studio/drafts")
+        self.assertEqual((drafts.status_code, drafts.json()), (200, {"drafts": []}))
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ test('field reference fallback rejects unrelated books, wrong members and unit i
 });
 
 test('field readers reflect global member saves while retaining scoped preserved saves',()=>{
-  const state={bookmarks:[{care_unit_id:'CH_THN_INTR',work_id:hume.id},{care_unit_id:'CH_MEMA_PHB0',work_id:data.works.find(work=>work.slug==='bergson').id}],
+  const state={bookmarks:[{care_unit_id:'CH_THN_INTR',work_id:hume.id},{care_unit_id:'RAW_THN_INTR',passage_id:passage,work_id:hume.id},{care_unit_id:'CH_MEMA_PHB0',work_id:data.works.find(work=>work.slug==='bergson').id}],
     favouriteAxiomIds:[id,'CH_MEMA_PHB0:AS1'],fieldSaved:{saved_panes:[{care_unit_id:'CH_THN_INTR',source_pane:'saved-first'}],saved_axioms:[{care_item_id:id,source_pane:'saved-first'}]}};
   const payload=fieldPayload(field,adapter,state);
   assert.deepEqual(payload.field.saved_panes,[state.fieldSaved.saved_panes[0],{care_unit_id:'CH_THN_INTR',work_id:'LATEST_HUME'}]);

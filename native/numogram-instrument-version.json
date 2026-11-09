@@ -1,0 +1,15 @@
+{
+  "version": "numo-library/2.7",
+  "source": "care_platform/numo_library_assets.py",
+  "arithmetic_source": "care_platform/numogram_data.py",
+  "assets": {
+    "numo-Kalam-Regular.ttf": "57cecb63d4608019371954274ae1d8c397764debd5b19d4a33c1efa4dc923c0b",
+    "numo-IBMPlexMono-Regular.ttf": "6a3412f058c7d8dfd9170c41e85ade48e5156ecb89356110ca57a0a27734af46",
+    "numo-IBMPlexMono-Medium.ttf": "a9b4c49bb299e05b5f6c481e7fb5e78943d2793249a0c8874ab574a2d1ea6755",
+    "numo-EBGaramond.ttf": "ef9512f92f6d579e5dc75af59a5a4b1b8b47d2eda89e00b954d44520e5369027",
+    "numo-EBGaramond-Italic.ttf": "bba2c4499c93c9612b90b9825d32b07da52fce2fe57562a1eb6b833553f93c4e",
+    "numo-VT323-Regular.ttf": "cf4de751ada78ceac033dbe16a687742939995b77bc2a052ae17a4957958594d",
+    "numo-font-licenses.json": "9b20ee9b646ad9e317c73a6036836d8c4d53eab8d08de9a924a7a9c68ff1adb3",
+    "numogram-instrument.mjs": "94ec7566f50fa1a82bc0e230eaf0ced6aec4c2a1c69fe8106276311d906cc74a"
+  }
+}

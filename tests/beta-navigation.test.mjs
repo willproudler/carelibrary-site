@@ -131,9 +131,10 @@ test('existing account markers and legacy public history survive a mode-switch u
 test('a hidden reader discards prior-account history immediately when another tab logs in', () => {
   const names=['window','document','location','localStorage','sessionStorage'];
   const previous=new Map(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
-  const events=new Map();let reloads=0;
+  const events=new Map();let reloads=0;const emitted=[];
   try {
-    const globals={window:{addEventListener:(name,handler)=>events.set(name,[...(events.get(name)||[]),handler]),setInterval:()=>0},
+    const globals={window:{addEventListener:(name,handler)=>events.set(name,[...(events.get(name)||[]),handler]),
+      dispatchEvent:event=>emitted.push(event.type),setInterval:()=>0},
       document:{hidden:true,addEventListener:()=>{}},location:{reload:()=>reloads++},
       localStorage:storageFixture([['care-study-workspace-reader-v1:WORK','previous account']]),
       sessionStorage:storageFixture([['care-studio-reference-history-v1','previous account']])};
@@ -141,6 +142,7 @@ test('a hidden reader discards prior-account history immediately when another ta
     watchSession(member, {library:true});
     for(const handler of events.get('storage'))handler({key:'care-beta-login'});
     assert.equal(reloads,1);
+    assert.deepEqual(emitted,['care:account-ended']);
     assert.equal(globalThis.localStorage.getItem('care-study-workspace-reader-v1:WORK'),null);
     assert.equal(globalThis.sessionStorage.getItem('care-studio-reference-history-v1'),null);
     assert.equal(events.get('pagehide').length,1);

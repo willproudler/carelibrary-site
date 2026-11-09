@@ -28,7 +28,7 @@ export async function session(fetcher = globalThis.fetch) {
   if (typeof value.authenticated !== 'boolean' || typeof value.beta_enabled !== 'boolean' || typeof value.can_manage_site !== 'boolean'
       || (value.authenticated && (typeof value.user?.email !== 'string' || !value.user.email.trim()))
       || (value.can_manage_site && !value.authenticated)) throw Error('Login is unavailable at the moment. Please try again shortly.');
-  return value;
+  return response.headers.get('x-care-local-preview')==='1'?{...value,local_preview:true}:value;
 }
 
 export function accountStorageKey(key, email) {
@@ -106,7 +106,7 @@ export function loginURL(destination) {
 }
 
 export function showSessionNavigation(current) {
-  document.querySelectorAll('[data-logout]').forEach(element => { element.hidden = !current.authenticated; });
+  document.querySelectorAll('[data-logout]').forEach(element => { element.hidden = !current.authenticated||current.local_preview===true; });
   document.querySelectorAll('[data-public-login]').forEach(element => { element.hidden = current.authenticated; });
   document.querySelectorAll('[data-owner-only]').forEach(element => { element.hidden = !current.authenticated || !current.can_manage_site; });
 }
@@ -117,6 +117,7 @@ export function bindLogout() {
       button.disabled = true;
       try {
         await postJSON('/api/logout', {});
+        window.dispatchEvent(new Event('care:account-ended'));
         discardReadingHistory();
         // Other open tabs must discard their already-rendered readings too.
         try { localStorage.setItem('care-beta-logout', String(Date.now())); } catch {}
@@ -133,6 +134,7 @@ export function bindLogout() {
 export function watchSession(initial, {library = false} = {}) {
   window.addEventListener('storage', event => {
     if (['care-beta-login', 'care-beta-logout'].includes(event.key)) {
+      window.dispatchEvent(new Event('care:account-ended'));
       discardReadingHistory();
       location.reload();
     } else if (event.key === 'care-beta-mode') location.reload();
@@ -145,7 +147,10 @@ export function watchSession(initial, {library = false} = {}) {
     try {
       const current = await session();
       const identityChanged = current.authenticated !== initial.authenticated || current.user?.email !== initial.user?.email;
-      if (identityChanged) discardReadingHistory();
+      if (identityChanged) {
+        window.dispatchEvent(new Event('care:account-ended'));
+        discardReadingHistory();
+      }
       if (library && !current.authenticated && current.beta_enabled !== false) location.replace(loginURL(location.pathname + location.search + location.hash));
       else if (identityChanged || current.beta_enabled !== initial.beta_enabled || current.can_manage_site !== initial.can_manage_site) location.reload();
     } catch { /* Retain the reading during a temporary connection failure. */ }

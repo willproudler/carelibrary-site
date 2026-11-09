@@ -1,8 +1,10 @@
 
 const INSTANCES = new WeakMap()
 const SAVED_VIEWERS = new WeakMap()
+let lastDraftHandoff = ""
 const keyFor = (kind, id, scope="") => `${String(kind || "").toLowerCase()}\u0000${String(id || "")}${scope?`\u0000${scope}`:""}`
 const HISTORY_KEY = "care-reference-history-v1"
+const HISTORY_TEXT_LIMIT = 12_000
 const TEXT_SIZE_KEY = "care-reference-viewer-text-size-v1"
 const TEXT_SCALES = [.78,.88,1,1.12,1.26]
 const VIEWER_VIBRANT_KEY = "care-vibrant-view-v2"
@@ -29,6 +31,27 @@ function setupViewerVibrantView(runtime) {
   runtime.cleanupVibrantView=()=>{if(disposed)return;disposed=true;view.removeEventListener(VIEWER_VIBRANT_EVENT,change);view.removeEventListener('storage',storage);delete root.dataset.vibrantView}
   paint(read())
 }
+function followCompactToolbar(runtime) {
+  const root = runtime.root
+  const doc = root.ownerDocument
+  const view = doc.defaultView
+  const layout = doc.querySelector(".st-key-care_study_layout")
+  const toolbar = layout?.closest(".st-key-care_study_command")
+  if (!toolbar || !view?.ResizeObserver) return
+  // Use the toolbar's effective state, including its narrow layout.
+  const update = () => root.toggleAttribute("data-compact-toolbar",
+    view.getComputedStyle(layout).getPropertyValue("--care-command-compact").trim() === "1")
+  const observer = new view.ResizeObserver(update)
+  observer.observe(toolbar)
+  const preference = view.MutationObserver ? new view.MutationObserver(update) : null
+  preference?.observe(doc.documentElement,{attributes:true,attributeFilter:["data-care-toolbar-labels"]})
+  update()
+  return () => {
+    observer.disconnect()
+    preference?.disconnect()
+    root.removeAttribute("data-compact-toolbar")
+  }
+}
 function dismissMobileViewerOutside(runtime,event) {
   // Wait for a completed tap: pointerdown would dismiss during native scrolling.
   if(!runtime.open||event.type!=="click"||event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return false
@@ -43,11 +66,16 @@ function dismissMobileViewerOutside(runtime,event) {
 function setup(parentElement, root, setTriggerValue) {
   const runtime = {
     root, registry:new Map(), sequence:[], selected:null, spatialElement:null, open:false, surface:"read", toolScreen:"home", statusTimer:null, textScaleIndex:2, setTriggerValue,
-    launcher:root.querySelector(".crv-launcher"),launcherLabel:root.querySelector(".crv-launcher-label"),panel:root.querySelector(".crv-panel"),close:root.querySelector(".crv-close"),
-    textSmaller:root.querySelector(".crv-text-smaller"),textLarger:root.querySelector(".crv-text-larger"),previous:root.querySelector(".crv-previous"),next:root.querySelector(".crv-next"),referenceId:root.querySelector(".crv-reference-id"),copyId:root.querySelector(".crv-copy-id"),empty:root.querySelector(".crv-empty"),content:root.querySelector(".crv-content"),
+    launcher:root.querySelector(".crv-launcher"),launcherLabel:root.querySelector(".crv-launcher-label"),panel:root.querySelector(".crv-panel"),close:root.querySelector(".crv-close"),returnStudio:root.querySelector(".crv-return-studio"),
+    textSmaller:root.querySelector(".crv-text-smaller"),textLarger:root.querySelector(".crv-text-larger"),previous:root.querySelector(".crv-previous"),next:root.querySelector(".crv-next"),referenceId:root.querySelector(".crv-reference-id"),copyId:root.querySelector(".crv-copy-id:not([data-copy-reading])"),empty:root.querySelector(".crv-empty"),content:root.querySelector(".crv-content"),
+    readingLinks:[...root.querySelectorAll("[data-copy-reading]")],
     readTab:root.querySelector(".crv-read-tab"),toolsTab:root.querySelector(".crv-tools-tab"),editionTab:root.querySelector(".crv-edition-tab"),readSurface:root.querySelector(".crv-read-surface"),toolsSurface:root.querySelector(".crv-tools-surface"),editionSurface:root.querySelector(".crv-edition-surface"),emptyEdition:root.querySelector(".crv-empty-edition"),
+    draftUsesTab:root.querySelector(".crv-draft-uses-tab"),draftUsesCount:root.querySelector(".crv-draft-uses-count"),draftUsesSurface:root.querySelector(".crv-draft-uses-surface"),draftUsesAxiom:root.querySelector(".crv-draft-axiom"),draftUsesStatus:root.querySelector(".crv-draft-uses-status"),draftUsesList:root.querySelector(".crv-draft-uses-list"),draftUsesRetry:root.querySelector(".crv-draft-uses-retry"),workspaceUses:root.querySelector(".crv-workspace-uses"),
+    annotations:root.querySelector(".crv-annotations"),annotationGroups:root.querySelector(".crv-annotation-groups"),annotationComposer:root.querySelector(".crv-annotation-composer"),annotationForm:root.querySelector(".crv-annotation-form"),
+    annotationType:root.querySelector(".crv-annotation-type"),annotationUseLabel:root.querySelector(".crv-annotation-use-label"),annotationUse:root.querySelector(".crv-annotation-use"),annotationText:root.querySelector(".crv-annotation-text"),annotationStatus:root.querySelector(".crv-annotation-status"),annotationSave:root.querySelector(".crv-annotation-save"),annotationDrafts:new Map(),
     title:root.querySelector(".crv-title"),meta:root.querySelector(".crv-meta"),text:root.querySelector(".crv-text"),citation:root.querySelector(".crv-citation"),openLink:root.querySelector(".crv-open"),sheetLink:root.querySelector(".crv-open-sheet"),clear:root.querySelector(".crv-clear"),
     copyText:root.querySelector(".crv-copy-text"),copyCitation:root.querySelector(".crv-copy-citation"),copyShortCitation:root.querySelector(".crv-copy-short-citation"),copyIbidCitation:root.querySelector(".crv-copy-ibid-citation"),
+    write:root.querySelector(".crv-write"),send:root.querySelector(".crv-send"),
     toolHome:root.querySelector(".crv-tool-home"),rateScreen:root.querySelector(".crv-rate-screen"),qualityScreen:root.querySelector(".crv-quality-screen"),historyScreen:root.querySelector(".crv-history-screen"),sheetScreen:root.querySelector(".crv-sheet-screen"),
     toolRate:root.querySelector(".crv-tool-rate"),toolFavourite:root.querySelector(".crv-tool-favourite"),toolQuality:root.querySelector(".crv-tool-quality"),toolCollect:root.querySelector(".crv-tool-collect"),toolFamily:root.querySelector(".crv-tool-family"),toolDownloadSheet:root.querySelector(".crv-tool-download-sheet"),toolDownloadRoute:root.querySelector(".crv-tool-download-route"),toolRevealSheet:root.querySelector(".crv-tool-reveal-sheet"),toolSheet:root.querySelector(".crv-tool-sheet"),toolHistory:root.querySelector(".crv-tool-history"),
     ratingSummary:root.querySelector(".crv-rating-summary"),favouriteSummary:root.querySelector(".crv-favourite-summary"),qualitySummary:root.querySelector(".crv-quality-summary"),stars:root.querySelector(".crv-stars"),qualityButtons:[...root.querySelectorAll("[data-rank]")],toolBacks:[...root.querySelectorAll(".crv-tool-back")],
@@ -97,7 +125,20 @@ function setup(parentElement, root, setTriggerValue) {
   }
   runtime.remember = ref => {
     if (!ref?.id) return
-    const record = {kind:ref.kind,id:ref.id,scope:ref.scope||"",title:ref.title||ref.id,metadata:ref.metadata||[],destination:ref.destination||"/",at:new Date().toISOString()}
+    const record = {
+      kind:ref.kind,
+      id:ref.id,
+      scope:ref.scope||"",
+      title:ref.title||ref.id,
+      metadata:ref.metadata||[],
+      text:typeof ref.text === "string" ? ref.text.slice(0,HISTORY_TEXT_LIMIT) : "",
+      layer:ref.layer||"",
+      accent:ref.accent||"",
+      work_id:ref.work_id||ref.studio_route?.work||"",
+      destination:ref.destination||"/",
+      at:new Date().toISOString(),
+    }
+    if (ref.studio_route && Object.keys(ref.studio_route).length) record.studio_route = ref.studio_route
     const records = runtime.historyRecords().filter(item => keyFor(item.kind,item.id,item.scope) !== keyFor(ref.kind,ref.id,ref.scope))
     records.unshift(record)
     try { window.sessionStorage.setItem(runtime.historyKey || HISTORY_KEY, JSON.stringify(records.slice(0,60))) } catch (_) {}
@@ -115,24 +156,205 @@ function setup(parentElement, root, setTriggerValue) {
       const empty=document.createElement("div");empty.className="crv-history-title";empty.textContent="No axiom or passage history yet.";runtime.historyList.append(empty)
     }
   }
+  runtime.renderAnnotations = (ref, uses, visible) => {
+    const types = ref?.writing_annotation_types
+    const typeOptions = types && typeof types === "object" ? Object.entries(types) : []
+    const show = visible && Boolean(uses) && typeOptions.length > 0
+    runtime.annotations.hidden = !show
+    if (!show) {
+      runtime.annotationGroups.replaceChildren()
+      runtime.renderedAnnotations = null
+      runtime.annotationKey = ""
+      return
+    }
+    const key = keyFor(ref.kind, ref.id, ref.scope)
+    const pending = runtime.annotationPending
+    const ack = ref.writing_annotation_ack
+    if (pending?.key === key && pending.nonce === ack?.nonce) {
+      runtime.annotationPending = null
+      runtime.annotationResult = {key, message: ack.error || "Note saved."}
+      if (!ack.error) {
+        runtime.annotationDrafts.delete(key)
+        runtime.annotationText.value = ""
+      }
+    }
+    const draft = runtime.annotationDrafts.get(key)
+    if (runtime.annotationKey !== key || runtime.annotationUses !== uses) {
+      const option = (value, label) => {
+        const element = document.createElement("option")
+        element.value = value
+        element.textContent = label
+        return element
+      }
+      const attachable = uses.filter(use => use.id && use.same_reading === true)
+      runtime.annotationType.replaceChildren(...typeOptions.map(([type,label]) => option(type,label)))
+      runtime.annotationUse.replaceChildren(
+        option("", "Axiom in general"),
+        ...attachable.map((use,index) => option(use.id, `${index + 1}. ${use.document_title || "Untitled draft"}`)),
+      )
+      runtime.annotationType.value = draft?.type || typeOptions[0][0]
+      runtime.annotationUse.value = attachable.some(use => use.id === draft?.useId) ? draft.useId : ""
+      runtime.annotationUseLabel.hidden = !attachable.length
+      runtime.annotationText.value = draft?.text || ""
+      if (draft?.text) runtime.annotationComposer.open = true
+      runtime.annotationKey = key
+      runtime.annotationUses = uses
+    }
+    const saving = runtime.annotationPending?.key === key
+    runtime.annotationSave.disabled = saving
+    runtime.annotationType.disabled = saving
+    runtime.annotationUse.disabled = saving
+    runtime.annotationText.readOnly = saving
+    runtime.annotationStatus.textContent = saving ? "Saving note…" :
+      runtime.annotationResult?.key === key ? runtime.annotationResult.message : ref.writing_annotations_error || ""
+    const notes = Array.isArray(ref.writing_annotations) ? ref.writing_annotations : null
+    if (runtime.renderedAnnotations === notes) return
+    runtime.renderedAnnotations = notes
+    runtime.annotationGroups.replaceChildren()
+    for (const [type,label] of typeOptions) {
+      const entries = (notes || []).filter(note => note.type === type)
+      if (!entries.length) continue
+      const group = document.createElement("section")
+      group.className = "crv-annotation-group"
+      group.dataset.annotationType = type
+      const heading = document.createElement("h5")
+      heading.className = "crv-annotation-chip"
+      heading.textContent = label
+      const list = document.createElement("ul")
+      for (const note of entries) {
+        const item = document.createElement("li")
+        item.className = "crv-annotation-entry"
+        const text = document.createElement("p")
+        text.textContent = note.text
+        item.append(text)
+        const use = note.use_id ? uses.find(use => use.id === note.use_id) : null
+        if (use?.document_title) {
+          const context = document.createElement("small")
+          context.textContent = use.document_title
+          item.append(context)
+        }
+        list.append(item)
+      }
+      group.append(heading, list)
+      runtime.annotationGroups.append(group)
+    }
+  }
+  runtime.renderDraftUses = (ref, available) => {
+    const uses = available && Array.isArray(ref.writing_uses) ? ref.writing_uses : null
+    const visible = available && runtime.surface === "writing_uses"
+    runtime.draftUsesTab.hidden = !available
+    runtime.draftUsesTab.classList.toggle("active", visible)
+    runtime.draftUsesTab.setAttribute("aria-selected", visible ? "true" : "false")
+    runtime.draftUsesCount.hidden = !uses?.length
+    runtime.draftUsesCount.textContent = uses?.length ? String(uses.length) : ""
+    runtime.draftUsesSurface.hidden = !visible
+    const workspaceUrl = visible && ref.workspace_uses_url
+    runtime.workspaceUses.hidden = !workspaceUrl
+    if (workspaceUrl) runtime.workspaceUses.href = workspaceUrl
+    else runtime.workspaceUses.removeAttribute("href")
+    runtime.root.classList.toggle("has-draft-uses", available)
+    runtime.root.classList.toggle("viewing-draft-uses", visible)
+    runtime.renderAnnotations(ref, uses, visible)
+    if (!visible) {
+      runtime.draftUsesList.replaceChildren()
+      runtime.renderedDraftUses = null
+      return
+    }
+    if (runtime.draftUsesAxiomRef !== ref) {
+      runtime.draftUsesAxiomRef = ref
+      runtime.draftUsesAxiom.style.setProperty("--crv-draft-axiom-accent", ref.accent || layerColor(ref.layer))
+      if (typeof ref.reading_block_html === "string") runtime.draftUsesAxiom.innerHTML = ref.reading_block_html
+      else runtime.draftUsesAxiom.textContent = ref.text || "No exact wording is registered for this reference."
+    }
+    const error = ref.writing_uses_error || ""
+    runtime.draftUsesStatus.textContent = error || (!uses ? "Finding linked passages…" : !uses.length ? `No drafts cite this ${ref.kind === "passage" ? "source passage" : "axiom"} yet.` : "")
+    runtime.draftUsesStatus.hidden = !runtime.draftUsesStatus.textContent
+    runtime.draftUsesRetry.hidden = !error
+    if (runtime.renderedDraftUses === uses) return
+    runtime.renderedDraftUses = uses
+    runtime.draftUsesList.replaceChildren()
+    for (const use of uses || []) {
+      const card = document.createElement("li")
+      card.className = "crv-draft-use"
+      const title = document.createElement("h4")
+      title.className = "crv-draft-use-title"
+      title.textContent = use.document_title || "Untitled draft"
+      card.append(title)
+      if (use.quote) {
+        const quote = document.createElement("blockquote")
+        quote.className = "crv-draft-use-quote"
+        quote.textContent = use.quote
+        card.append(quote)
+      }
+      if (use.note) {
+        const note = document.createElement("p")
+        note.className = "crv-draft-use-note"
+        note.textContent = use.note
+        card.append(note)
+      }
+      if (use.id) {
+        const actions = document.createElement("div")
+        actions.className = "crv-draft-use-actions"
+        if (runtime.draftUsesBeside) {
+          const beside = document.createElement("button")
+          beside.type = "button"
+          beside.className = "crv-draft-use-open"
+          beside.dataset.draftUseId = use.id
+          beside.dataset.draftUseMode = "beside"
+          beside.textContent = "Open"
+          beside.title = "Open in Write beside"
+          actions.append(beside)
+        }
+        const open = document.createElement("button")
+        open.type = "button"
+        open.className = "crv-draft-use-open"
+        open.dataset.draftUseId = use.id
+        if (runtime.draftUsesBeside) {
+          open.dataset.draftUseMode = "full"
+          open.title = "Open in CARE Studio"
+          open.setAttribute("aria-label", open.title)
+          open.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M7 4H3.5v8.5H12V9m-4-5h4v4m0-4L7 9"/></svg>'
+        } else open.textContent = use.anchor_available ? "Go to draft passage" : "Open draft"
+        actions.append(open)
+        if (use.same_reading === false) {
+          const version = document.createElement("span")
+          version.className = "crv-draft-use-tag"
+          version.textContent = "Linked to an earlier reading"
+          actions.append(version)
+        }
+        card.append(actions)
+      }
+      runtime.draftUsesList.append(card)
+    }
+  }
   runtime.render = () => {
     const ref = runtime.selected
+    runtime.write.hidden = !ref?.writing_available
+    runtime.send.hidden = !ref?.send_available
+    runtime.write.textContent = ref?.kind === "passage" ? "Write beside this passage" : "Write beside this axiom"
     const hasEdition=Boolean(runtime.edition)
+    const draftUsesAvailable = Boolean(ref?.writing_uses_available)
     if(runtime.surface==="edition"&&!hasEdition)runtime.surface="read"
+    if(runtime.surface==="writing_uses"&&!draftUsesAvailable)runtime.surface="read"
     runtime.root.style.setProperty("--crv-text-scale",String(TEXT_SCALES[runtime.textScaleIndex]))
-    runtime.root.style.setProperty("--crv-accent",runtime.paneAccent||ref?.accent||layerColor(ref?.layer || ref?.kind))
+    runtime.root.style.setProperty("--crv-accent",runtime.surface==="writing_uses"?"#9bccaf":runtime.paneAccent||ref?.accent||layerColor(ref?.layer || ref?.kind))
     runtime.textSmaller.disabled=runtime.textScaleIndex===0;runtime.textLarger.disabled=runtime.textScaleIndex===TEXT_SCALES.length-1
     runtime.panel.hidden = !runtime.open
     runtime.launcher.setAttribute("aria-expanded", runtime.open ? "true" : "false")
     runtime.launcherLabel.textContent = "Axiom viewer"
-    runtime.launcher.setAttribute("aria-label", `${runtime.open ? "Close" : "Open"} Axiom viewer`)
+    const resume = !runtime.open && !runtime.registry.has(runtime.writeBesideReturn?.key) && runtime.canRestoreStudio()
+    const launcherLabel = resume ? `Axiom viewer · Resume CARE Studio beside this ${ref.kind === "passage" ? "passage" : "axiom"}` : `${runtime.open ? "Close" : "Open"} Axiom viewer`
+    runtime.launcher.setAttribute("aria-label", launcherLabel)
+    runtime.launcher.title = launcherLabel
     runtime.root.classList.toggle("has-edition",hasEdition)
     runtime.empty.hidden = Boolean(ref)||runtime.surface==="edition"; runtime.content.hidden = !ref&&runtime.surface!=="edition"
     runtime.emptyEdition.hidden=!hasEdition
     runtime.referenceId.textContent = ref ? ref.id : "Select an axiom or passage"
     runtime.copyId.hidden = !ref
+    for (const link of runtime.readingLinks) link.hidden = !ref?.[link.dataset.copyReading]
+    runtime.returnStudio.hidden = !ref || !runtime.studioViewerReturnKey || keyFor(ref.kind, ref.id, ref.scope) !== runtime.studioViewerReturnKey
     if (ref) {
-      if (ref.kind !== "axiom" && !runtime.sheetContext && !runtime.routeDownload?.url && runtime.surface === "tools") { runtime.surface="read";runtime.toolScreen="home" }
+      if (ref.kind !== "axiom" && !ref.bookmark_available && !runtime.sheetContext && !runtime.routeDownload?.url && runtime.surface === "tools") { runtime.surface="read";runtime.toolScreen="home" }
       runtime.title.textContent = ref.title || ref.id
       runtime.meta.textContent = Array.isArray(ref.metadata) ? ref.metadata.filter(Boolean).join(" · ") : ""
       if(typeof ref.reading_block_html === "string")runtime.text.innerHTML = ref.reading_block_html
@@ -144,8 +366,10 @@ function setup(parentElement, root, setTriggerValue) {
       runtime.sheetLink.hidden = !ref.sheet_destination
       runtime.sheetLink.href = ref.sheet_destination || "/"
       const axiomTools=ref.kind === "axiom",hasSheet=Boolean(runtime.sheetContext),hasRouteDownload=Boolean(runtime.routeDownload?.url)
-      runtime.toolsTab.hidden = !axiomTools && !hasSheet && !hasRouteDownload
-      ;[runtime.toolRate,runtime.toolFavourite,runtime.toolQuality,runtime.toolCollect,runtime.toolFamily].forEach(element=>{element.hidden=!axiomTools})
+      runtime.toolsTab.hidden = !axiomTools && !ref.bookmark_available && !hasSheet && !hasRouteDownload
+      ;[runtime.toolRate,runtime.toolQuality,runtime.toolCollect,runtime.toolFamily].forEach(element=>{element.hidden=!axiomTools})
+      runtime.toolFavourite.hidden=!axiomTools&&!ref.bookmark_available
+      runtime.toolFavourite.querySelector("span:not(.crv-tool-icon)").textContent=ref.kind==="passage"?"Bookmark passage":"Favourite"
       runtime.toolFamily.hidden=!axiomTools||(runtime.studioMode&&!ref.studio_route?.work)
       runtime.toolFamily.querySelector("span:not(.crv-tool-icon)").textContent=runtime.studioMode?"Routes":"Family"
       runtime.toolFamily.querySelector("small").textContent=runtime.studioMode?"Follow connected axioms":"Open lineage"
@@ -155,7 +379,8 @@ function setup(parentElement, root, setTriggerValue) {
       runtime.toolDownloadSheet.href=ref.sheet_download_url||"/";runtime.toolDownloadSheet.download=ref.sheet_download_name||"CARE-sheet.md"
       runtime.toolDownloadRoute.hidden=!hasRouteDownload;runtime.toolDownloadRoute.href=runtime.routeDownload?.url||"/";runtime.toolDownloadRoute.download=runtime.routeDownload?.file_name||"CARE-route.md"
       const rating=Number(ref.rating||0);runtime.ratingSummary.textContent=rating?`${"★".repeat(rating)}${"☆".repeat(5-rating)}`:"Not rated"
-      runtime.favouriteSummary.textContent=ref.favourite?"Saved":"Save";runtime.toolFavourite.classList.toggle("active",Boolean(ref.favourite))
+      const saved=ref.kind==="passage"?ref.bookmarked:ref.favourite
+      runtime.favouriteSummary.textContent=saved?"Saved":"Save";runtime.toolFavourite.classList.toggle("active",Boolean(saved));runtime.toolFavourite.setAttribute("aria-pressed",String(Boolean(saved)))
       runtime.qualitySummary.textContent=ref.quality?String(ref.quality).replace(/^./,value=>value.toUpperCase()):"Unmarked"
       runtime.stars.querySelectorAll(".crv-star").forEach(button=>button.classList.toggle("active",Number(button.dataset.score)<=rating))
       runtime.qualityButtons.forEach(button=>button.classList.toggle("active",button.dataset.rank===ref.quality))
@@ -185,6 +410,7 @@ function setup(parentElement, root, setTriggerValue) {
     runtime.readTab.classList.toggle("active",runtime.surface==="read");runtime.readTab.setAttribute("aria-selected",runtime.surface==="read"?"true":"false")
     runtime.toolsTab.classList.toggle("active",runtime.surface==="tools");runtime.toolsTab.setAttribute("aria-selected",runtime.surface==="tools"?"true":"false")
     runtime.editionTab.classList.toggle("active",runtime.surface==="edition");runtime.editionTab.setAttribute("aria-selected",runtime.surface==="edition"?"true":"false")
+    runtime.renderDraftUses(ref, draftUsesAvailable)
     runtime.toolHome.hidden=runtime.toolScreen!=="home";runtime.rateScreen.hidden=runtime.toolScreen!=="rate";runtime.qualityScreen.hidden=runtime.toolScreen!=="quality";runtime.historyScreen.hidden=runtime.toolScreen!=="history";runtime.sheetScreen.hidden=runtime.toolScreen!=="sheet"
     const position = ref ? runtime.sequence.findIndex(item => keyFor(item.kind,item.id,item.scope) === keyFor(ref.kind,ref.id,ref.scope)) : -1
     runtime.previous.disabled = position <= 0
@@ -206,9 +432,10 @@ function setup(parentElement, root, setTriggerValue) {
     const element = [...document.querySelectorAll("[data-care-reference-kind][data-care-reference-id]")].find(item => keyFor(item.dataset.careReferenceKind,item.dataset.careReferenceId) === keyFor(ref.kind,ref.id,ref.scope))
     if (element) surfaceFor(element).scrollIntoView({behavior:"smooth",block:"center"})
   }
-  runtime.select = (ref,{open=runtime.open,scroll=false,remember=true}={}) => {
+  runtime.select = (ref,{open=runtime.open,scroll=false,remember=true,surface="read"}={}) => {
     if (!ref) return
-    runtime.paneAccent="";runtime.selected=ref;runtime.open=open;runtime.surface="read";runtime.toolScreen="home";if(remember)runtime.remember(ref);runtime.render();if(scroll)runtime.scrollTo(ref)
+    if (runtime.selected !== ref) runtime.writeBesidePending = null
+    runtime.paneAccent="";runtime.selected=ref;runtime.open=open;runtime.surface=surface;runtime.toolScreen="home";if(remember)runtime.remember(ref);runtime.render();if(scroll)runtime.scrollTo(ref)
   }
   runtime.move = delta => {
     if (!runtime.sequence.length) return
@@ -266,7 +493,7 @@ function setup(parentElement, root, setTriggerValue) {
       const copied=document.execCommand("copy");helper.remove();runtime.showStatus(copied?message:"Select the text and copy it manually")
     }
   }
-  runtime.selectedText = () => {
+  runtime.selectedText = (element = null) => {
     const selections=[]
     const addSelection=selection=>{if(selection&&!selections.includes(selection))selections.push(selection)}
     try{addSelection(window.getSelection?.())}catch(_){}
@@ -274,30 +501,118 @@ function setup(parentElement, root, setTriggerValue) {
     try{addSelection(runtime.root.getRootNode()?.getSelection?.())}catch(_){}
     for(const selection of selections){
       if(selection.isCollapsed)continue
+      if(element && (!element.contains(selection.anchorNode) || !element.contains(selection.focusNode)))continue
       const value=String(selection.toString()||"")
       if(value.trim())return value
     }
     return ""
   }
-  runtime.selectionWithin = element => {
-    if(!element)return false
-    const selections=[]
-    const addSelection=selection=>{if(selection&&!selections.includes(selection))selections.push(selection)}
-    try{addSelection(window.getSelection?.())}catch(_){}
-    try{addSelection(document.getSelection?.())}catch(_){}
-    try{addSelection(runtime.root.getRootNode()?.getSelection?.())}catch(_){}
-    const parent=node=>node instanceof Element?node:node?.parentElement
-    return selections.some(selection=>{
-      if(selection.isCollapsed||!String(selection.toString()||"").trim())return false
-      const anchor=parent(selection.anchorNode),focus=parent(selection.focusNode)
-      return Boolean(anchor&&focus&&element.contains(anchor)&&element.contains(focus))
-    })
-  }
-  runtime.showTools = screen => { if(runtime.selected?.kind!=="axiom"&&!runtime.sheetContext)return;runtime.open=true;runtime.surface="tools";runtime.toolScreen=screen||"home";runtime.render() }
+  runtime.selectionWithin = element => Boolean(element && runtime.selectedText(element))
+  runtime.showTools = screen => { if(runtime.selected?.kind!=="axiom"&&!runtime.selected?.bookmark_available&&!runtime.sheetContext&&!runtime.routeDownload?.url)return;runtime.open=true;runtime.surface="tools";runtime.toolScreen=screen||"home";runtime.render() }
   runtime.showEdition = () => {if(!runtime.edition)return;runtime.open=true;runtime.surface="edition";runtime.toolScreen="home";runtime.render()}
   runtime.showRead = () => {runtime.surface="read";runtime.toolScreen="home";runtime.render()}
-  runtime.emit = (type,payload={}) => { if(!runtime.selected?.id)return;runtime.setTriggerValue("action",{type,id:runtime.selected.id,scope:runtime.selected.scope||"",nonce:`${Date.now()}-${Math.random()}`,...payload}) }
-  runtime.onLauncher = () => { runtime.previewSource=null;runtime.open = !runtime.open; runtime.render() }
+  runtime.emit = (type,payload={}) => {
+    if (!runtime.selected?.id) return
+    const nonce = `${Date.now()}-${Math.random()}`
+    runtime.setTriggerValue("action",{type,id:runtime.selected.id,scope:runtime.selected.scope||"",nonce,...payload})
+    return nonce
+  }
+  runtime.emitAfterDraftSaved = (type, payload, {opensDrawer = false} = {}) => {
+    const ref = runtime.selected
+    if (!ref) return
+    const key = keyFor(ref.kind, ref.id, ref.scope)
+    const resume = () => {
+      const active = INSTANCES.get(parentElement)
+      const selected = active?.selected
+      if (!selected || keyFor(selected.kind, selected.id, selected.scope) !== key) return
+      const nonce = active.emit(type, {kind:selected.kind, ...payload})
+      if (opensDrawer) active.writeBesidePending = {nonce, key, surface:active.surface}
+    }
+    if (window.dispatchEvent(new CustomEvent("care-workspace-before-navigation", {cancelable:true, detail:{resume}}))) resume()
+  }
+  runtime.loadDraftUses = (retry = false) => {
+    const ref = runtime.selected
+    if (!ref?.writing_uses_available) return
+    const key = keyFor(ref.kind, ref.id, ref.scope)
+    if (!retry && (Array.isArray(ref.writing_uses) || ref.writing_uses_error || runtime.draftUsesRequestKey === key)) return
+    runtime.draftUsesRequestKey = key
+    runtime.emit("studio_load_writing_uses", {kind: ref.kind})
+  }
+  runtime.onDraftUsesTab = () => {
+    if (!runtime.selected?.writing_uses_available) return
+    runtime.open = true
+    runtime.surface = "writing_uses"
+    runtime.render()
+    runtime.loadDraftUses()
+  }
+  runtime.onDraftUsesRetry = () => runtime.loadDraftUses(true)
+  runtime.onDraftUseOpen = event => {
+    const button = event.target.closest("[data-draft-use-id]")
+    const useId = button?.dataset.draftUseId
+    if (!useId) return
+    const opensDrawer = button.dataset.draftUseMode === "beside"
+    runtime.emitAfterDraftSaved(opensDrawer ? "studio_open_writing_beside" : "studio_open_writing_use", {use_id:useId}, {opensDrawer})
+  }
+  runtime.onWriteBesideReady = event => {
+    const pending = runtime.writeBesidePending
+    if (!pending || pending.nonce !== event.detail?.nonce) return
+    runtime.writeBesidePending = null
+    const ref = runtime.selected
+    if (!runtime.open || !ref || keyFor(ref.kind, ref.id, ref.scope) !== pending.key) return
+    runtime.writeBesideReturn = {key:pending.key, surface:pending.surface}
+    runtime.onClose()
+  }
+  runtime.resumeWriteBesideReference = () => {
+    const remembered = runtime.writeBesideReturn
+    const ref = remembered && runtime.registry.get(remembered.key)
+    runtime.writeBesideReturn = null
+    if (!ref) return false
+    runtime.previewSource = null
+    const showUses = remembered.surface === "writing_uses" && ref.writing_uses_available
+    runtime.select(ref, {open:true, surface:showUses ? "writing_uses" : "read"})
+    if (showUses) runtime.loadDraftUses()
+    return true
+  }
+  runtime.onAnnotationInput = () => {
+    if (!runtime.annotationKey) return
+    runtime.annotationDrafts.set(runtime.annotationKey, {
+      type: runtime.annotationType.value, useId: runtime.annotationUse.value, text: runtime.annotationText.value,
+    })
+    if (runtime.annotationDrafts.size > 12) runtime.annotationDrafts.delete(runtime.annotationDrafts.keys().next().value)
+  }
+  runtime.onAnnotationSubmit = event => {
+    event.preventDefault()
+    const key = runtime.annotationKey
+    if (!key || runtime.annotationPending?.key === key) return
+    const text = runtime.annotationText.value.trim()
+    if (!text) {
+      runtime.annotationStatus.textContent = "Write a note first."
+      return
+    }
+    runtime.onAnnotationInput()
+    const nonce = runtime.emit("studio_add_writing_annotation", {
+      annotation_type: runtime.annotationType.value, text, use_id: runtime.annotationUse.value,
+    })
+    if (nonce) {
+      runtime.annotationPending = {key, nonce}
+      runtime.render()
+    }
+  }
+  runtime.canRestoreStudio = () => {
+    const ref = runtime.selected
+    return Boolean(runtime.studioReturnKey && ref?.writing_uses_available && keyFor(ref.kind, ref.id, ref.scope) === runtime.studioReturnKey)
+  }
+  runtime.onLauncher = () => {
+    if (!runtime.open && runtime.resumeWriteBesideReference()) return
+    if (!runtime.open && runtime.canRestoreStudio()) {
+      runtime.studioReturnKey = ""
+      runtime.render()
+      runtime.emit("studio_restore_writing", {kind: runtime.selected?.kind})
+      return
+    }
+    runtime.writeBesidePending = null
+    runtime.previewSource=null;runtime.open = !runtime.open; runtime.render()
+  }
   runtime.setTextScale = delta => {
     const next=Math.max(0,Math.min(TEXT_SCALES.length-1,runtime.textScaleIndex+delta))
     if(next===runtime.textScaleIndex)return
@@ -307,19 +622,36 @@ function setup(parentElement, root, setTriggerValue) {
   }
   runtime.onTextSmaller = () => runtime.setTextScale(-1)
   runtime.onTextLarger = () => runtime.setTextScale(1)
-  runtime.onClose = () => { runtime.previewSource=null;runtime.open = false;runtime.surface="read";runtime.toolScreen="home";runtime.render() }
+  runtime.onClose = () => { runtime.writeBesidePending=null;runtime.previewSource=null;runtime.open = false;runtime.surface="read";runtime.toolScreen="home";runtime.render() }
   runtime.onClear = () => { runtime.selected = null;runtime.surface="read";runtime.toolScreen="home";runtime.open = true;runtime.render() }
   runtime.onPrevious = () => runtime.move(-1)
   runtime.onNext = () => runtime.move(1)
   runtime.onHistoryClear = () => { try { window.sessionStorage.removeItem(runtime.historyKey || HISTORY_KEY) } catch (_) {};runtime.renderHistory() }
   runtime.onCopyText = () => runtime.copy(runtime.selected?.reading_text ?? runtime.selected?.text)
   runtime.onCopyId = () => runtime.copy(runtime.selected?.id, "Copied CARE ID")
+  runtime.onCopyReading = event => runtime.copy(runtime.selected?.[event.currentTarget.dataset.copyReading], "Copied reading link")
   runtime.onCopyCitation = () => runtime.copy(runtime.selected?.citation, "Copied full reference")
   runtime.onCopyShortCitation = () => runtime.copy(runtime.selected?.citation_short, "Copied short note")
   runtime.onCopyIbidCitation = () => runtime.copy(runtime.selected?.citation_ibid, "Copied Ibid. + CARE ID")
+  runtime.onWrite = () => {
+    if (runtime.selected?.writing_available) runtime.emitAfterDraftSaved("write_beside_axiom", {}, {opensDrawer:true})
+  }
+  runtime.onSend = () => {
+    if (runtime.selected?.send_available) runtime.emitAfterDraftSaved("send_axiom", {})
+  }
+  runtime.onReturnToStudio = () => {
+    if (!runtime.returnStudio.hidden) runtime.emitAfterDraftSaved("studio_return_to_draft", {})
+  }
   runtime.onReadTab=()=>runtime.showRead();runtime.onToolsTab=()=>runtime.showTools("home");runtime.onEditionTab=()=>runtime.showEdition();runtime.onEmptyEdition=()=>runtime.showEdition()
   runtime.onToolRate=()=>runtime.showTools("rate");runtime.onToolQuality=()=>runtime.showTools("quality");runtime.onToolHistory=()=>runtime.showTools("history");runtime.onToolSheet=()=>runtime.showTools("sheet")
-  runtime.onToolFavourite=()=>{const active=!Boolean(runtime.selected?.favourite);runtime.selected.favourite=active;runtime.render();runtime.showStatus(active?"Saved to favourites":"Removed from favourites");runtime.emit("favourite",{active})}
+  runtime.onToolFavourite=()=>{
+    const ref=runtime.selected;if(!ref)return
+    if(ref.kind==="passage"){
+      if(!ref.bookmark_available)return
+      const active=!Boolean(ref.bookmarked);ref.bookmarked=active;runtime.render();runtime.showStatus(active?"Passage saved":"Passage bookmark removed");runtime.emit("source_bookmark",{active});return
+    }
+    const active=!Boolean(ref.favourite);ref.favourite=active;runtime.render();runtime.showStatus(active?"Saved to favourites":"Removed from favourites");runtime.emit("favourite",{active})
+  }
   runtime.onToolCollect=()=>{runtime.showStatus("Added to export collection");runtime.emit("collect")}
   runtime.onToolFamily=()=>runtime.studioMode?runtime.emit("studio_open_reference"):runtime.emit("open_lineage")
   runtime.onOpenReference=event=>{if(!runtime.studioMode||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();runtime.emit("studio_open_reference")}
@@ -335,7 +667,16 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.onEditionPrepare=()=>{if(!runtime.edition)return;runtime.editionPrepare.disabled=true;runtime.editionPrepare.textContent="Preparing the complete edition…";runtime.editionStatus.textContent="Binding every finding, quotation, and cited axiom…";runtime.setTriggerValue("action",{type:"edition_prepare",id:runtime.edition.signature||"edition",nonce:`${Date.now()}-${Math.random()}`})}
   runtime.onReferencePreview=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;runtime.previewSource=detail.source||null;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:true,remember:!selected})}
   runtime.onReferenceDismissPreview=event=>{if(!runtime.previewSource||event.detail?.source!==runtime.previewSource)return;runtime.previewSource=null;runtime.open=false;runtime.render()}
-  runtime.onReferenceSelect=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:runtime.open,remember:!selected});event.preventDefault?.()}
+  runtime.onReferenceSelect = event => {
+    const detail = event.detail || {}
+    const ref = runtime.registry.get(keyFor(detail.kind, detail.id, detail.scope))
+    if (!ref) return
+    const selected = runtime.selected && keyFor(runtime.selected.kind, runtime.selected.id, runtime.selected.scope) === keyFor(ref.kind, ref.id, ref.scope)
+    const showUses = detail.open === true && detail.surface === "writing_uses" && ref.writing_uses_available
+    runtime.select(ref, {open:detail.open === true || runtime.open, remember:!selected, surface:showUses ? "writing_uses" : "read"})
+    if (showUses) runtime.loadDraftUses()
+    event.preventDefault?.()
+  }
   runtime.onReferenceClearSelection=event=>{const detail=event.detail||{},selected=runtime.selected;if(!selected||keyFor(selected.kind,selected.id,selected.scope)!==keyFor(detail.kind,detail.id,detail.scope))return;runtime.selected=null;runtime.previewSource=null;runtime.surface="read";runtime.toolScreen="home";runtime.render()}
   runtime.onPaneFocus = event => {
     if(!runtime.studioMode)return
@@ -375,6 +716,7 @@ function setup(parentElement, root, setTriggerValue) {
     // The ordinary CARE sheet owns its selection controls. These attributes
     // are absent inside Routes, whose viewer shortcuts remain unchanged.
     const path=typeof event.composedPath==="function"?event.composedPath():[event.target]
+    if(path.some(node=>node instanceof HTMLElement&&node.matches('[role="dialog"]')))return
     if(path.some(node=>node instanceof HTMLElement&&(node.matches("[data-reading-sheet]")||node.matches('[data-pane="original"]'))))return
     if(runtime.eventComesFromEditable(event))return
     const origin=event.composedPath?.()[0]||event.target
@@ -391,25 +733,38 @@ function setup(parentElement, root, setTriggerValue) {
     if (key==="arrowright") {if(runtime.moveSpatial("right"))event.preventDefault();return}
     if (key==="j") {event.preventDefault();if(!runtime.moveLineageOrder(1))runtime.move(1);return}
     if (key==="k") {event.preventDefault();if(!runtime.moveLineageOrder(-1))runtime.move(-1);return}
-    if (key==="escape"&&runtime.open) {event.preventDefault();if(runtime.surface==="tools"&&runtime.toolScreen!=="home")runtime.showTools("home");else if(runtime.surface==="tools")runtime.showRead();else{runtime.open=false;runtime.render()}return}
+    if (key==="escape"&&runtime.open) {event.preventDefault();if(runtime.surface==="tools"&&runtime.toolScreen!=="home")runtime.showTools("home");else if(runtime.surface==="tools"||runtime.surface==="writing_uses")runtime.showRead();else{runtime.open=false;runtime.render()}return}
+    if (key==="enter"&&path.some(node=>node instanceof HTMLElement&&node.matches(".crv-draft-uses-tab,.crv-draft-uses-retry,.crv-workspace-uses,[data-draft-use-id],.crv-annotation-save,.crv-annotation-composer summary"))) return
     if (key==="enter"&&target?.closest("button,a")) return
     if (key==="enter"&&runtime.selected) {event.preventDefault();if(runtime.open){if(runtime.studioMode)runtime.emit("studio_open_reference");else window.location.assign(runtime.selected.destination||"/")}else{runtime.open=true;runtime.render()}return}
-    if (key==="t"&&runtime.selected?.kind==="axiom") {event.preventDefault();if(runtime.surface==="tools")runtime.showRead();else runtime.showTools("home");return}
+    if (key==="t"&&(runtime.selected?.kind==="axiom"||runtime.selected?.bookmark_available)) {event.preventDefault();if(runtime.surface==="tools")runtime.showRead();else runtime.showTools("home");return}
   }
   runtime.onDocumentCopy = event => {
-    const value=runtime.selectedText()
+    if(event.defaultPrevented || event.composedPath().some(node=>node instanceof HTMLElement&&node.matches('[role="dialog"]')))return
+    if (runtime.studioEmbed && runtime.eventComesFromEditable(event)) return
+    // The embedded desk owns copies from its reading panes and the browser
+    // owns selections spanning multiple references.
+    const value=runtime.selectedText(runtime.studioEmbed ? runtime.text : null)
     if(!value)return
     if(event.clipboardData){event.clipboardData.setData("text/plain",value);event.preventDefault();return}
     if(navigator.clipboard?.writeText){navigator.clipboard.writeText(value).catch(()=>{});event.preventDefault()}
   }
-  runtime.launcher.addEventListener("click", runtime.onLauncher); runtime.close.addEventListener("click", runtime.onClose)
+  runtime.launcher.addEventListener("click", runtime.onLauncher); runtime.close.addEventListener("click", runtime.onClose); runtime.returnStudio.addEventListener("click", runtime.onReturnToStudio)
   runtime.textSmaller.addEventListener("click",runtime.onTextSmaller);runtime.textLarger.addEventListener("click",runtime.onTextLarger)
   runtime.previous.addEventListener("click",runtime.onPrevious);runtime.next.addEventListener("click",runtime.onNext)
   runtime.clear.addEventListener("click", runtime.onClear); runtime.copyId.addEventListener("click", runtime.onCopyId); runtime.copyText.addEventListener("click", runtime.onCopyText)
+  for (const link of runtime.readingLinks) link.addEventListener("click", runtime.onCopyReading)
   runtime.openLink.addEventListener("click",runtime.onOpenReference);runtime.sheetLink.addEventListener("click",runtime.onOpenSheet)
   runtime.copyCitation.addEventListener("click", runtime.onCopyCitation)
   runtime.copyShortCitation.addEventListener("click", runtime.onCopyShortCitation)
   runtime.copyIbidCitation.addEventListener("click", runtime.onCopyIbidCitation)
+  runtime.write.addEventListener("click", runtime.onWrite)
+  runtime.send.addEventListener("click", runtime.onSend)
+  runtime.draftUsesTab.addEventListener("click", runtime.onDraftUsesTab)
+  runtime.draftUsesRetry.addEventListener("click", runtime.onDraftUsesRetry)
+  runtime.draftUsesList.addEventListener("click", runtime.onDraftUseOpen)
+  runtime.annotationForm.addEventListener("input", runtime.onAnnotationInput)
+  runtime.annotationForm.addEventListener("submit", runtime.onAnnotationSubmit)
   runtime.readTab.addEventListener("click",runtime.onReadTab);runtime.toolsTab.addEventListener("click",runtime.onToolsTab);runtime.editionTab.addEventListener("click",runtime.onEditionTab);runtime.emptyEdition.addEventListener("click",runtime.onEmptyEdition);runtime.editionPrepare.addEventListener("click",runtime.onEditionPrepare)
   runtime.toolRate.addEventListener("click",runtime.onToolRate);runtime.toolQuality.addEventListener("click",runtime.onToolQuality);runtime.toolHistory.addEventListener("click",runtime.onToolHistory);runtime.toolSheet.addEventListener("click",runtime.onToolSheet)
   runtime.toolFavourite.addEventListener("click",runtime.onToolFavourite);runtime.toolCollect.addEventListener("click",runtime.onToolCollect);runtime.toolFamily.addEventListener("click",runtime.onToolFamily);runtime.toolRevealSheet.addEventListener("click",runtime.onToolRevealSheet);runtime.toolBacks.forEach(button=>button.addEventListener("click",runtime.onToolBack))
@@ -424,6 +779,7 @@ function setup(parentElement, root, setTriggerValue) {
   window.addEventListener("care-reference-dismiss-preview",runtime.onReferenceDismissPreview)
   window.addEventListener("care-reference-select",runtime.onReferenceSelect)
   window.addEventListener("care-reference-clear-selection",runtime.onReferenceClearSelection)
+  window.addEventListener("care-write-beside-ready",runtime.onWriteBesideReady)
   Object.assign(runtime,SAVED_VIEWERS.get(parentElement)||{})
   setupViewerVibrantView(runtime)
   INSTANCES.set(parentElement, runtime)
@@ -436,17 +792,26 @@ function teardown(parentElement, runtime) {
   if(runtime.disposed)return
   runtime.disposed=true
   runtime.cleanupVibrantView?.()
-  SAVED_VIEWERS.set(parentElement,{selected:runtime.selected,defaultKey:runtime.defaultKey,open:runtime.open,openRequest:runtime.openRequest,previewSource:runtime.previewSource,surface:runtime.surface,toolScreen:runtime.toolScreen,textScaleIndex:runtime.textScaleIndex,paneAccent:runtime.paneAccent})
+  runtime.cleanupToolbar?.()
+  SAVED_VIEWERS.set(parentElement,{selected:runtime.selected,defaultKey:runtime.defaultKey,open:runtime.open,openRequest:runtime.openRequest,previewSource:runtime.previewSource,surface:runtime.surface,toolScreen:runtime.toolScreen,textScaleIndex:runtime.textScaleIndex,paneAccent:runtime.paneAccent,draftUsesRequestKey:runtime.draftUsesRequestKey,annotationDrafts:runtime.annotationDrafts,annotationPending:runtime.annotationPending,annotationResult:runtime.annotationResult,writeBesidePending:runtime.writeBesidePending,writeBesideReturn:runtime.writeBesideReturn})
   runtime.renderLineageFlow(null)
   runtime.markSpatial(null)
-  runtime.launcher.removeEventListener("click", runtime.onLauncher); runtime.close.removeEventListener("click", runtime.onClose)
+  runtime.launcher.removeEventListener("click", runtime.onLauncher); runtime.close.removeEventListener("click", runtime.onClose); runtime.returnStudio.removeEventListener("click", runtime.onReturnToStudio)
   runtime.textSmaller.removeEventListener("click",runtime.onTextSmaller);runtime.textLarger.removeEventListener("click",runtime.onTextLarger)
   runtime.previous.removeEventListener("click",runtime.onPrevious);runtime.next.removeEventListener("click",runtime.onNext)
   runtime.clear.removeEventListener("click", runtime.onClear); runtime.copyId.removeEventListener("click", runtime.onCopyId); runtime.copyText.removeEventListener("click", runtime.onCopyText)
+  for (const link of runtime.readingLinks) link.removeEventListener("click", runtime.onCopyReading)
   runtime.openLink.removeEventListener("click",runtime.onOpenReference);runtime.sheetLink.removeEventListener("click",runtime.onOpenSheet)
   runtime.copyCitation.removeEventListener("click", runtime.onCopyCitation)
   runtime.copyShortCitation.removeEventListener("click", runtime.onCopyShortCitation)
   runtime.copyIbidCitation.removeEventListener("click", runtime.onCopyIbidCitation)
+  runtime.write.removeEventListener("click", runtime.onWrite)
+  runtime.send.removeEventListener("click", runtime.onSend)
+  runtime.draftUsesTab.removeEventListener("click", runtime.onDraftUsesTab)
+  runtime.draftUsesRetry.removeEventListener("click", runtime.onDraftUsesRetry)
+  runtime.draftUsesList.removeEventListener("click", runtime.onDraftUseOpen)
+  runtime.annotationForm.removeEventListener("input", runtime.onAnnotationInput)
+  runtime.annotationForm.removeEventListener("submit", runtime.onAnnotationSubmit)
   runtime.readTab.removeEventListener("click",runtime.onReadTab);runtime.toolsTab.removeEventListener("click",runtime.onToolsTab);runtime.editionTab.removeEventListener("click",runtime.onEditionTab);runtime.emptyEdition.removeEventListener("click",runtime.onEmptyEdition);runtime.editionPrepare.removeEventListener("click",runtime.onEditionPrepare)
   runtime.toolRate.removeEventListener("click",runtime.onToolRate);runtime.toolQuality.removeEventListener("click",runtime.onToolQuality);runtime.toolHistory.removeEventListener("click",runtime.onToolHistory);runtime.toolSheet.removeEventListener("click",runtime.onToolSheet)
   runtime.toolFavourite.removeEventListener("click",runtime.onToolFavourite);runtime.toolCollect.removeEventListener("click",runtime.onToolCollect);runtime.toolFamily.removeEventListener("click",runtime.onToolFamily);runtime.toolRevealSheet.removeEventListener("click",runtime.onToolRevealSheet);runtime.toolBacks.forEach(button=>button.removeEventListener("click",runtime.onToolBack))
@@ -461,6 +826,7 @@ function teardown(parentElement, runtime) {
   window.removeEventListener("care-reference-dismiss-preview",runtime.onReferenceDismissPreview)
   window.removeEventListener("care-reference-select",runtime.onReferenceSelect)
   window.removeEventListener("care-reference-clear-selection",runtime.onReferenceClearSelection)
+  window.removeEventListener("care-write-beside-ready",runtime.onWriteBesideReady)
   if (runtime.statusTimer !== null) window.clearTimeout(runtime.statusTimer)
   if(INSTANCES.get(parentElement)===runtime)INSTANCES.delete(parentElement)
 }
@@ -477,9 +843,14 @@ export default function(component) {
   runtime.renderCleanup=()=>teardown(parentElement,runtime)
   runtime.setTriggerValue = setTriggerValue
   runtime.studioMode = Boolean(data?.studio_mode)
+  runtime.studioEmbed = Boolean(data?.studio_embed)
+  runtime.draftUsesBeside = Boolean(data?.draft_uses_beside)
+  runtime.studioReturnKey = data?.studio_return?.id ? keyFor(data.studio_return.kind || "axiom", data.studio_return.id, data.studio_return.scope) : ""
+  runtime.studioViewerReturnKey = data?.studio_viewer_return?.id ? keyFor(data.studio_viewer_return.kind, data.studio_viewer_return.id, data.studio_viewer_return.scope) : ""
   runtime.routeDownload = data?.route_download||null
-  runtime.historyKey = runtime.studioMode ? "care-studio-reference-history-v1" : HISTORY_KEY
+  runtime.historyKey = data?.studio_embed ? "care-studio-embedded-reference-history-v1" : runtime.studioMode ? "care-studio-reference-history-v1" : HISTORY_KEY
   root.classList.toggle("inline-launcher", Boolean(data?.inline_launcher))
+  if (!data?.inline_launcher) runtime.cleanupToolbar = followCompactToolbar(runtime)
   if(runtime.spatialElement&&!runtime.spatialElement.isConnected)runtime.spatialElement=null
   runtime.sheetContext = data?.sheet_context && typeof data.sheet_context === "object" ? {...data.sheet_context} : null
   runtime.edition = data?.edition && typeof data.edition === "object" && Object.keys(data.edition).length ? {...data.edition} : null
@@ -487,6 +858,8 @@ export default function(component) {
   runtime.registry = new Map(runtime.sequence.map(ref => [keyFor(ref.kind, ref.id, ref.scope), ref]))
   const defaultKey = keyFor(data?.default_kind, data?.default_id, data?.default_scope)
   const defaultRef = runtime.registry.get(defaultKey)
+  const requestRef = data?.open_id ? runtime.registry.get(keyFor(data.open_kind || "axiom", data.open_id, data.open_scope)) : defaultRef
+  const inspectRef = data?.inspect_id ? runtime.registry.get(keyFor(data.inspect_kind, data.inspect_id, data.inspect_scope)) : defaultRef
   // A desk selection changes the viewer once; unrelated reruns preserve its own navigation.
   const defaultChanged = Boolean(data?.follow_default) && runtime.defaultKey !== defaultKey
   runtime.defaultKey = data?.follow_default ? defaultKey : null
@@ -500,23 +873,45 @@ export default function(component) {
     if(next.accent!==runtime.selected.accent||next.layer!==runtime.selected.layer)runtime.paneAccent=""
     runtime.selected=next
   }
-  if (data?.open_default && defaultRef) {
-    runtime.selected = defaultRef
-    runtime.remember(defaultRef)
+  if (data?.open_request && data.open_request !== runtime.openRequest && requestRef) {
+    runtime.openRequest = data.open_request
+    runtime.writeBesidePending = null
+    runtime.writeBesideReturn = null
+    runtime.selected = requestRef
+    runtime.surface = data.request_surface==="writing_uses" ? "writing_uses" : "read"; runtime.toolScreen = "home"
+    runtime.remember(requestRef)
     runtime.open = true
   }
-  if (data?.open_request && data.open_request !== runtime.openRequest && defaultRef) {
-    runtime.openRequest = data.open_request
-    runtime.selected = defaultRef
-    runtime.surface = "read"; runtime.toolScreen = "home"
-    runtime.remember(defaultRef)
+  if (data?.open_default && inspectRef) {
+    runtime.writeBesidePending = null
+    runtime.writeBesideReturn = null
+    runtime.selected = inspectRef
+    runtime.surface = data.open_surface === "writing_uses" ? "writing_uses" : "read"
+    runtime.remember(inspectRef)
     runtime.open = true
   }
   if (data?.clean_legacy_query) {
-    const url = new URL(window.location.href); url.searchParams.delete("inspect_kind"); url.searchParams.delete("inspect_id")
+    const url = new URL(window.location.href)
+    for (const param of ["inspect_kind", "inspect_id", "inspect_surface", "inspect_scope"]) url.searchParams.delete(param)
     window.history.replaceState(window.history.state, "", url)
   }
-  runtime.render()
+  // The drawer can become ready between component cleanups and setup.
+  const pending = runtime.writeBesidePending
+  const selected = runtime.selected
+  const nonce = pending?.nonce
+  const readyDrawer = nonce && runtime.open && selected && pending.key === keyFor(selected.kind, selected.id, selected.scope)
+    && [...document.querySelectorAll("[data-care-write-beside-ready]:not([data-care-write-beside-closing])")]
+      .some(panel => panel.isConnected && !panel.hidden && panel.getAttribute("data-care-write-beside-ready") === nonce)
+  if (readyDrawer) runtime.onWriteBesideReady({detail:{nonce}})
+  else runtime.render()
+  const draftHandoff = data?.draft_handoff
+  if (data?.studio_embed && draftHandoff?.nonce && draftHandoff.nonce !== lastDraftHandoff && window.parent !== window) {
+    const {document, block, reference, nonce} = draftHandoff
+    const request = new URL(window.location.href).searchParams.get("care_studio_request")
+    lastDraftHandoff = nonce
+    window.parent.postMessage({type:"care-study-draft", request, document, block, reference}, window.location.origin)
+  }
+  if(runtime.surface==="writing_uses")runtime.loadDraftUses()
   if(runtime.studioMode)window.dispatchEvent(new CustomEvent("care-reference-viewer-ready"))
   return runtime.renderCleanup
 }

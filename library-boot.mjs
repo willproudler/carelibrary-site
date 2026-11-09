@@ -5,6 +5,7 @@ try {
   if (!current.authenticated && current.beta_enabled !== false) {
     location.replace(loginURL(location.pathname + location.search + location.hash));
   } else {
+    if(current.local_preview)document.documentElement.dataset.careLocalPreview='true';
     if (current.authenticated) {
       document.documentElement.dataset.careAccount = current.user.email;
       delete document.documentElement.dataset.carePublicMode;

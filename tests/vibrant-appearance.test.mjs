@@ -112,7 +112,8 @@ test('Vibrant colours starts inside a closed Advanced appearance disclosure',()=
 test('arrow navigation reaches Advanced appearance and skips its closed toggle',()=>{
   for(const name of readers){
     const source=read(`native/${name}.mjs`),start=source.indexOf('function setupReaderMenus(runtime){');
-    const setup=new Function(source.slice(start,source.indexOf('\nfunction paneTab',start))+';return setupReaderMenus;')();
+    const arrows=source.slice(source.indexOf('function setupSliderArrows(runtime){'),source.indexOf('\nfunction readerViewOptions('));
+    const setup=new Function(arrows+source.slice(start,source.indexOf('\nfunction paneTab',start))+';return setupReaderMenus;')();
     let focused=null,open=false;
     const item=label=>({label,closest:()=>null,matches:()=>false,getClientRects:()=>label==='toggle'&&!open?[]:[{}],focus(){focused=this;}});
     const before=item('before'),summary=item('summary'),toggle=item('toggle'),after=item('after'),items=[before,summary,toggle,after];

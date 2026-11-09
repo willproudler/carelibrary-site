@@ -1,16 +1,11 @@
 {
   "source": "care_platform/reference_viewer.py",
   "compatibility_changes": [
-    "Resolve the keyboard event origin across the standalone desk ShadowRoot",
-    "Match desktop opt-in vibrancy with collapsed Advanced appearance and v2 preference",
-    "Use an icon-only axiom viewer launcher on phones",
-    "Dismiss the mobile axiom viewer on an outside tap without click-through",
-    "Verified source paragraph flow, restrained margin selection, immediate toggle and click-away dismissal; preserve published source revisions and native quotation gestures"
+    "Resolve the keyboard event origin across the standalone desk ShadowRoot"
   ],
   "assets": {
-    "reference-viewer.html": "e94ef274473b0c7860e48085a8b3d4c8263565d9733209e8d5dee10b814a3845",
-    "reference-viewer.css": "c00d9b229136f0d960693f5b4d6b34a1834ac720f667c18f8f63361e5173d8d0",
-    "reference-viewer.mjs": "28bf6c3ea79e5fb4282b6cbba99b59914087881dd6653a3428a68ebbac182f49"
-  },
-  "source_typography": "care-study-desk/2.74"
+    "reference-viewer.html": "52f5f262f5393149525e9d05ada4a8909dd9a1bcc40bb5f83a94a5a1752c4e14",
+    "reference-viewer.css": "585c5109327f171ffe86d2f436d6d89102847c30dacf3ddefc5d745321296a80",
+    "reference-viewer.mjs": "4e989e91eb5f634543e1cc84ef296e7d4eff36dafba3c1aceafa11c69a02cba8"
+  }
 }

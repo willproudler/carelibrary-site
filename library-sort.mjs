@@ -44,9 +44,9 @@ export function librarySortMetadata(work){
  };
 }
 
-export function createLibrarySort(root,books,{view=root.ownerDocument?.defaultView,now=()=>new Date().toISOString()}={}){
+export function createLibrarySort(root,books,{view=root.ownerDocument?.defaultView,now=()=>new Date().toISOString(),initialSort='oldest'}={}){
  const stored=read(view,LIBRARY_SORT_KEY),legacy=read(view,nativeShelfKey,'sessionStorage');
- let sort=validSort(stored?.sort)||validSort(legacy?.sort)||'oldest',applying=false;
+ let sort=validSort(stored?.sort)||validSort(legacy?.sort)||validSort(initialSort)||'oldest',applying=false;
  if(!validSort(stored?.sort)&&validSort(legacy?.sort))save(view,LIBRARY_SORT_KEY,{sort});
  const storedVisits=read(view,LIBRARY_VISITS_KEY),visits={};
  if(storedVisits&&typeof storedVisits==='object'&&!Array.isArray(storedVisits)){
