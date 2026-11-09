@@ -63,6 +63,7 @@ test('Reader sends the approved citation into the Library companion at the exact
 
 test('the nested Library companion enables Studio citation clipboard', () => {
   const app = readFileSync(new URL('../public-app.mjs', import.meta.url), 'utf8');
-  assert.match(app, /const libraryCompanion=window.parent!==window/);
+  assert.match(app, /const embedded=window.parent!==window&&companionRequest.get\('care_studio_embed'\)==='1'/);
+  assert.match(app, /const libraryCompanion=embedded&&companionRequest.get\('care_studio_pane_reading'\)==='1'/);
   assert.match(app, /if\(libraryCompanion\)Object.assign\(payload,\{studio_embed:true,studio_axiom_draft_counts:\{\}\}\)/);
 });
