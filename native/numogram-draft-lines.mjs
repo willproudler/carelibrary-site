@@ -47,24 +47,29 @@ export function numogramDraftLines(paper) {
 export function mountNumogramDraftMargins(paper, calculate) {
   if (!paper) return () => {};
   const doc = paper.ownerDocument, view = doc.defaultView;
-  const root = paper.getRootNode(), controller = new view.AbortController();
+  const controller = new view.AbortController();
   const {signal} = controller;
-  const port = paper.closest('.page-well') || doc.documentElement;
+  const well = paper.closest('.page-well');
+  const port = well || doc.documentElement;
+  const host = well || doc.body;
   const layer = doc.createElement('div');
   layer.setAttribute('aria-hidden','true');
   layer.dataset.numogramDraftMargins = '';
-  layer.style.cssText = 'position:fixed;inset:0;z-index:12;pointer-events:none;overflow:hidden';
+  layer.style.cssText = 'position:absolute;inset:0;z-index:12;pointer-events:none';
   const style = doc.createElement('style');
-  style.textContent = '@media print {[data-numogram-draft-margins]{display:none!important}}';
+  style.textContent = `
+    :is(.page-well,body):has(> [data-numogram-draft-margins]) { position:relative }
+    @media print {[data-numogram-draft-margins]{display:none!important}}
+  `;
   layer.append(style);
   const marks = doc.createElement('div');
   layer.append(marks);
-  (root === doc ? doc.body : root).append(layer);
+  host.append(layer);
   let rows = [], frame = 0, timer = 0;
   function paint() {
     frame = 0;
     if (!paper.isConnected) { close(); return; }
-    const bounds = paper.getBoundingClientRect(), clip = port.getBoundingClientRect();
+    const bounds = paper.getBoundingClientRect(), clip = port.getBoundingClientRect(), origin = layer.getBoundingClientRect();
     const top = Math.max(0,clip.top), bottom = Math.min(view.innerHeight,clip.bottom || view.innerHeight);
     const right = Math.min(view.innerWidth,clip.right);
     const visible = [];
@@ -77,8 +82,8 @@ export function mountNumogramDraftMargins(paper, calculate) {
       if (x+44 > right) continue;
       const badge = doc.createElement('span');
       badge.style.cssText = 'position:absolute;white-space:nowrap;color:#dab473b8;font:500 10px/1 ui-monospace,monospace';
-      badge.style.left = x + 'px';
-      badge.style.top = (end.bottom - 11) + 'px';
+      badge.style.left = (x - origin.left) + 'px';
+      badge.style.top = (end.bottom - origin.top - 11) + 'px';
       badge.textContent = 'AQ ' + total;
       visible.push(badge);
     }
@@ -102,7 +107,8 @@ export function mountNumogramDraftMargins(paper, calculate) {
   const resized = new view.ResizeObserver(schedule);
   resized.observe(paper);
   resized.observe(port);
-  doc.addEventListener('scroll',schedule,{capture:true,passive:true,signal});
+  // Shadow-root scroll events do not reach the owner document.
+  (well || view).addEventListener('scroll',schedule,{passive:true,signal});
   view.addEventListener('resize',schedule,{signal});
   function close() {
     controller.abort();

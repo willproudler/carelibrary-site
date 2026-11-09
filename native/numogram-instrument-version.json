@@ -1,5 +1,5 @@
 {
-  "version": "numo-library/2.11",
+  "version": "numo-library/2.12",
   "source": "care_platform/numo_library_assets.py",
   "arithmetic_source": "care_platform/numogram_data.py",
   "assets": {
