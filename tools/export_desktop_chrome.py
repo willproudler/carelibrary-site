@@ -62,7 +62,6 @@ def export_workspace_strip(workspace):
         (".workspace-close", f"{rail} [data-close-book]"),
         (".workspace-file-trigger", f"{rail} .studio-tab-file summary"),
         (".workspace-file-trigger::after", f"{rail} .studio-tab-file summary::after"),
-        (".workspace-shared-studio", f"{rail} .studio-tab-collaborate"),
     )
     rules = []
     for source, target in selectors:

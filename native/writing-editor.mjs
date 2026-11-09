@@ -2062,7 +2062,6 @@ function openWritingBinder(runtime, focus = true) {
   cancelWritingBinderDismissal(runtime);
   runtime.navigatorClosed = false;
   if (runtime.binder.panel.hidden) {
-    if (runtime.studioToolsShareWidth === false && runtime.formattingOpen) closeWritingFormatting(runtime, false);
     runtime.binder.panel.hidden = false;
     runtime.root.classList.add("binder-open");
     paintWritingBinderLauncher(runtime.binder);
@@ -5845,7 +5844,7 @@ function renderPanel(runtime) {
     runtime.outline.hidden = true;
     paintWritingNavigator(runtime);
   }
-  runtime.formatting.hidden = !runtime.docId || !runtime.formattingOpen || runtime.focus;
+  runtime.formatting.hidden = runtime.compact && (!runtime.docId || !runtime.formattingOpen || runtime.focus);
   runtime.root.classList.toggle("no-panel", runtime.panel.hidden && runtime.outline.hidden);
   runtime.root.classList.toggle("focus", runtime.focus && runtime.compact);
   runtime.root.classList.toggle("bare", !runtime.compact);
@@ -6210,7 +6209,7 @@ function paintWritingFormatLauncher(runtime) {
   const expanded = !runtime.formatting.hidden && !runtime.formatting.inert;
   runtime.root.querySelector('[data-action="formatting"]').setAttribute("aria-expanded",
     String(expanded));
-  runtime.formatLauncher.hidden = !runtime.docId || runtime.focus || expanded;
+  runtime.formatLauncher.hidden = !runtime.compact || !runtime.docId || runtime.focus || expanded;
 }
 
 function tuckWritingFormatBar(runtime, tucked) {
@@ -6224,23 +6223,28 @@ function installWritingFormatOverflow(runtime, options) {
   const rail = runtime.formatting.parentElement;
   if (!rail) return;
   const overflow = options.querySelector("[data-format-overflow]");
-  const groups = [...runtime.formatting.querySelectorAll("[data-format-min]")].map((group, order) => {
+  const groups = [...runtime.formatting.querySelectorAll("[data-format-min]")].filter(
+    group => !group.hidden && !options.contains(group),
+  ).map((group, order) => {
     const anchor = group.ownerDocument.createComment("Format group");
     group.before(anchor);
     return {group, anchor, order, minWidth: Number(group.dataset.formatMin)};
   });
   const {signal} = runtime.controller;
   const {well} = runtime.a4;
-  let narrow = false;
+  const placeMenu = () => {
+    if (runtime.compact || !runtime.formatMore.open) return;
+    const right = runtime.formatMore.getBoundingClientRect().right - runtime.formatting.getBoundingClientRect().left;
+    runtime.formatMore.style.setProperty("--format-more-right", `${right}px`);
+  };
   const update = () => {
     const {width} = rail.getBoundingClientRect();
     if (!width) return;
     const doc = rail.ownerDocument;
     const rem = parseFloat(doc.defaultView.getComputedStyle(doc.documentElement).fontSize) || 16;
     const available = width / rem;
-    runtime.studioToolsShareWidth = rail.parentElement.getBoundingClientRect().width >= 42 * rem;
-    narrow = available < 44;
-    if (!narrow && runtime.formattingOpen) tuckWritingFormatBar(runtime, false);
+    runtime.narrowFormat = available < 44;
+    if (runtime.compact && !runtime.narrowFormat && runtime.formattingOpen) tuckWritingFormatBar(runtime, false);
     for (const {group, anchor, order, minWidth} of groups) {
       const intoMore = available < minWidth;
       if (group.parentNode === (intoMore ? overflow : anchor.parentNode)) continue;
@@ -6255,6 +6259,7 @@ function installWritingFormatOverflow(runtime, options) {
       }
       if (focused) active.focus({preventScroll: true});
     }
+    placeMenu();
   };
   if (typeof ResizeObserver === "function") {
     const observer = new ResizeObserver(update);
@@ -6264,6 +6269,10 @@ function installWritingFormatOverflow(runtime, options) {
     window.addEventListener("resize", update, {signal});
   }
   update();
+  if (!runtime.compact) {
+    runtime.formatMore.addEventListener("toggle", placeMenu, {signal});
+    return;
+  }
 
   // Respond to a scrolling gesture rather than caret following, Find, or pagination.
   let previous = well.scrollTop;
@@ -6277,7 +6286,7 @@ function installWritingFormatOverflow(runtime, options) {
     const top = well.scrollTop;
     const delta = top - previous;
     previous = top;
-    if (!narrow || !runtime.formattingOpen || runtime.formatting.hidden || performance.now() - gesture > 240 ||
+    if (!runtime.narrowFormat || !runtime.formattingOpen || runtime.formatting.hidden || performance.now() - gesture > 240 ||
         runtime.formatMore.open || runtime.formatting.contains(rail.getRootNode().activeElement)) return;
     if (top < 4 || delta < -1) tuckWritingFormatBar(runtime, false);
     else if (top > 24 && delta > 1 && writingSelectionRange(runtime.paper)?.collapsed !== false) {
@@ -6301,8 +6310,15 @@ function installWritingFormatBar(runtime) {
     control.classList.remove("strikethrough");
     options.append(control);
   }
-  if (!runtime.compact) options.append(runtime.root.querySelector('[data-action="layout"]'));
-  options.append(footnotes);
+  if (runtime.compact) options.append(footnotes);
+  else {
+    runtime.root.insertBefore(runtime.formatting.parentElement, runtime.workspace);
+    runtime.formatting.setAttribute("aria-label", "Studio tools");
+    runtime.formatting.querySelector('[data-action="collaborate"]').hidden = false;
+    const tools = runtime.formatting.querySelector("[data-format-document-tools]");
+    tools.prepend(runtime.root.querySelector('[data-action="layout"]'));
+    tools.hidden = false;
+  }
   more.hidden = false;
   runtime.formatMore = more;
   installWritingFormatOverflow(runtime, options);
@@ -6317,7 +6333,8 @@ function cancelWritingFormatDismissal(runtime) {
 }
 
 function scheduleWritingFormatDismissal(runtime) {
-  if (!runtime.formattingOpen || runtime.formatting.hidden || runtime.formatting.inert || runtime.formatDismissTimer) return;
+  if (!runtime.compact || !runtime.formattingOpen || runtime.formatting.hidden ||
+      runtime.formatting.inert || runtime.formatDismissTimer) return;
   runtime.formatDismissTimer = setTimeout(() => {
     runtime.formatDismissTimer = null;
     if (!runtime.formattingOpen || runtime.formatting.hidden || runtime.composing || runtime.formatMore.open ||
@@ -6331,28 +6348,26 @@ function scheduleWritingFormatDismissal(runtime) {
 function openWritingFormatting(runtime, footnotes = false) {
   if (!runtime.docId || runtime.paper.contentEditable !== "true") return;
   rememberSelection(runtime);
-  cancelWritingFormatDismissal(runtime);
-  runtime.formattingOpen = true;
-  tuckWritingFormatBar(runtime, false);
-  runtime.focus = false;
-  if (!runtime.compact && runtime.studioToolsShareWidth === false) {
-    runtime.navigatorClosed = true;
-    closeWritingBinder(runtime, false);
-    paintWritingNavigator(runtime);
+  if (runtime.compact) {
+    cancelWritingFormatDismissal(runtime);
+    runtime.formattingOpen = true;
+    tuckWritingFormatBar(runtime, false);
+    runtime.focus = false;
+    renderPanel(runtime);
   }
-  if (!runtime.compact) runtime.activePane = "";
-  renderPanel(runtime);
-  if (footnotes && runtime.formatMore) runtime.formatMore.open = true;
+  if (footnotes && runtime.formatMore.contains(runtime.footnoteModeButton)) runtime.formatMore.open = true;
   (footnotes ? runtime.footnoteModeButton : runtime.format).focus({preventScroll: true});
 }
 
-function closeWritingFormatting(runtime, focus = true) {
-  cancelWritingFormatDismissal(runtime);
-  runtime.formattingOpen = false;
-  if (runtime.formatMore) runtime.formatMore.open = false;
-  renderPanel(runtime);
-  tuckWritingFormatBar(runtime, false);
-  if (focus) restoreSelection(runtime);
+function closeWritingFormatting(runtime) {
+  if (runtime.compact) {
+    cancelWritingFormatDismissal(runtime);
+    runtime.formattingOpen = false;
+    if (runtime.formatMore) runtime.formatMore.open = false;
+    renderPanel(runtime);
+    tuckWritingFormatBar(runtime, false);
+  }
+  restoreSelection(runtime);
 }
 
 function paintWritingNavigator(runtime) {
@@ -9815,7 +9830,7 @@ function setup(root, api) {
   });
   on(runtime.paper, "focusout", () => scheduleSave(runtime, 0));
   on(runtime.paper, "focusin", () => {
-    if (runtime.studioToolsShareWidth !== false) return;
+    if (!runtime.narrowFormat) return;
     scheduleWritingFormatDismissal(runtime);
     if (runtime.binder) scheduleWritingBinderDismissal(runtime);
   });
@@ -9979,6 +9994,9 @@ function setup(root, api) {
     }
     if (action === "open-formatting") openWritingFormatting(runtime);
     if (action === "close-formatting") closeWritingFormatting(runtime);
+    if (action === "collaborate") send(runtime, "remote-connect");
+    if (action === "ribbon-find" && !requestWritingFind(runtime)) openWritingFind(runtime);
+    if (action === "ribbon-export") send(runtime, "export");
     if (action === "select-all-text") selectWritingDocument(runtime);
     if (action === "layout") {
       rememberSelection(runtime);

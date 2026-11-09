@@ -337,8 +337,11 @@ a { color: var(--accent); }
   z-index: 5;
   pointer-events: none;
 }
-.studio.bare:not(.library-open):not(:has(.research:not([hidden]))) .format-rail {
-  inset-inline-end: var(--format-inset);
+.studio:not(.compact) > .format-rail {
+  position: relative;
+  grid-row: 2;
+  inset: auto;
+  z-index: 6;
 }
 .writing-tools-launchers {
   position: fixed;
@@ -365,14 +368,6 @@ a { color: var(--accent); }
   .writing-tools-launchers button { min-inline-size: 2.1rem; min-block-size: 2.1rem; padding: .18rem; }
   .writing-tools-launchers button span { display: none; }
 }
-@container draft (width >= 42rem) {
-  .writing-surface:has(> .studio-navigator > .studio-navigator-views:not([hidden])) > .format-rail {
-    inset-inline-start: calc(var(--format-inset) + var(--studio-nav-width) + var(--studio-gutter));
-  }
-}
-@container draft (width < 42rem) {
-  .writing-surface:has(> .studio-navigator > .studio-navigator-views:not([hidden])) > .format-rail { z-index: 3; }
-}
 .format-rail > .toolbar {
   position: relative;
   display: grid;
@@ -387,6 +382,39 @@ a { color: var(--accent); }
   background: color-mix(in srgb, var(--rail) 96%, var(--accent));
   pointer-events: auto;
   transition: transform .16s ease, opacity .16s ease;
+}
+.studio:not(.compact) > .format-rail > .toolbar {
+  max-inline-size: min(100%, 76rem);
+  min-block-size: 2.25rem;
+  padding: .18rem clamp(.45rem, 1.05cqi, 1rem);
+  border: 0;
+  border-block-end: 1px solid var(--rule);
+  border-radius: 0 0 .48rem 0;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--rail) 95%, var(--accent)), var(--rail) 70%);
+}
+.studio:not(.compact) > .format-rail .format-close,
+.studio:not(.compact).no-document > .format-rail .format-tools { display: none; }
+.studio:not(.compact) .toolbar .format-collaborate {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding-inline: .46rem;
+  border-color: var(--accent-rule);
+  background: var(--wash);
+  color: var(--accent);
+}
+.studio:not(.compact) .toolbar .format-collaborate:hover { color: var(--ink); }
+.studio:not(.compact) .toolbar :is([data-action="manual-footnote"], .format-document-tools button) {
+  display: inline-flex;
+  align-items: center;
+  gap: .28rem;
+  white-space: nowrap;
+}
+.studio:not(.compact) .toolbar [data-action="manual-footnote"] { color: var(--accent); }
+.studio.compact .toolbar [data-action="manual-footnote"] span { display: none; }
+@container format-rail (width < 29rem) {
+  .studio:not(.compact) .toolbar :is(.format-collaborate, [data-action="manual-footnote"]) span { display: none; }
 }
 .format-rail > .toolbar[inert] {
   transform: translateY(calc(-100% - var(--format-inset)));
@@ -461,11 +489,18 @@ a { color: var(--accent); }
   background: var(--rail);
   box-shadow: 0 .55rem 1.55rem #0005;
 }
+.studio:not(.compact) .format-more-options {
+  --format-menu-width: min(15rem, calc(100cqi - .6rem));
+  inline-size: var(--format-menu-width);
+  inset-inline-start: max(.3rem, calc(var(--format-more-right, 100%) - var(--format-menu-width)));
+}
 .studio .toolbar .format-more-options button {
   display: block;
   padding: .28rem .42rem;
   text-align: start;
 }
+.studio:not(.compact) .toolbar .format-more-options [data-action="manual-footnote"] { display: inline-flex; }
+.studio:not(.compact) .toolbar .format-more-options [data-action="manual-footnote"] span { display: inline; }
 .studio .toolbar .format-more-options [data-action="layout"] {
   display: flex;
   align-items: center;

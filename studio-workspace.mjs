@@ -1,5 +1,6 @@
 import {loginURL} from './auth.mjs';
 import {searchPublished, searchReadingHref} from './native/beta-search.mjs';
+import {openFeaturePreview} from './native/feature-previews.mjs';
 import {copyStudioFootnotes, footnoteSavePayload, linkStudioFootnote, nativeStudioFootnotes, studioFootnoteReference} from './native/studio-footnotes.mjs';
 
 export {nativeStudioFootnotes};
@@ -369,7 +370,7 @@ function loadStudioEditor() {
 
 const fullVersion = 'Available in the full version. This feature is unavailable in the online beta.';
 const futureActions = {
-  collaborate: 'Collaborate', 'remote-connect': 'CARE Remote',
+  collaborate: 'Collaborate', 'remote-connect': 'Collaborate',
   'remote-share': 'Collaborate', 'remote-review-request': 'Request a review', 'peer-review-import': 'Import a review',
   'review-draft': 'AI draft review', 'open-archive': 'Draft archive',
   'review-poll': 'AI draft review',
@@ -562,6 +563,11 @@ export function createStudioWorkspace({
   }
 
   function fullFeature(label) {
+    const previewDialog = doc.getElementById('workbench-feature');
+    if (label === 'Collaborate' && previewDialog) {
+      openFeaturePreview(previewDialog, label);
+      return;
+    }
     openDialog(label, fullVersion);
   }
 

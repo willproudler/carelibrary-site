@@ -219,7 +219,6 @@ body[data-care-vibrant-view="true"] .app-header.beta-workbench .brand .brand-mar
   .reading-tabbar [data-close-book] { flex:none;width:1.55rem;height:1.55rem;font-size:1rem;color:#929ca6;border-radius:4px }
   .reading-tabbar .studio-tab-file summary { display:inline-flex;align-items:center;gap:.4rem;flex:none;padding:.25rem .45rem;color:#d0ded8;border:1px solid transparent;border-radius:.28rem;font:650 .72rem/1.2 var(--care-web-sans) }
   .reading-tabbar .studio-tab-file summary::after { content:"";width:.26rem;height:.26rem;margin-top:-.15rem;border-right:1px solid #9ab6a9;border-bottom:1px solid #9ab6a9;transform:rotate(45deg) }
-  .reading-tabbar .studio-tab-collaborate { flex:none;white-space:nowrap;padding:.24rem .48rem;border:1px solid #426c5c;border-radius:.3rem;color:#b5dac8;font:650 .68rem/1.2 var(--care-web-sans) }
   .reading-tabbar .open-books { min-height: 0; background: transparent; }
   .reading-tabbar .open-label { flex:none;color:#858d96;font:750 .47rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em; display:inline-flex;align-items:center;gap:.38rem;min-height:1.5rem;padding:.2rem .35rem;margin-inline-start:-.25rem;border:1px solid transparent;border-radius:.35rem;color:#a6b7b0;white-space:nowrap; background: transparent; }
   .reading-tabbar .open-label::after { content:"";width:.24rem;height:.24rem;margin-top:-.13rem;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg); margin-inline-start: 0; }

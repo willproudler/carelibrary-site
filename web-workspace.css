@@ -150,9 +150,8 @@ html:not([data-care-toolbar-labels="true"]) .care-reference-component .crv-launc
 .reading-tabbar { position: relative; z-index: 50; display: flex; flex: 0 0 auto; min-width: 0; align-items: stretch; background: #0d1015; border-bottom: 1px solid #303641; }
 .reading-tabbar[hidden], .reading-tab-menus[hidden] { display: none; }
 .reading-tabbar .open-books { flex: 1; min-width: 0; border-bottom: 0; }
-.studio-tab-file, .studio-tab-collaborate { display: none; }
+.studio-tab-file { display: none; }
 body:is([data-workbench-view="studio"], [data-workbench-view="reader"]) .studio-tab-file { display: block; }
-body[data-workbench-view="studio"] .studio-tab-collaborate { display: block; }
 body[data-workbench-view="reader"] .studio-tab-file [data-studio-editor-only] { display: none; }
 body[data-workbench-view="studio"] .studio-tab-file [data-studio-reader-only] { display: none; }
 .studio-tab-file { flex: none; position: relative; }
@@ -164,11 +163,6 @@ body[data-workbench-view="studio"] .studio-tab-file [data-studio-reader-only] { 
 .studio-tab-file summary::-webkit-details-marker { display: none; }
 .studio-tab-file .workbench-menu { right: auto; left: .3rem; }
 .studio-tab-file[open] summary, .studio-tab-file summary:hover { background: #223130; }
-.studio-tab-collaborate {
-  flex: none; align-self: center; margin-inline: .4rem; padding: .19rem .48rem;
-  border: 1px solid #467263; border-radius: 5px; background: #132420;
-  color: #bcdace; font: 650 .75rem/1.2 var(--care-web-sans);
-}
 .workbench-feature {
   width: min(26rem, calc(100% - 2rem)); padding: 1.1rem 1.2rem;
   border: 1px solid #465552; border-radius: .75rem; background: #182125; color: #e9eee7;
