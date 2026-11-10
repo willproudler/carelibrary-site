@@ -27,21 +27,6 @@ export async function copyStudioSource(view, packet, tryNative = true) {
   }
   const escaped = packet.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const html = `<span data-care-studio-source="${token}">${escaped}</span>`;
-  if (tryNative) {
-    let copied = false;
-    const handleCopy = event => {
-      if (!event.clipboardData) return;
-      event.clipboardData.setData('text/plain', packet.text);
-      event.clipboardData.setData('text/html', html);
-      try { event.clipboardData.setData('application/x-care-studio-source', token); } catch {}
-      event.preventDefault();
-      copied = true;
-    };
-    view.addEventListener('copy', handleCopy, true);
-    try { view.document.execCommand?.('copy'); } catch {}
-    finally { view.removeEventListener('copy', handleCopy, true); }
-    if (copied) return true;
-  }
   try {
     await view.navigator.clipboard.write([new view.ClipboardItem({
       'text/plain': new view.Blob([packet.text], {type:'text/plain'}),
@@ -49,8 +34,21 @@ export async function copyStudioSource(view, packet, tryNative = true) {
     })]);
     return true;
   } catch {
-    return false;
+    if (!tryNative) return false;
   }
+  let copied = false;
+  const handleCopy = event => {
+    if (!event.clipboardData) return;
+    event.clipboardData.setData('text/plain', packet.text);
+    event.clipboardData.setData('text/html', html);
+    try { event.clipboardData.setData('application/x-care-studio-source', token); } catch {}
+    event.preventDefault();
+    copied = true;
+  };
+  view.addEventListener('copy', handleCopy, true);
+  try { view.document.execCommand?.('copy'); } catch {}
+  finally { view.removeEventListener('copy', handleCopy, true); }
+  return copied;
 }
 
 export function copyStudioLibraryReference(view, reference, request) {
