@@ -17,6 +17,16 @@ option[value="unprocessed"]{display:none}
 /* Source editing belongs to the local library. */
 [data-edit-source]{display:none!important}
 
+/* Match the Mac Slate finish on the Library Source paper. */
+@media (forced-colors: none) {
+  :host(#reader) { --source-paper: #191c22; }
+  :host(#reader) :is(.study-desk, .field-desk[data-library-book-panes])[data-skin="care"][data-studio-embed="false"] > :is(.desk-strip, .field-strip) > .source-pane:not(.outline-lane) .source-layout > .source-copy,
+  :host(#reader) :is(.study-desk, .field-desk[data-library-book-panes])[data-skin="care"] .source-pane.route-pane .route-source-copy .route-source-card,
+  :host(#reader) .field-desk[data-studio-embed="false"]:has(> .lateral-reader-toolbar) .field-pane[data-pane$=":SOURCE"] > .pane-body {
+    background-image: var(--material-grain, none), radial-gradient(ellipse 92% 22rem at 27% 0, #cddce60a, transparent);
+  }
+}
+
 /* Collections are not part of the public catalogue. */
 [data-shelf-kind="collection"]{display:none!important}
 
