@@ -35,10 +35,44 @@ function translatedTitle(value, unit, variant) {
 }
 function savedPaneTitle(unit, work, state = {}) {
   const variant = selectedVariant(unit,work,state);
-  return translatedTitle(variant?.title || (originalLabels(unit,work,state) ? unit.original_title || unit.title : unit.title),unit,variant);
+  const title = variant && (unit.layer === 'SOURCE' || Array.isArray(unit.paragraphs))
+    ? sourceRenditionTitle(unit,work,variant) : variant?.title;
+  return translatedTitle(title || (originalLabels(unit,work,state) ? unit.original_title || unit.title : unit.title),unit,variant);
 }
 const titleLabel = value => typeof value === 'string' ? value.trim() : '';
 const titleKey = value => titleLabel(value).replace(/\.$/,'').trim();
+function headingPassage(text) {
+  const lines = String(text || '').trim().split(/\r?\n/);
+  if (!/^ {0,3}#{1,6}[ \t]+\S/.test(lines[0]) || lines.slice(1).some(line=>!line.trim() || /^\s*#/.test(line))) return '';
+  const heading = lines.join(' ').replace(/^#{1,6}[ \t]+/,'').replace(/[ \t]+#+\s*$/,'').replace(/\s+/g,' ').trim();
+  return heading.length <= 300 ? heading : '';
+}
+function sourceRenditionTitle(source, work, variant) {
+  const original = titleLabel(source.original_title || source.title);
+  const label = titleLabel(variant.title);
+  const language = variant.language_code;
+  if ((label && titleKey(label) !== titleKey(original)) || language === originalLanguage(source,work).code || sectionNumber(original) !== null) return label;
+  if (source.title_language_code === language && titleKey(source.title) !== titleKey(original)) return source.title;
+  // A legacy translated Source may have copied the original title into its
+  // metadata. Trust an exact matching heading only in its aligned passage.
+  const aligned = new Set();
+  for (const row of array(source.paragraphs).slice(0,12)) {
+    if (!row.id || !original || titleKey(headingPassage(row.text)) !== titleKey(original)) continue;
+    for (const translated of array(variant.paragraphs).slice(0,12)) {
+      if (translated.id === row.id || translated.source_paragraph_ids?.length === 1 && translated.source_paragraph_ids[0] === row.id) {
+        const heading = headingPassage(translated.text);
+        if (heading && titleKey(heading) !== titleKey(original)) aligned.add(heading);
+      }
+    }
+  }
+  if (aligned.size === 1) return [...aligned][0];
+  const chapter = array(work?.units).find(row=>row.layer === 'CH' && row.id === source.chapter_id);
+  if (!original || !chapter || titleKey(chapter.original_title || chapter.title) !== titleKey(original)) return label;
+  const candidates = savedVariants(chapter).filter(row=>row.language_code === language).map(row=>titleLabel(row.title));
+  if (chapter.title_language_code === language) candidates.push(titleLabel(chapter.title));
+  const titles = new Set(candidates.filter(title=>title && titleKey(title) !== titleKey(original)));
+  return titles.size === 1 ? [...titles][0] : label;
+}
 function sectionNumber(value) {
   const label = titleKey(value);
   if (/^\d+$/.test(label)) return Number(label);

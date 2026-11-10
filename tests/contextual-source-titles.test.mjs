@@ -56,6 +56,33 @@ test('source and CARE title choices respect their own selected language',()=>{
   assert.equal(adapter.chapter('RAW_GARDEN_2',careOriginal).title,'Garden stories · 2');
 });
 
+test('translated Source recovers the matching heading or saved companion title when its stored title stayed German',()=>{
+  const original='1) Arbeitsprozess und Verwerthungsprozess.';
+  const translated='1) Labour-Process and Valorisation-Process.';
+  const companion='1) Labour Process and Valorisation Process.';
+  const source={id:'RAW_MARX',chapter_id:'CH_MARX',order:1,language_code:'de',title:original,paragraphs:[
+    {id:'RAW_MARX:P1',text:'## Drittes Kapitel.\n Die Produktion des absoluten Mehrwerths.'},
+    {id:'RAW_MARX:P2',text:`## ${original}`},
+  ],translations:[{id:'SOURCE_EN',language_code:'en',title:original,paragraphs:[
+    {id:'RAW_MARX:P1',text:'## Third Chapter.\n The Production of Absolute Surplus-Value.'},
+    {id:'RAW_MARX:P2',text:`## ${translated}`},
+  ]}]};
+  const chapter={id:'CH_MARX',layer:'CH',title:original,sections:[],translations:[
+    {id:'CH_EN',language_code:'en',title:companion,sections:[]},
+  ]};
+  const work={id:'WORK_MARX',slug:'marx',title:'Capital',language_code:'de',sources:[source],units:[chapter]};
+  const adapter=createPublicReaderAdapter({works:[work]});
+  assert.equal(adapter.stack(work.id).active_chapter.title,translated);
+  assert.equal(adapter.stack(work.id).chapters[0].title,translated);
+  assert.equal(adapter.chapter(source.id,{paneVersions:{[source.id]:'original'}}).title,original);
+  assert.equal(adapter.chapter(source.id,{paneVersions:{[chapter.id]:'original'}}).title,translated);
+  assert.equal(adapter.chapter(source.id).passages[1].text,`## ${translated}`);
+  source.translations[0].paragraphs.pop();
+  assert.equal(paneTitle(source,work),companion);
+  chapter.title='An unrelated chapter';
+  assert.equal(paneTitle(source,work),original);
+});
+
 test('verified source hierarchy supplies missing parents and uses explicit translated metadata',()=>{
   const data=fixture(),work=data.works[0],source=work.sources[3],english=source.translations[0];
   Object.assign(source,{source_title_context:'Les graines.',source_section_label:'1.',source_title_hierarchy:['Partie B']});

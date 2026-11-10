@@ -26,7 +26,7 @@ function publicSourceDetailHint(canonical, passage) {
  */
 import {ancestors, indexLibrary, incoming, selectionFor} from './library-core.mjs?v=6270f2b8272ee079';
 import * as publicReadingViews from './native/reading-views.mjs?v=5f229f64abfb04c6';
-const {publicReadingText, publicSourcePresentation = () => ({})} = publicReadingViews;
+const {publicReadingText, publicSourcePresentation = () => ({}), publicSourceFormatting = () => ({})} = publicReadingViews;
 import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=6270f2b8272ee079';
 
 const array = value => Array.isArray(value) ? value : [];
@@ -174,15 +174,18 @@ export function createPublicReaderAdapter(data) {
     if (chapterCache.has(cacheKey)) return chapterCache.get(cacheKey);
     const rows = array(reading.paragraphs), canonicalPassages = new Map(array(source.paragraphs).map(row=>[row.id,row]));
     const sourceTypesetting = publicSourcePresentation(source, reading);
+    const sourceFormatting = publicSourceFormatting(source, reading);
     const canonicalPositions = new Map(array(source.paragraphs).map((row, position) => [row.id, position]));
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
       sequence_number:source.order, ...paneReadingTitle(source,source.work,state), label:paneTitle(source,source.work,state),
       source_rendition_type:renditionType,
-      ...(sourceTypesetting.chapter || {}),
+      ...(sourceTypesetting.chapter || {}), ...(sourceFormatting.chapter || {}),
       passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
       passages:rows.map((passage, position) => {
         const display = sourceReadingText(passage.text,source,source.work,state);
+        const {reading_block_html, reading_text, ...formatHints} = sourceFormatting.passages?.[passage.id] || {};
+        const applyFormat = display === passage.text;
         const canonical = canonicalPassages.get(passage.id), prefix = canonical?.beautiful_omit_prefix;
         const sequence = publicSourcePassageNumber(canonical, canonicalPositions.get(passage.id) ?? position);
         const sourceDetail = publicSourceDetailHint(canonical, passage);
@@ -192,11 +195,13 @@ export function createPublicReaderAdapter(data) {
           && [canonical.text, passage.text].every(value => typeof value === 'string'
             && value.startsWith(prefix + '\n\n') && value.slice(prefix.length + 2).trim()) ? prefix : '';
         return {
-        id:passage.id, text:passage.text, reading_text:display, rendition_type:renditionType,
+        id:passage.id, text:passage.text, rendition_type:renditionType,
         ...(omitPrefix ? {beautiful_omit_prefix:omitPrefix} : {}),
         ...(sourceDetail ? {beautiful_source_detail:sourceDetail} : {}),
-        ...(sourceTypesetting.passages?.[passage.id] || {}),
-        reading_html:inline(display), reading_block_html:block(display),
+        ...(sourceTypesetting.passages?.[passage.id] || {}), ...formatHints,
+        reading_html:inline(applyFormat ? reading_text ?? display : display),
+        reading_block_html:applyFormat && reading_block_html !== undefined ? reading_block_html : block(display),
+        reading_text:applyFormat && reading_text !== undefined ? reading_text : display,
         address:publicSourcePassageAddress(source, passage, canonical, position, sequence),
         sequence, preceding_id:rows[position - 1]?.id || '', following_id:rows[position + 1]?.id || '',
         axioms:usesFor(passage.id, source.work).map(link => link.id),
@@ -243,7 +248,7 @@ export function createPublicReaderAdapter(data) {
     const displayUnit = node.unit.layer === 'SOURCE' ? (isPassage && !native ? node.unit : sourceReading) : unit(node.unit.id,state);
     return {
       ...(native || {}), id:node.id, kind:isPassage ? 'passage' : isSheet ? 'sheet' : 'axiom', resolved:true,
-      text:canonical, reading_text:display, reading_html:inline(display), reading_block_html:block(display),
+      text:canonical, reading_text:display, reading_html:native?.reading_html ?? inline(display), reading_block_html:native?.reading_block_html ?? block(display),
       reading_language_code:language.language_code,reading_language_name:language.language_name,is_translation:language.is_translation,translation_id:language.selected_id,
       title:isPassage ? displayUnit.title : native?.section_name || node.section || node.title || node.id,
       layer:isPassage ? 'SOURCE' : node.unit.layer,
