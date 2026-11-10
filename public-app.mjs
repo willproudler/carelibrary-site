@@ -59,7 +59,8 @@ async function start(){
   adapter=createPublicReaderAdapter(data);index=adapter.index;indexedWorks=[...data.works];indexedLateral=data.lateral;
  }
  const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
- shadow.innerHTML=`<style>${css}\n${scope}</style><div class="study-desk" data-study-desk data-skin="care" tabindex="0" style="height:100%;min-height:0"></div><div class="field-desk" data-field-desk hidden style="height:100%;min-height:0"></div>`;
+ shadow.innerHTML=`<style data-study-style>${css}</style><style>${scope}</style><div class="study-desk" data-study-desk data-skin="care" tabindex="0" style="height:100%;min-height:0"></div><div class="field-desk" data-field-desk hidden style="height:100%;min-height:0"></div>`;
+ const studyStyle=shadow.querySelector('[data-study-style]');
  const savedHost=$('[data-saved-library]');
  const studioHost=$('#studio-workspace'),setsHost=$('#study-sets-view');
  const preparationHost=$('#preparation-view'),preparationStage=preparationHost.querySelector('.preparation-preview-stage');
@@ -97,7 +98,7 @@ async function start(){
   if(historyInNumo)paintHistoryButtons();
  });
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
- let mountViewer,mountField,viewerPromise,fieldPromise;
+ let mountViewer,mountField,viewerPromise,fieldPromise,fieldStyle;
  async function ensureViewer(){
   if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=6270f2b8272ee079'),loadText('./native/reference-viewer.css?v=6270f2b8272ee079'),loadText('./native/reference-viewer.html?v=6270f2b8272ee079')]).then(([module,viewerCSS,viewerHTML])=>{
    mountViewer=module.default;
@@ -107,10 +108,10 @@ async function start(){
  }
  async function ensureField(){
   if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=6270f2b8272ee079'),loadText('./native/study-field.css?v=6270f2b8272ee079')]).then(([module,fieldCSS])=>{
-   mountField=module.default;const style=document.createElement('style');
+   mountField=module.default;fieldStyle=document.createElement('style');fieldStyle.media='not all';
    // Keep the bottom save control still when pointer entry reveals trace links.
-   style.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
-   shadow.append(style);
+   fieldStyle.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
+   shadow.append(fieldStyle);
   }).catch(error=>{fieldPromise=null;throw error;});
   return fieldPromise;
  }
@@ -646,6 +647,10 @@ async function start(){
   state.bookmarks=saved.bookmarks;state.favouriteAxiomIds=saved.favourites;
   state.routeHistory={can_back:historyIndex>0,can_forward:historyIndex<history.length-1};
   const activeField=view==='workspace'&&fieldFor(state.connectionId);
+  // Both readers use shared pane classes. The ordinary desk's unlayered
+  // defaults would override the field's own Library pane theme.
+  studyStyle.media=activeField?'not all':'';
+  if(fieldStyle)fieldStyle.media=activeField?'':'not all';
   shadow.querySelector('[data-study-desk]').hidden=Boolean(activeField);shadow.querySelector('[data-field-desk]').hidden=!activeField;
   if(activeField){
    state.fieldSaved=normalizeFieldSavedState(readLocal('care-public-field-saved:'+activeField.id,{}));
