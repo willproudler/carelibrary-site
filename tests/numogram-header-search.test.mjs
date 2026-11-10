@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import mountNumogramAtlas from '../native/numogram-atlas.mjs';
 import {findNumogramReferences} from '../native/numogram-header-search.mjs';
 import reference from '../native/numogram-reference.mjs';
 
@@ -27,4 +28,35 @@ test('ranks exact names and aliases before prefixes and incidental matches', () 
   ]};
   assert.deepEqual(findNumogramReferences(data, 'Logic').map(({id}) => id), ['exact', 'prefix', 'incidental']);
   assert.deepEqual(target('118'), []);
+});
+
+test('the public demon panel shows only books still available in the beta catalogue', () => {
+  const [published, unavailable] = reference.public_books_by_demon['MESH-02'];
+  const content = {innerHTML:''}, handlers = {}, opened = [];
+  const root = {
+    querySelector: selector => selector === '[data-content]' ? content : null,
+    contains: () => true,
+    addEventListener(type, handler) { handlers[type] = handler; },
+    removeEventListener(type) { delete handlers[type]; },
+  };
+  const shadow = {querySelector: () => root, replaceChildren() {}};
+  const host = {shadowRoot:shadow, setAttribute() {}, removeAttribute() {}};
+  const atlas = mountNumogramAtlas(host, {
+    libraryBooks:[{id:published, title:'Published book', slug:'beta-public'}],
+    openSource: href => opened.push(href),
+  });
+  try {
+    atlas.openReference({kind:'demon', id:'MESH-02'});
+    assert.match(content.innerHTML, /Books in CARE Library/);
+    assert.match(content.innerHTML, /Published book/);
+    assert.ok(!content.innerHTML.includes(unavailable));
+    assert.doesNotMatch(content.innerHTML, /Matrix record/);
+    handlers.click({target:{closest:() => ({dataset:{instrumentPublicBook:published}})}});
+    assert.deepEqual(opened, ['/library.html#book=beta-public']);
+
+    atlas.openReference({kind:'demon', id:reference.demons.find(demon => !reference.public_books_by_demon[demon.id]).id});
+    assert.doesNotMatch(content.innerHTML, /Matrix record|Books in CARE Library/);
+  } finally {
+    atlas.unmount();
+  }
 });

@@ -1,18 +1,26 @@
-import mountInstrument, {arithmetic, css, html, instrumentAQInput, calculateInstrumentAQ} from './numogram-instrument.mjs?v=79c83beaefca3553';
+import mountInstrument, {arithmetic, css, html, instrumentAQInput, calculateInstrumentAQ} from './numogram-instrument.mjs?v=0412a438764cd57f';
 import reference from './numogram-reference.mjs';
 
 const aqEndpoint = '/api/numo/aq';
 
 export {instrumentAQInput, calculateInstrumentAQ};
 
-export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ, companion = false} = {}) {
+export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ, companion = false, libraryBooks = []} = {}) {
   host.setAttribute('data-care-numo-surface', '');
   const shadow = host.shadowRoot ?? host.attachShadow({mode: 'open'});
   shadow.innerHTML = `<style>:host{overflow:auto}${css}</style>${html}`;
-  const {demons} = reference;
+  const {demons, public_books_by_demon: bookLinks, ...referenceWorld} = reference;
+  const publishedBooks = new Map(libraryBooks.filter(book => book.slug).map(book => [book.id, book]));
+  const publicBooksByDemon = Object.fromEntries(Object.entries(bookLinks || {}).map(([id, ids]) => [id,
+    ids.map(bookId => publishedBooks.get(bookId)).filter(Boolean).map(book => ({
+      id:book.id, title:book.title, author:book.author,
+      cover_url:/^\.?\/assets\/covers\/[a-z0-9/_.-]+$/i.test(book.cover_url) ? book.cover_url : '',
+    })),
+  ]));
   const world = {
     ...arithmetic,
-    ...reference,
+    ...referenceWorld,
+    demons,
     arithmetic_only: false,
     zones: arithmetic.zones.map(zone=>({
       ...zone, demon_ids: demons.filter(demon=>demon.poles.includes(zone.id)).map(demon=>demon.id),
@@ -56,6 +64,11 @@ export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ, com
       world,
       companion,
       public_reference: true,
+      publicBooksByDemon,
+      openPublishedBook: id => {
+        const book = publishedBooks.get(id);
+        if (book) openSource?.(`/library.html#book=${encodeURIComponent(book.slug)}`);
+      },
       instrument_write: false,
       aq_collection_write: false,
       aq_scroll_url: aqEndpoint,

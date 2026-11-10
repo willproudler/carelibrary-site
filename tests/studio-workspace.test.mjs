@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {createStudioDraftState, nativeStudioDocument, nativeStudioFootnotes, nativeStudioImport, MAX_DRAFT_BYTES, studioDraftApi, studioLibraryFragment} from '../studio-workspace.mjs';
+import {copyStudioLibraryReference, createStudioDraftState, nativeStudioDocument, nativeStudioFootnotes, nativeStudioImport, MAX_DRAFT_BYTES, studioDraftApi, studioLibraryFragment} from '../studio-workspace.mjs';
 
 const account = 'writer@example.test';
 const original = {id: 'first', title: 'First draft', body: 'Opening', revision: 1, updated_at: 50};
@@ -22,6 +23,57 @@ test('the inline Library accepts reading fragments and excludes draft and extern
     'https://other.example/library.html#book=timaeus', '#view=studio&draft=123', '#book=a&book=b',
     '#book=&ref=x', '#book=a&field=b', '#book=a&view=reader',
   ]) assert.equal(studioLibraryFragment(route), null);
+});
+
+test('the viewer copies a tab-scoped citation that Studio accepts from its Library pane', async () => {
+  const memory = new Map();
+  const sessionStorage = {getItem: key => memory.get(key), setItem: (key, value) => memory.set(key, value)};
+  let item;
+  const view = {crypto, sessionStorage, Blob, document:{execCommand:()=>false},
+    addEventListener() {}, removeEventListener() {},
+    ClipboardItem: class { constructor(types) { this.types = types; } },
+    navigator:{clipboard:{async write([entry]) { item = entry; }}}};
+  const ref = {id:'CH_TEST:A1', kind:'axiom', work_id:'WORK_TEST', text:'Exact published axiom'};
+  assert.equal(copyStudioLibraryReference(view, {...ref, is_translation:true}, 'pane-request'), false);
+  assert.equal(await copyStudioLibraryReference(view, ref, 'pane-request'), true);
+  const plain = await item.types['text/plain'].text(), html = await item.types['text/html'].text();
+  assert.equal(plain, ref.id);
+  assert.doesNotMatch(html, /Exact published axiom/);
+  const token = html.match(/data-care-studio-source="([a-z0-9-]+)"/)[1];
+  const editor = readFileSync(new URL('../native/writing-editor.mjs', import.meta.url), 'utf8');
+  const parser = editor.slice(editor.indexOf('function studioClipboardSource('), editor.indexOf('\nfunction citationPoint('));
+  const readCitation = new Function('sessionStorage', 'writingSearchKinds', `${parser}\nreturn studioClipboardSource;`)(sessionStorage, new Set(['axiom','passage']));
+  const runtime = {librarySourceRequests:new Set(['pane-request'])};
+  assert.equal(readCitation(runtime, plain, '', token)?.id, ref.id);
+  assert.equal(readCitation({librarySourceRequests:new Set(['another-pane'])}, plain, '', token), null);
+});
+
+test('copying the exact highlighted axiom ID in the Library pane retains its citation', () => {
+  const module = readFileSync(new URL('../native/study-desk.mjs', import.meta.url), 'utf8');
+  const setup = new Function(module.replace('export default function(component)', 'function mount(component)') + '\nreturn setupStudioDeskCopy;')();
+  const handlers = new Map(), values = new Map(), id = 'CH_TEST:A1';
+  const listen = {addEventListener(type, handler) { handlers.set(type, handler); }, removeEventListener() {}};
+  const view = {parent:{}, location:{href:'https://example.test/library.html?care_studio_request=pane-request'},
+    crypto, sessionStorage:{setItem() {}}};
+  const card = {dataset:{selectAxiom:id}, closest: selector => selector === '[data-pane]' ? {dataset:{pane:'CH_TEST'}} : null,
+    matches: () => false};
+  const node = {closest: selector => selector.includes('[data-select-axiom]') ? card : null};
+  let text = id;
+  const selection = {isCollapsed:false, anchorNode:node, focusNode:node, toString:()=>text};
+  const root = {...listen, dataset:{}, ownerDocument:{...listen, defaultView:view}, contains: el => el === card,
+    getRootNode:()=>({getSelection:()=>selection})};
+  const close = setup({root, data:{studio_embed:true, studio_axiom_draft_counts:{}, copy_studio_source() {},
+    stack:{work:{id:'WORK_TEST'}, care_path:[{id:'CH_TEST', sections:[{items:[{id, text:'Published axiom'}]}]}]}}});
+  const event = {target:node, clipboardData:{setData:(key,value)=>values.set(key,value)}, preventDefault() {}};
+  try {
+    handlers.get('copy')(event);
+    assert.equal(values.get('text/plain'), id);
+    assert.match(values.get('text/html'), /data-care-studio-source/);
+    values.clear();
+    text = 'Published axiom';
+    handlers.get('copy')(event);
+    assert.equal(values.size, 0);
+  } finally { close(); }
 });
 
 test('the native editor receives HTML and escapes legacy draft text', () => {

@@ -1,4 +1,4 @@
-export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargins, beforeOpen, openSource}) {
+export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargins, beforeOpen, openSource, libraryBooks}) {
   const doc = host.ownerDocument;
   host.className = 'numo-companion';
   host.hidden = true;
@@ -73,7 +73,7 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
       module = loaded;
       if (ticket !== generation || phase !== 'open' || !visible) return;
       map.replaceChildren();
-      instrument = module.default(map, {openSource, companion:true});
+      instrument = module.default(map, {openSource, companion:true, libraryBooks});
       instrument.openReference({kind:surface});
     }).catch(() => {
       if (ticket === generation) map.textContent = 'NUMO could not load. Choose Map to retry.';

@@ -17,6 +17,50 @@ const titleOf = (draft) => draft?.title?.trim() || 'Untitled';
 const MAX_HTML_TITLE = 300;
 const companionRouteKeys = new Set(['book', 'field', 'lateral', 'ref', 'focus', 'scope', 'work', 'unit', 'source']);
 
+export async function copyStudioSource(view, packet, tryNative = true) {
+  let token;
+  try {
+    token = view.crypto.randomUUID();
+    view.sessionStorage.setItem('care-studio-source-clipboard-v1', JSON.stringify({token, packet}));
+  } catch {
+    return false;
+  }
+  const escaped = packet.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html = `<span data-care-studio-source="${token}">${escaped}</span>`;
+  if (tryNative) {
+    let copied = false;
+    const handleCopy = event => {
+      if (!event.clipboardData) return;
+      event.clipboardData.setData('text/plain', packet.text);
+      event.clipboardData.setData('text/html', html);
+      try { event.clipboardData.setData('application/x-care-studio-source', token); } catch {}
+      event.preventDefault();
+      copied = true;
+    };
+    view.addEventListener('copy', handleCopy, true);
+    try { view.document.execCommand?.('copy'); } catch {}
+    finally { view.removeEventListener('copy', handleCopy, true); }
+    if (copied) return true;
+  }
+  try {
+    await view.navigator.clipboard.write([new view.ClipboardItem({
+      'text/plain': new view.Blob([packet.text], {type:'text/plain'}),
+      'text/html': new view.Blob([html], {type:'text/html'}),
+    })]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function copyStudioLibraryReference(view, reference, request) {
+  if (!request || !['axiom','passage'].includes(reference?.kind) || !reference.id || !reference.work_id ||
+      reference.resolved === false || reference.preserved || reference.is_translation ||
+      typeof reference.text !== 'string' || !reference.text.trim()) return false;
+  const {kind, id, work_id, text:source_text} = reference;
+  return copyStudioSource(view, {kind, id, work_id, source_text, request, mode:'reference', text:id});
+}
+
 export function studioLibraryFragment(destination) {
   if (destination === '') return '';
   if (typeof destination !== 'string' || !destination.startsWith('#') || destination.length > 4096) return null;

@@ -1236,11 +1236,14 @@ function studioDeskCopySource(runtime,card){
   const version=passage?item.passage_set_id:item.version_label||(routeCard?"":item.version||unit?.version_label||unit?.version)
   return {kind,id,work_id,scope:"",source_text:item.text,...(version?{source_version:String(version)}:{})}
 }
-function studioDeskPassageQuote(runtime,selection){
-  const root=runtime.root
+function studioDeskSelectionRange(root,selection){
   let range
   try{range=selection.getComposedRanges?.({shadowRoots:[root.getRootNode()]})?.[0]}catch(_){}
   try{if(!range&&selection.rangeCount)range=selection.getRangeAt(0)}catch(_){return null}
+  return range
+}
+function studioDeskPassageQuote(runtime,selection){
+  const root=runtime.root,range=studioDeskSelectionRange(root,selection)
   const element=node=>node?.closest?node:node?.parentElement
   const first=element(range?.startContainer||selection.anchorNode)?.closest?.(".passage-text")
   const last=element(range?.endContainer||selection.focusNode)?.closest?.(".passage-text")
@@ -1265,7 +1268,7 @@ function setupStudioDeskCopy(runtime){
     if(data?.studio_embed){
       if(!data.studio_axiom_draft_counts||!view.parent||view.parent===view)return null
       request=new URL(view.location.href).searchParams.get("care_studio_request")
-    }else if(doc.querySelector("[data-care-write-beside-request]:not([data-care-write-beside-closing])")?.dataset.careWriteBesideRequest!==request){
+    }else if(!data?.copy_studio_source&&doc.querySelector("[data-care-write-beside-request]:not([data-care-write-beside-closing])")?.dataset.careWriteBesideRequest!==request){
       return null
     }
     if(!request)return null
@@ -1274,7 +1277,16 @@ function setupStudioDeskCopy(runtime){
     const selection=axiomCodeSelection(root)
     if(selection?.isCollapsed===false||String(selection||"")){
       const quote=studioDeskPassageQuote(runtime,selection)
-      return quote?{...quote,request}:null
+      if(quote)return {...quote,request}
+      if(!data.copy_studio_source)return null
+      const text=String(selection).trim()
+      const range=studioDeskSelectionRange(root,selection)
+      const start=range?.startContainer||selection.anchorNode,end=range?.endContainer||selection.focusNode
+      const cardFor=node=>(node?.closest?node:node?.parentElement)?.closest?.(cards)
+      const selectedCard=cardFor(start)
+      if(!selectedCard||selectedCard!==cardFor(end)||!root.contains(selectedCard))return null
+      const source=studioDeskCopySource(runtime,selectedCard)
+      return source?.id===text?{...source,request,mode:"reference",text}:null
     }
     const card=root.querySelector(":focus")
     if(!card?.matches(cards)||card.getAttribute("aria-pressed")!=="true")return null
@@ -1286,6 +1298,7 @@ function setupStudioDeskCopy(runtime){
     // is highlighted, including the macOS Edit menu on a selected card.
     if(!event.defaultPrevented&&reference()?.mode==="reference")event.preventDefault()
   }
+  let wroteReference=false
   const copy=event=>{
     const origin=event.composedPath?.()[0]||event.target
     if(event.defaultPrevented||!event.clipboardData||origin?.closest?.(editable))return
@@ -1301,10 +1314,20 @@ function setupStudioDeskCopy(runtime){
       try{event.clipboardData.setData("application/x-care-studio-source",token)}catch(_){}
     }
     event.preventDefault()
+    wroteReference=Boolean(token)
   }
   const key=event=>{
     if(event.defaultPrevented||event.isComposing||event.key?.toLowerCase()!=="c"||(!event.metaKey&&!event.ctrlKey)||event.altKey||event.shiftKey)return
-    if(reference()&&doc.execCommand?.("copy"))event.preventDefault()
+    const packet=reference()
+    if(!packet)return
+    wroteReference=false
+    let copied
+    try{copied=doc.execCommand?.("copy")}catch(_){}
+    if(wroteReference||(!runtime.data?.copy_studio_source&&copied))event.preventDefault()
+    else if(runtime.data?.copy_studio_source){
+      event.preventDefault()
+      void runtime.data.copy_studio_source(packet,false)
+    }
   }
   doc.addEventListener("beforecopy",beforeCopy,true)
   doc.addEventListener("copy",copy,true)

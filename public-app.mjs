@@ -9,7 +9,7 @@ import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6270f2b82
 import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=6270f2b8272ee079';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 import {createTabMenus,createWorkspaceHistory,manuscriptHash,updateLibraryMenu} from './web-workspace.mjs';
-import {createStudioWorkspace} from './studio-workspace.mjs';
+import {copyStudioLibraryReference,copyStudioSource,createStudioWorkspace} from './studio-workspace.mjs';
 import {bindWorkspaceBackHistory} from './native/workspace-history-menu.mjs';
 import {createNumoCompanion} from './native/numogram-companion.mjs';
 import mountDocumentPicker,{pickerMarkup} from './native/writing-studio-picker.mjs';
@@ -35,6 +35,8 @@ async function start(){
  const libraryCompanion=embedded&&companionRequest.get('care_studio_pane_reading')==='1';
  const readingSplitCompanion=libraryCompanion&&companionRequest.get('care_tab_split')==='1';
  const documentSplitCompanion=embedded&&companionRequest.get('care_studio_split_document')==='1';
+ const citationCompanion=embedded&&!readingSplitCompanion&&!documentSplitCompanion;
+ const copyStudioPacket=(packet,tryNative)=>copyStudioSource(window,packet,tryNative);
  const splitDraftId=documentSplitCompanion?companionRequest.get('care_studio_split_draft')||'':'';
  const libraryMenu=$('#workbench-library-menu'),libraryMenuTrigger=libraryMenu.querySelector('summary');
  if(documentSplitCompanion)document.documentElement.setAttribute('data-document-split-companion','');
@@ -161,6 +163,7 @@ async function start(){
  });
  const numoCompanion=createNumoCompanion($('#numo-companion'),{
   loadNumogram,
+  libraryBooks:data.works,
   draftLines:()=>studio.draftLines(),
   showAQMargins:calculate=>studio.showAQMargins(calculate),
   beforeOpen:()=>studio.minimizeLibrary(),
@@ -610,13 +613,18 @@ async function start(){
   }
   const node=index.nodes.get(id),readingReferences=referenceRows(ids).map(row=>({...row,writing_available:!libraryCompanion&&studio.canWriteBeside}));
   viewerHost.hidden=false;
-  viewerCleanup=mountViewer({parentElement:viewerShadow,data:{studio_mode:true,references:readingReferences,default_id:id,default_kind:node?.kind==='passage'?'passage':'axiom',follow_default:true},setTriggerValue:(kind,value)=>{
+  viewerCleanup=mountViewer({parentElement:viewerShadow,data:{studio_mode:true,studio_embed:libraryCompanion,references:readingReferences,default_id:id,default_kind:node?.kind==='passage'?'passage':'axiom',follow_default:true,
+   copy_studio_reference:viewerCitationCopy()},setTriggerValue:(kind,value)=>{
    if(kind!=='action')return;const n=index.nodes.get(value.id);if(!n)return;
    if(value.type==='write_beside_axiom'&&!libraryCompanion&&studio.canWriteBeside)void studio.showBeside(lastDraftId,value.nonce);
    if(value.type==='studio_open_reference')openNode(n,true);
    else if(value.type==='studio_open_sheet')openNode(n,false);
    else if(value.type==='favourite'){toggleFavourite(n.id,value.active);}
   }});
+ }
+ function viewerCitationCopy(){
+  const request=citationCompanion?companionId:studio.besideRequest;
+  return request?reference=>copyStudioLibraryReference(window,reference,request):null;
  }
  function paint(){
   closeReadingMenu();
@@ -650,9 +658,9 @@ async function start(){
    syncTabMenus('field:'+activeField.id);paintFieldViewer(activeField);saveState();return;
   }
   const payload=view==='workspace'?adapter.workspace(state):{mode:'library',books,fields,library_scope:view==='laterals'?'lateral':view==='corpuses'?'corpus':'',shelf_request:view,workspace_managed:true,web_study_sets:!libraryCompanion,web_study_set_actions:!libraryCompanion&&Boolean(account)};
-  if(libraryCompanion)Object.assign(payload,{studio_embed:true,studio_axiom_draft_counts:{}});
+  if(citationCompanion||libraryCompanion)Object.assign(payload,{studio_embed:true,studio_axiom_draft_counts:{},copy_studio_source:citationCompanion?copyStudioPacket:null});
   else if(view==='workspace'&&studio.canWriteBeside)Object.assign(payload,{
-   write_beside_available:true,writing_clipboard_request:studio.besideRequest,
+   write_beside_available:true,writing_clipboard_request:studio.besideRequest,copy_studio_source:studio.besideRequest?copyStudioPacket:null,
   });
   cleanup?.();cleanup=mountReader({parentElement:shadow,data:payload,setStateValue:(kind,value)=>{state=adapter.reduce(state,kind,value);},setTriggerValue:dispatch});
   syncTabMenus(view==='workspace'&&payload.stack?.work?.id?'study:'+payload.stack.work.id:'');
@@ -716,7 +724,7 @@ async function start(){
    reference.writing_available=!libraryCompanion&&studio.canWriteBeside;
   }
   const selectedReference=references.find(reference=>reference.id===selected.id&&reference.scope===(selected.source_pane||''));
-  viewerHost.hidden=false;viewerCleanup?.();viewerCleanup=mountViewer({parentElement:viewerShadow,data:{studio_mode:true,references,default_id:selected.id||'',default_kind:selected.kind||selectedReference?.kind||'axiom',default_scope:selected.source_pane||'',follow_default:true},setTriggerValue:(kind,value)=>{
+  viewerHost.hidden=false;viewerCleanup?.();viewerCleanup=mountViewer({parentElement:viewerShadow,data:{studio_mode:true,studio_embed:libraryCompanion,references,default_id:selected.id||'',default_kind:selected.kind||selectedReference?.kind||'axiom',default_scope:selected.source_pane||'',follow_default:true,copy_studio_reference:viewerCitationCopy()},setTriggerValue:(kind,value)=>{
    if(kind!=='action')return;
    const scope=value.scope??selected.source_pane??'',reference=references.find(reference=>reference.id===value.id&&reference.scope===scope);
    if(!reference)return;
@@ -904,7 +912,7 @@ async function start(){
      setLoadStatus('Opening CARE Numogram…');
      const {default:mountNumogramAtlas}=await loadNumogram();
      if(request!==routeRequest)return;
-     numoWorkspace=mountNumogramAtlas(numoHost,{focusHeaderAQ:()=>numoHeader?.open(),openSource:href=>{
+     numoWorkspace=mountNumogramAtlas(numoHost,{libraryBooks:data.works,focusHeaderAQ:()=>numoHeader?.open(),openSource:href=>{
       const source=new URL(href,location.href);
       const params=new URLSearchParams(source.hash.slice(1));
       if(source.origin===location.origin&&source.pathname==='/library.html'&&(params.has('book')||params.has('lateral')))location.hash=source.hash;

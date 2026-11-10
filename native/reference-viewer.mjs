@@ -628,7 +628,11 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.onNext = () => runtime.move(1)
   runtime.onHistoryClear = () => { try { window.sessionStorage.removeItem(runtime.historyKey || HISTORY_KEY) } catch (_) {};runtime.renderHistory() }
   runtime.onCopyText = () => runtime.copy(runtime.selected?.reading_text ?? runtime.selected?.text)
-  runtime.onCopyId = () => runtime.copy(runtime.selected?.id, "Copied CARE ID")
+  runtime.onCopyId = async () => {
+    const reference=runtime.selected
+    if(await runtime.copyStudioReference?.(reference)){runtime.showStatus("Copied CARE reference");return}
+    runtime.copy(reference?.id, "Copied CARE ID")
+  }
   runtime.onCopyReading = event => runtime.copy(runtime.selected?.[event.currentTarget.dataset.copyReading], "Copied reading link")
   runtime.onCopyCitation = () => runtime.copy(runtime.selected?.citation, "Copied full reference")
   runtime.onCopyShortCitation = () => runtime.copy(runtime.selected?.citation_short, "Copied short note")
@@ -741,10 +745,11 @@ function setup(parentElement, root, setTriggerValue) {
   }
   runtime.onDocumentCopy = event => {
     if(event.defaultPrevented || event.composedPath().some(node=>node instanceof HTMLElement&&node.matches('[role="dialog"]')))return
-    if (runtime.studioEmbed && runtime.eventComesFromEditable(event)) return
+    const scopedCopy = runtime.studioEmbed || runtime.copyStudioReference
+    if (scopedCopy && runtime.eventComesFromEditable(event)) return
     // The embedded desk owns copies from its reading panes and the browser
     // owns selections spanning multiple references.
-    const value=runtime.selectedText(runtime.studioEmbed ? runtime.text : null)
+    const value=runtime.selectedText(scopedCopy ? runtime.text : null)
     if(!value)return
     if(event.clipboardData){event.clipboardData.setData("text/plain",value);event.preventDefault();return}
     if(navigator.clipboard?.writeText){navigator.clipboard.writeText(value).catch(()=>{});event.preventDefault()}
@@ -844,6 +849,7 @@ export default function(component) {
   runtime.setTriggerValue = setTriggerValue
   runtime.studioMode = Boolean(data?.studio_mode)
   runtime.studioEmbed = Boolean(data?.studio_embed)
+  runtime.copyStudioReference = data?.copy_studio_reference
   runtime.draftUsesBeside = Boolean(data?.draft_uses_beside)
   runtime.studioReturnKey = data?.studio_return?.id ? keyFor(data.studio_return.kind || "axiom", data.studio_return.id, data.studio_return.scope) : ""
   runtime.studioViewerReturnKey = data?.studio_viewer_return?.id ? keyFor(data.studio_viewer_return.kind, data.studio_viewer_return.id, data.studio_viewer_return.scope) : ""

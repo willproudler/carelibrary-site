@@ -1726,6 +1726,15 @@ export default function ({parentElement, data, setTriggerValue}) {
     const identities=deposits.filter(row=>row.relation==='numeric_identity' && row.aq_total===nameAQ.total).map(row=>instrumentAQRecords.get(row.ref)?.text || row.label);
     const mesh=String(demon.number ?? '').padStart(2,'0');
     const cards=instrumentDemonCards(demon.id);
+    const publishedBooks=data.publicBooksByDemon?.[demon.id] || [];
+    const publishedShelf=publishedBooks.length?instrumentRegion('Books in CARE Library',`<ol class="nl-instrument-works">${publishedBooks.map(book=>`<li>
+      <button type="button" class="nl-instrument-work" data-instrument-public-book="${e(book.id)}" title="${e(book.title)}">
+        <span class="nl-instrument-work-cover" aria-hidden="true" data-cover-tone="${penHash(book.id)%4}">
+          <span>${e(book.title)}</span>${book.cover_url?`<img src="${e(book.cover_url)}" alt="" loading="lazy" decoding="async">`:''}
+        </span>
+        <span class="nl-instrument-work-title">${e(book.title)}</span>
+        ${book.author?`<span class="nl-instrument-work-author">${e(book.author)}</span>`:''}
+      </button></li>`).join('')}</ol>`):'';
     return instrumentIdentity(`Mesh-${mesh}`,demon.name,demon.epithet || demon.domain,demon)
       +instrumentRegion('',`<div class="nl-demon-profile" role="group" aria-label="Demon profile">
         ${instrumentZoneSchematic([...poles].reverse(),demon.net_span)}
@@ -1741,12 +1750,7 @@ export default function ({parentElement, data, setTriggerValue}) {
         <div class="nl-demon-support"><h3 class="lbl">Consilience</h3>${instrumentConsilience(deposits)}</div>
         ${cards?`<div class="nl-demon-linked"><h3 class="lbl">Cards &amp; skills</h3>${cards}</div>`:''}
       </div>`)
-      +(publicReference?instrumentRegion('Matrix record',`<dl class="nl-instrument-specs">
-        <dt>Domain</dt><dd>${e(demon.domain)}</dd>
-        ${demon.aliases?.length?`<dt>Aliases</dt><dd>${e(demon.aliases.join(' · '))}</dd>`:''}
-        ${demon.door?.name?`<dt>Door</dt><dd>${e([demon.door.name,demon.door.correspondence,demon.door.location].filter(Boolean).join(' · '))}</dd>`:''}
-        ${demon.relations?.map(row=>`<dt>${e(row.relation)}</dt><dd>${e(row.target)}</dd>`).join('') || ''}
-        </dl><p class="src">CCRU Pandemonium Matrix</p>`):instrumentDemonAppearances(deposits)
+      +(publicReference?publishedShelf:instrumentDemonAppearances(deposits)
       +instrumentRegion('',`${chamberAuditSources(demon)}<button class="nl-instrument-link adv-l" data-open-chamber="${e(demon.id)}">Full demon chamber ↗</button>`));
   }
   function instrumentStructureReadout(entity) {
@@ -3626,6 +3630,7 @@ export default function ({parentElement, data, setTriggerValue}) {
       if(!instrumentLayoutEditing && byId[d.instrumentChord])instrumentJoinZones(...zonePoles(byId[d.instrumentChord]));
     }
     else if('instrumentSubject' in d){instrumentOpenSubject(d.instrumentSubjectKind,d.instrumentSubject);}
+    else if('instrumentPublicBook' in d){data.openPublishedBook?.(d.instrumentPublicBook);}
     else if('instrumentClose' in d){instrumentClosePane();}
     else if('instrumentHistory' in d){instrumentHistoryStep(d.instrumentHistory);}
     else if('instrumentHome' in d){state.instrument.deck='';instrumentGo();}

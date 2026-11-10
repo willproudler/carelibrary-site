@@ -111,7 +111,7 @@ body[data-workbench-view="reader"] .workbench-switch a.active { border-color: #5
 .workbench-saved svg { color: #c991a0; }
 .beta-workbench svg[data-material-symbol] { width: 20px; height: 20px; fill: currentColor; stroke: none; }
 .beta-workbench button:disabled { opacity: .34; cursor: default; }
-.beta-workbench :is(a, button:not(:disabled), summary):hover { background-color: #263139; }
+.beta-workbench :is(a, button:not(:disabled), summary):hover:where(:not(.studio-picker-panel *)) { background-color: #263139; }
 .beta-workbench nav :is(.active, [aria-current="page"]) {
   background: color-mix(in srgb, var(--workbench-accent) 61%, var(--workbench-surface));
   border-color: var(--workbench-accent);

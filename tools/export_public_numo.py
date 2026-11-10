@@ -10,9 +10,10 @@ CARE_ROOT = SITE_ROOT.parents[1]
 sys.path.insert(0, str(CARE_ROOT))
 
 from care_numo.pandemonium import load_release
+from care_platform.beta_catalogue import read_catalogue
 from care_platform.numo_correspondence_chambers import load_correspondence_chambers
 from care_platform.numo_instrument_data import build_numo_instrument_data
-from care_platform.numo_library_data import CHAMBER_AUDIT_FILE
+from care_platform.numo_library_data import CHAMBER_AUDIT_FILE, load_numo_library_world
 
 
 SHELF_IDS = {
@@ -24,6 +25,19 @@ SHELF_IDS = {
 
 def select(record, keys):
     return {key: record[key] for key in keys if key in record}
+
+
+def public_books_by_demon(demon_ids):
+    """Export only exact work IDs already present in the published catalogue."""
+    approved_ids = {work["id"] for work in read_catalogue(SITE_ROOT)["works"]}
+    linked_books = {}
+    for book in load_numo_library_world(root=CARE_ROOT)["books"]:
+        if book["id"] not in approved_ids:
+            continue
+        for demon_id in book["demon_ids"]:
+            if demon_id in demon_ids:
+                linked_books.setdefault(demon_id, []).append(book["id"])
+    return {demon_id: sorted(ids) for demon_id, ids in sorted(linked_books.items())}
 
 
 def export_world():
@@ -70,6 +84,7 @@ def export_world():
     world["instrument"] = build_numo_instrument_data(world)
     for demon in demons:
         del demon["chamber_audit"]
+    world["public_books_by_demon"] = public_books_by_demon({demon["id"] for demon in demons})
     return world
 
 
