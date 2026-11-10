@@ -24,7 +24,7 @@ function publicSourceDetailHint(canonical, passage) {
  * This module has no fetch, storage, generation or private-library fallback.
  * Source alignments and item references are the only edges in a route.
  */
-import {indexLibrary, incoming, selectionFor} from './library-core.mjs?v=6270f2b8272ee079';
+import {ancestors, indexLibrary, incoming, selectionFor} from './library-core.mjs?v=6270f2b8272ee079';
 import * as publicReadingViews from './native/reading-views.mjs?v=5f229f64abfb04c6';
 const {publicReadingText, publicSourcePresentation = () => ({})} = publicReadingViews;
 import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=6270f2b8272ee079';
@@ -49,6 +49,41 @@ const mcLevel = unit => {
   const matches = [...text(unit?.id || unit).matchAll(/_L([1-9][0-9]*)(?=_)/g)];
   return matches.length ? Number(matches.at(-1)[1]) : null;
 };
+
+function metaclusterPath(work, selected, requestedId) {
+  if (!selected.MC) return [];
+  const levelOrder = (left, right) => (mcLevel(left) || 0) - (mcLevel(right) || 0);
+  const options = work.units.filter(row => row.layer === 'MC').sort(levelOrder);
+  if (mcLevel(options[0]) === mcLevel(options.at(-1))) return [selected.MC];
+
+  const ancestry = new Map(), levels = new Map();
+  function descendants(row) {
+    if (!ancestry.has(row.id)) ancestry.set(row.id, ancestors(work, row.id));
+    return ancestry.get(row.id);
+  }
+  function follow(anchor, branch) {
+    if (!anchor) return;
+    for (const row of options) {
+      const level = mcLevel(row);
+      if (levels.has(level) || (branch && !branch.has(row.id)) || !descendants(row).has(anchor)) continue;
+      levels.set(level, row);
+      anchor = row.id;
+    }
+  }
+
+  const {CH, CL, WB} = selected;
+  const anchor = CL && (!CH || CL.id === requestedId || descendants(CL).has(CH.id)) ? CL.id : CH?.id;
+  const requested = options.find(row => row.id === requestedId);
+  if (requested) {
+    // Follow the chosen sheet's own branch below it, then its recorded uses above.
+    levels.set(mcLevel(requested), requested);
+    follow(anchor, descendants(requested));
+    follow(requested.id);
+  } else {
+    follow(anchor, WB && WB.id === requestedId ? descendants(WB) : null);
+  }
+  return levels.size ? [...levels.values()].sort(levelOrder) : [selected.MC];
+}
 
 // Conservative local presentation: preserve wording and escape source HTML.
 // These are display views only; the unchanged text remains on every record.
@@ -185,7 +220,8 @@ export function createPublicReaderAdapter(data) {
       chapters:work.sources.map(source => ({id:source.id, raw_unit_id:source.id, care_unit_id:source.chapter_id,
         chapter_number:source.order, sequence_number:source.order, title:paneTitle(source,work,state), readable:true})),
       active_chapter:chapter(selected.SOURCE.id,state),
-      care_path:BASE_LAYERS.flatMap(layer => selected[layer] ? [unit(selected[layer].id,state)] : []),
+      care_path:BASE_LAYERS.flatMap(layer => layer === 'MC' ? metaclusterPath(work, selected, selectedId)
+        : selected[layer] ? [selected[layer]] : []).map(row => unit(row.id,state)),
       sheet_options:Object.fromEntries(BASE_LAYERS.map(layer => [layer, work.units.filter(row => row.layer === layer).map(row => ({
         id:row.id, type:layer, title:paneTitle(row,work,state), available:true, sequence_number:row.order,
         chapter_number:layer === 'CH' ? row.order : undefined, mc_level:mcLevel(row),

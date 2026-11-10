@@ -54,7 +54,9 @@ test('native CARE projection retains all current release sheets and source parag
  for(const w of production.works)for(const u of [...w.sources,...w.units]){
   const originalState={readingLanguages:{[w.id]:'original'}};
   const payload=a.workspace({...originalState,workId:w.id,unitId:u.layer?u.id:'',rawUnitId:u.layer?'':u.id});
-  assert.equal(payload.stack.care_path.length,new Set(w.units.map(row=>row.layer)).size);assert.equal(payload.stack.chapters.length,w.sources.length);
+  assert.deepEqual(new Set(payload.stack.care_path.map(row=>row.layer)),new Set(w.units.map(row=>row.layer)));
+  const slots=payload.stack.care_path.map(row=>row.layer==='MC'?`MC:${row.mc_level || 'legacy'}`:row.layer);
+  assert.equal(new Set(slots).size,slots.length);assert.equal(payload.stack.chapters.length,w.sources.length);
   const expanded=a.outline(w.id,{id:u.id,layer:u.layer||'SOURCE',request_id:'check'},originalState);assert.ok(!expanded.error);
   if(u.layer)assert.deepEqual(expanded.unit.sections.flatMap(s=>s.items.map(i=>i.text)),u.sections.flatMap(s=>s.items.map(i=>i.text)));
   else assert.deepEqual(expanded.chapter.passages.map(p=>p.text),u.paragraphs.map(p=>p.text));
@@ -62,6 +64,30 @@ test('native CARE projection retains all current release sheets and source parag
  assert.throws(()=>a.workspace({workId:'private-work'}));
  const [first,second]=production.works;
  if(first&&second?.units.length)assert.throws(()=>a.workspace({workId:first.id,unitId:second.units[0].id}));
+});
+test('Science of Logic keeps the linked metacluster levels while navigating its branches',()=>{
+ const work=production.works.find(row=>row.units.some(unit=>unit.id==='MC_GB18_L3_01'));
+ const adapter=createPublicReaderAdapter({works:[work]});
+ const levels=state=>adapter.workspace({workId:work.id,...state}).stack.care_path
+   .filter(row=>row.layer==='MC').map(row=>row.id);
+ assert.deepEqual(levels({}),['MC_GB18_L1_01','MC_GB18_L2_01','MC_GB18_L3_01']);
+ const expected=['MC_GB18_L1_12','MC_GB18_L2_04','MC_GB18_L3_02'];
+ assert.deepEqual(levels({unitId:'CL_GB18_45'}),expected);
+ assert.deepEqual(levels(adapter.reduce({workId:work.id},'open_sheet','MC_GB18_L2_04')),expected);
+});
+test('metacluster panes follow recorded links across gaps without a maximum level',()=>{
+ const unit=(id,layer,parents)=>({id,layer,title:id,parents,sections:[]});
+ const work={id:'WORK_TEST',slug:'test',title:'Test',language_code:'en',
+   sources:[{id:'RAW_TEST',chapter_id:'CH_TEST',title:'Test',paragraphs:[]}],units:[
+     unit('CH_TEST','CH',[]),unit('MC_TEST_L1_01','MC',['CH_TEST']),
+     unit('MC_TEST_L3_01','MC',[]),unit('MC_TEST_L6_01','MC',['MC_TEST_L1_01']),
+     unit('WB_TEST','WB',['MC_TEST_L6_01','MC_TEST_L3_01']),
+   ]};
+ const adapter=createPublicReaderAdapter({works:[work]});
+ const levels=unitId=>adapter.stack(work.id,{unitId}).care_path.filter(row=>row.layer==='MC').map(row=>row.mc_level);
+ assert.deepEqual(levels(''),[1,6]);
+ assert.deepEqual(levels('MC_TEST_L6_01'),[1,6]);
+ assert.deepEqual(levels('MC_TEST_L3_01'),[3]);
 });
 test('native routes use recorded edges, maintain book boundaries and expose both lateral parents',()=>{
  const a=createPublicReaderAdapter(data);
