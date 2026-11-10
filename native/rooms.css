@@ -4,11 +4,13 @@
   max-width:calc(100vw - 16px);
   max-height:min(75dvh,420px);
   overflow:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
   padding:.55rem;
   border:1px solid #465054;
   border-radius:13px;
-  background:linear-gradient(155deg,#20272c,#11171c 55%);
-  box-shadow:0 18px 48px #0009, inset 0 1px #ffffff0e;
+  background:var(--care-panel-material,none),linear-gradient(155deg,#252b30,#14191f 62%);
+  box-shadow:var(--care-panel-finish,0 18px 48px #0009);
   color:#f2efe7;
 }
 .rooms-menu {--room-row-inset:.75rem;gap:.28rem !important}
@@ -41,7 +43,8 @@ body[data-workbench-view="reader"] .beta-workbench {--room-accent:#a8c9b7;--room
   padding:.42rem var(--room-row-inset) !important;
   border:1px solid var(--room-line) !important;
   border-radius:8px !important;
-  background:linear-gradient(100deg,var(--room-surface),#171d22 82%) !important;
+  background:var(--care-panel-material,none),linear-gradient(100deg,var(--room-surface),#1a1e24 82%) !important;
+  box-shadow:var(--care-panel-raised,none) !important;
   text-align:start;
 }
 /* Streamlit centres the icon and label in a nested content wrapper.
@@ -57,7 +60,8 @@ body[data-workbench-view="reader"] .beta-workbench {--room-accent:#a8c9b7;--room
   display:grid;place-items:center;
   width:1.8rem;height:1.8rem;flex:none;
   border:1px solid var(--room-line);border-radius:5px;
-  background:var(--room-surface);
+  background:color-mix(in srgb,var(--room-surface) 82%,#111317);
+  box-shadow:var(--care-panel-recess,none);
   color:var(--room-accent) !important;
   font-size:1.1rem;
 }
@@ -83,7 +87,7 @@ body[data-workbench-view="reader"] .beta-workbench {--room-accent:#a8c9b7;--room
 }
 .rooms-menu > :is(a, button):is(:hover,:focus-visible,[aria-current="page"]) {
   border-color:var(--room-accent) !important;
-  background:linear-gradient(100deg,var(--room-surface),color-mix(in srgb,var(--room-accent) 12%,#171d22) 82%) !important;
+  background:var(--care-panel-material,none),linear-gradient(100deg,var(--room-surface),color-mix(in srgb,var(--room-accent) 12%,#171d22) 82%) !important;
 }
 .rooms-menu > :is(a, button):focus-visible {
   outline:2px solid var(--room-accent) !important;outline-offset:-2px;

@@ -106,6 +106,13 @@ def export_css(workspace):
     )
 
     desktop_shell = literal(workspace, NAVIGATION, "_SHELL_CSS")
+    material = (
+        literal(workspace, NAVIGATION, "_NAVIGATION_MATERIAL_CSS")
+        .replace("__MATERIAL_HOST__", 'body.care-library-shell:not([data-workbench-view="numogram"])')
+        .replace("__STUDIO_SHELL__", SHELL)
+        .replace("__MATERIAL_SEARCH__", ".workbench-search")
+        .replace("__MATERIAL_VIEWER__", literal(workspace, NAVIGATION, "_MATERIAL_VIEWER_SELECTOR"))
+    )
     tokens = declarations(desktop_shell, "__STUDIO_SHELL__")
     tokens = "\n  ".join(
         line.strip() for line in tokens.splitlines()
@@ -252,6 +259,7 @@ html[data-care-toolbar-labels="true"] {SHELL} .workbench-switch {{
         + layout
         + room_palettes + "\n"
         + history + "\n" + switch + "\n" + chrome.strip() + "\n"
+        + material
         + export_workspace_strip(workspace)
     )
 

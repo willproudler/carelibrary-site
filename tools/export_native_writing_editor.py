@@ -1,10 +1,24 @@
-"""Export the exact desktop Studio renderer; do not read drafts or library data."""
+"""Export the desktop Studio renderer and its browser navigation adapter."""
 
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import sys
+
+
+# The web host switches views via its router, outside the Studio component.
+WEB_MODE_POSITION = """
+export function rememberStudioModePosition(parentElement, draft) {
+  const runtime = instances.get(parentElement.querySelector("[data-writing-studio]"));
+  const well = runtime?.a4?.well;
+  if (!well || runtime.compact || runtime.docId !== draft) return;
+  rememberWritingModePosition(well.ownerDocument.defaultView, "reader", draft, well, runtime.paper.children, "data-block-id", {
+    top: well.getBoundingClientRect().top + writingViewportInset(well),
+    zoom: runtime.documentZoom?.snapshot(),
+  });
+}
+"""
 
 
 def export(workspace: Path, destination: Path) -> None:
@@ -15,7 +29,7 @@ def export(workspace: Path, destination: Path) -> None:
     hashes = {}
     for kind, content in load_writing_editor_assets().items():
         filename = "writing-editor." + {"html": "html", "css": "css", "js": "mjs"}[kind]
-        payload = content.encode("utf-8")
+        payload = (content + WEB_MODE_POSITION if kind == "js" else content).encode("utf-8")
         (destination / filename).write_bytes(payload)
         hashes[filename] = hashlib.sha256(payload).hexdigest()
     (destination / "writing-editor-version.json").write_text(json.dumps({

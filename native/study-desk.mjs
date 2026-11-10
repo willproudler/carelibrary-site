@@ -652,7 +652,7 @@ function readerViewOptions({showZoom=true,showAppearance=true,showBeautifulText=
   const text='<span class="desk-menu-heading">Text size</span><div class="desk-text-size" aria-label="Reading text size"><button type="button" data-text-size="-1" aria-label="Make text smaller">A−</button><button type="button" data-text-size="1" aria-label="Make text larger">A+</button></div>'
   const zoom=showZoom?'<span class="desk-menu-heading">Pane zoom</span>'+trackZoomControls():''
   const appearance=showAppearance?'<span class="desk-menu-heading">Appearance</span><div class="desk-skin" aria-label="Visual skin"><button type="button" data-skin-value="care">CARE</button><button type="button" data-skin-value="library">BOOK</button><button type="button" data-skin-value="classic">CLASSIC</button></div>':''
-  const arrows=shortcuts==='lateral'?'':sliderArrowsControl()
+  const arrows=sliderArrowsControl()
   const rows=[['← / →','Select the nearest axiom or passage in the pane to either side'],['↑ / ↓','Previous or next axiom or passage'],['Home / End','First or last visible axiom'],['Tab to Routes','Follow the selected axiom'],['[ / ]','Previous or next pane'],['Scroll sideways','Move between panes'],['Drag a pane edge','Resize a pane']]
   if(shortcuts==='lateral')rows.push(['− / + on a pane','Fold or unfold'],['Tab · Enter','Move to and use controls'])
   return titleViewControl()+(showBeautifulText?beautifulTextControl():'')+connectionViewControl()+text+zoom+appearance+vibrantViewControl()+`<div class="desk-menu-rule"></div>${toolbarLabelsControl()}${arrows}<button type="button" class="desk-tab" data-reader-shortcuts aria-expanded="false"><span>Shortcuts & controls</span><span class="desk-submenu-arrow" aria-hidden="true">⌨</span></button><div class="desk-shortcut-list" data-reader-shortcut-list hidden>${rows.map(([key,label])=>`<div><kbd>${esc(key)}</kbd><span>${esc(label)}</span></div>`).join('')}</div>`
@@ -668,6 +668,7 @@ function readingFileControls(data){
   if(choices.length<2)return downloads?downloads+'<div class="desk-menu-rule"></div>':''
   return `<span class="desk-menu-heading">Language · all panes &amp; Routes</span>${choices.map(({code,label})=>`<button type="button" class="desk-tab" data-reading-language="${esc(code)}" aria-pressed="${code===language.selected}">${esc(label)}</button>`).join('')}<div class="desk-menu-rule"></div>`
 }
+function readingSourceEditControl(){return ""}
 function readerMenuBar(data,tabs,options={}){
   const book=options.file??(data?.corpus_sheet?'<span class="desk-menu-heading">Saved reading</span><span class="desk-sheet-version-slot" data-sheet-version-slot></span>':`<span class="desk-menu-heading">Book versions</span>${buildVersionControl(data)||'<span class="desk-menu-empty">Current reading</span>'}<div class="desk-menu-rule"></div>${readerMenuLabel(originalFormatControl(data),'Original reading format')}${readerMenuLabel(originalDownloadControl(data),'Download original')}<span class="desk-sheet-version-slot" data-sheet-version-slot></span>`)
   const navigate=options.navigate??`${readerMenuLabel(bookmarkControl(data),'Bookmarks')}<div class="desk-menu-rule"></div><button type="button" class="desk-tab" data-reader-layers aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m3 6 7-3 7 3-7 3-7-3Zm0 4 7 3 7-3M3 14l7 3 7-3"/></svg><span>Reading layers</span><span class="desk-submenu-arrow" aria-hidden="true">›</span></button>`
@@ -678,7 +679,8 @@ function readerMenuBar(data,tabs,options={}){
   const routeView=isRouteReference(data?.reference)&&!data?.connection?.reference?routePresentationControls(data.reference):''
   const studioFilter=data?.studio_axiom_draft_counts?`<button type="button" class="desk-tab" data-studio-all-filter aria-pressed="false" title="Filter eligible panes in this reading" hidden>${studioFilterIcon}<span>Studio-linked readings only</span><span data-studio-all-filter-state aria-hidden="true"></span></button>`:''
   const view=options.view??(`<span class="desk-menu-heading">Reading view</span>${data?.outline_available?outlineViewControl():'<span class="desk-menu-empty">Normal reading</span>'}`+routeView+readerViewOptions({...options,showZoom:options.showZoom??!(isRouteReference(data?.reference)||data?.connection?.reference)}))
-  const fileActions=(data?.write_beside_available?'<button type="button" class="desk-tab" data-write-beside-section>Write beside this section</button>':'')+(data?.send_library_book_available&&data?.stack?.work?.id?'<button type="button" class="desk-tab" data-send-reading-book aria-haspopup="dialog">Send book…</button>':'')
+  const editSource=options.file==null&&!data?.corpus_sheet&&!data?.corpus_build&&!isRouteReference(data?.reference)&&!data?.connection?.reference?readingSourceEditControl(data?.stack?.active_chapter):''
+  const fileActions=editSource+(data?.write_beside_available?'<button type="button" class="desk-tab" data-write-beside-section>Write beside this section</button>':'')+(data?.send_library_book_available&&data?.stack?.work?.id?'<button type="button" class="desk-tab" data-send-reading-book aria-haspopup="dialog">Send book…</button>':'')
   return `<div class="desk-reader-controls" role="group" aria-label="CARE reading menus">${readerMenu('book','File',fileActions+(fileActions?'<div class="desk-menu-rule"></div>':'')+readingFileControls(data)+book)}${readerMenu('navigate','Go',navigate)}${readerMenu('connections','Connections',connections||'<span class="desk-menu-empty">No connected readings available.</span>')}${readerMenu('view','View',portraitViews+studioFilter+view)}<section class="desk-menu-panel desk-layer-menu" data-reader-layers-panel role="dialog" aria-label="Reading layers" hidden>${connectionTabRail(tabs,data)}</section></div>`
 }
 function portraitMenuAction(runtime,event){
@@ -1745,6 +1747,7 @@ function setupVersionControls(runtime){
       event.preventDefault()
       const chapter=runtime.data?.stack?.active_chapter
       if(sourceButton.closest("[data-connection-book],[data-connection-field]")||String(chapter?.raw_unit_id)!==sourceButton.dataset.editSource||!arr(chapter?.source_versions?.options).length)return
+      runtime.closeReaderMenu?.({restoreFocus:true})
       runtime.closeSheetVersionMenu?.()
       emit({kind:"edit_source",work_id:currentWork(),unit_id:String(chapter.raw_unit_id)})
       return
@@ -1778,7 +1781,7 @@ function paneForLayer(root,key){
 }
 function sliderOptions(stack,layer){
   if(layer==="ORIGINAL")return arr(stack?.original_reader?.locations)
-  if(layer==="SOURCE")return arr(stack?.chapters).filter(row=>row.readable).map(row=>({...row,id:row.raw_unit_id}))
+  if(layer==="SOURCE")return arr(stack?.chapters).filter(row=>row.raw_unit_id&&row.readable!==false).map(row=>({...row,id:row.raw_unit_id}))
   if(stack?.reader_slots&&Object.hasOwn(stack.sheet_options||{},layer))return arr(stack.sheet_options[layer]).filter(row=>row.available!==false)
   const level=String(layer).startsWith("MC:")?String(layer).split(":")[1]:null
   return arr(stack?.sheet_options?.[level?"MC":layer]).filter(row=>row.available!==false&&(!level||(mcLevel(row)||"legacy").toString()===level))
@@ -1787,9 +1790,12 @@ const sliderPosition=(value,length)=>Math.max(0,Math.min(Math.max(0,length-1),Nu
 const sliderIndex=(value,length)=>Math.round(sliderPosition(value,length))
 // Studio uses exact chapter detents; previews stay local until release.
 const sliderMagneticPosition=(value,length)=>sliderIndex(value,length)
-const sliderMemoryKey=input=>{const workId=input?.closest?.("[data-connection-book]")?.dataset?.connectionBook;return `${workId?`${workId}|`:""}${input.dataset.sheetSlider}`}
+const sliderBook=input=>input?.closest?.("[data-connection-book]")?.dataset?.connectionBook||input?.closest?.("[data-book]")?.dataset?.book||""
+const sliderMemoryKey=input=>`${sliderBook(input)}|${input.dataset.sheetSlider}`
 const sliderTitle=option=>option.identity?.title||option.title||option.label||option.id
 const sliderStopLabel=(option,layer,index)=>option.slider_stop_label||(layer==="ORIGINAL"?`${option.page?'PAGE':option.chapter_number?'CH':'SEC'} ${option.chapter_number||index+1}`:layer==="WB"?"WB":`${layer==="SOURCE"?"CH":readerLayerLabel(layer,option)} ${String(option.chapter_number||option.sequence_number||index+1).padStart(2,"0")}`)
+const paneSliderHeading=input=>input?.closest?.("[data-pane]")?.querySelector?.("[data-pane-slider-heading]")
+const sliderPickerForInput=input=>(paneSliderHeading(input)||input?.closest?.("[data-slider-control]"))?.querySelector("[data-slider-jump]")
 const sliderHeadingOriginals=new WeakMap()
 function paintSliderHeading(input,option,index){
   const pane=input.closest?.("[data-pane]")
@@ -1855,15 +1861,58 @@ function paintSliderSteps(input,index,length){
     if(button.disabled!==disabled)button.disabled=disabled
   }
 }
-function paneSlider(stack,layer,activeId){
-  const key=layer==="MC"?`MC:${mcLevel(activeId)||"legacy"}`:layer,options=sliderOptions(stack,key),index=options.findIndex(row=>String(row.id)===String(activeId)),active=options[index]
-  if(!active)return ""
-  if(arr(stack.retained_slider_layers).includes(key))return `<div data-retained-slider="${esc(key)}"></div>`
-  const title=sliderTitle(active),label=active.slider_label||(layer==="ORIGINAL"?`Original ${originalLocationNoun(stack.original_reader.kind)}`:layer==="SOURCE"?"Source chapter":`${readerLayerLabel(layer,active)} sheet`),denominator=Math.max(1,options.length-1)
-  const stops=options.map((option,position)=>`<button type="button" class="slider-stop${position===index?" active":""}" data-slider-stop="${position}" data-slider-layer="${esc(key)}" style="--stop-x:${position/denominator*100}%" title="${esc(sliderTitle(option))}" aria-label="Choose ${esc(sliderTitle(option))}" aria-pressed="${position===index}" tabindex="${position===index?0:-1}"><span class="slider-dot" aria-hidden="true"></span><span class="slider-stop-label">${esc(sliderStopLabel(option,layer,position))}</span></button>`).join("")
-  const input=`<input type="range" class="sheet-slider" data-sheet-slider="${esc(key)}" min="0" max="${options.length-1}" step="1" value="${index}" aria-label="${esc(label)}" aria-valuetext="${esc(title)}"${options.length<2?" disabled":""} />`
+function paintReadingSlider(input,position,options,{neighbors=false,scrubbing=false}={}){
+  const index=sliderIndex(position,options.length),option=options[index]
+  if(!option)return
+  const title=sliderTitle(option),control=input.closest?.("[data-slider-control]")
+  const value=String(sliderPosition(position,options.length))
+  if(input.value!==value)input.value=value
+  input.setAttribute?.("aria-valuetext",`${title} · ${index+1} of ${options.length}`)
+  if(control){
+    const header=paneSliderHeading(input)||control
+    const heading=header.querySelector("[data-slider-title]")
+    if(heading&&heading.textContent!==title){heading.textContent=title;heading.title=title}
+    // Long books have over a thousand stops. A drag changes only two dots;
+    // rewriting every stop on every pointer event stalls the reading line.
+    const previous=control.querySelector("[data-slider-stop].active"),next=control.querySelector(`[data-slider-stop="${index}"]`)
+    if(previous!==next){
+      if(previous){previous.classList.toggle("active",false);previous.setAttribute("aria-pressed","false");previous.tabIndex=-1}
+      if(next){next.classList.toggle("active",true);next.setAttribute("aria-pressed","true");next.tabIndex=0}
+    }
+  }
+  paintSliderSteps(input,index,options.length)
+  if(!scrubbing){
+    paintSliderHeading(input,option,index)
+    keepSliderVisible(input,neighbors)
+  }
+}
+function paneSlider(stack,layer,activeId,key){
+  return paneSliderParts(stack,layer,activeId,{key})?.rail||""
+}
+function paneSliderParts(stack,layer,activeId,{key=layer==="MC"?`MC:${mcLevel(activeId)||"legacy"}`:layer,docked=false}={}){
+  const options=sliderOptions(stack,key),index=options.findIndex(row=>String(row.id)===String(activeId)),active=options[index]
+  if(!active)return null
+  if(arr(stack.retained_slider_layers).includes(key))return {
+    heading:docked?`<div data-retained-slider-heading="${esc(key)}"></div>`:"",
+    rail:`<div data-retained-slider="${esc(key)}"></div>`,
+  }
+  const label=active.slider_label||(layer==="ORIGINAL"?`Original ${originalLocationNoun(stack.original_reader.kind)}`:layer==="SOURCE"?"Source chapter":`${readerLayerLabel(layer,active)} sheet`)
   const item=layer==="ORIGINAL"?originalLocationNoun(stack.original_reader.kind):layer==="SOURCE"||layer==="CH"?"chapter":label
-  return `<div class="pane-slider" data-slider-control><div class="slider-heading"><span>${esc(label)}</span><button type="button" class="slider-jump-trigger" data-slider-jump aria-label="Choose ${esc(label.toLowerCase())}" aria-haspopup="dialog" aria-expanded="false"><strong data-slider-title title="${esc(title)}">${esc(title)}</strong><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button><output data-slider-count>${index+1} / ${options.length}</output></div>${sliderTrack(options.length,index,item,input,`<div class="slider-stops" role="group" aria-label="${esc(label)} stops">${stops}</div>`)}</div>`
+  return readingSlider(options,index,{layer,key,label,item,docked})
+}
+function readingSlider(options,index,{layer,key=layer,label,item=label,staticStop=false,docked=false}){
+  const title=sliderTitle(options[index]),denominator=Math.max(1,options.length-1)
+  const stops=options.map((option,position)=>{
+    const stopTitle=esc(sliderTitle(option))
+    const stopLabel=docked?"":`<span class="slider-stop-label">${esc(sliderStopLabel(option,layer,position))}</span>`
+    return `<button type="button" class="slider-stop${position===index?" active":""}" data-slider-stop="${position}" data-slider-layer="${esc(key)}" style="--stop-x:${position/denominator*100}%" title="${stopTitle}" aria-label="Choose ${stopTitle}" aria-pressed="${position===index}" tabindex="${position===index&&!staticStop?0:-1}"${staticStop?" disabled":""}><span class="slider-dot" aria-hidden="true"></span>${stopLabel}</button>`
+  }).join("")
+  const input=`<input type="range" class="sheet-slider" data-sheet-slider="${esc(key)}" min="0" max="${options.length-1}" step="1" value="${index}" aria-label="${esc(label)}" aria-valuetext="${esc(title)}"${options.length<2?" disabled":""} />`
+  const titleMarkup=`<strong data-slider-title title="${esc(title)}">${esc(title)}</strong>`
+  const picker=staticStop?`<span class="slider-static-title">${titleMarkup}</span>`:`<button type="button" class="slider-jump-trigger" data-slider-jump aria-label="Choose ${esc(label.toLowerCase())}" aria-haspopup="dialog" aria-expanded="false">${titleMarkup}<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>`
+  const heading=`<div class="slider-heading"${docked?" data-pane-slider-heading":""}><span>${esc(label)}</span>${picker}</div>`
+  const track=sliderTrack(options.length,index,item,input,`<div class="slider-stops" role="group" aria-label="${esc(label)} stops">${stops}</div>`)
+  return {heading:docked?heading:"",rail:`<div class="pane-slider" data-slider-control${docked?" data-docked-slider":""}>${docked?"":heading}${track}</div>`}
 }
 const sliderJumpText=value=>String(value??"").normalize("NFD").replace(/\p{M}/gu,"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").replace(/\b0+(\d+)/g,"$1").trim()
 function sliderJumpMatches(options,layer,query=""){
@@ -1915,9 +1964,9 @@ function setupSliderJumpMenu(runtime){
   runtime.openSliderJumpMenu=(anchor,{focusSearch=!view?.matchMedia?.("(max-width: 760px), (pointer: coarse)")?.matches}={})=>{
     const same=runtime.sliderJumpMenu?.anchor===anchor
     runtime.closeSliderJumpMenu();if(same)return
-    const input=anchor.closest("[data-slider-control]")?.querySelector("[data-sheet-slider]")
+    const input=(anchor.closest("[data-slider-control]")||anchor.closest("[data-pane]"))?.querySelector("[data-sheet-slider]")
     if(!input)return
-    const stack=runtime.connectionStack?.(input)||runtime.data?.stack,options=sliderOptions(stack,input.dataset.sheetSlider)
+    const stack=runtime.sliderStack?.(input)||runtime.connectionStack?.(input)||runtime.data?.stack,options=runtime.sliderOptionsFor?.(input)??sliderOptions(stack,input.dataset.sheetSlider)
     if(!options.length)return
     runtime.closeBookMenu?.();runtime.closeBuildVersionMenu?.();runtime.closeSheetVersionMenu?.();runtime.closeBookmarkMenu?.();runtime.closeConnectionDiscovery?.()
     const element=doc.createElement("section"),id=`slider-jump-${++sliderJumpSequence}`,label=input.getAttribute("aria-label")||"Chapter or sheet"
@@ -1935,7 +1984,7 @@ function setupSliderJumpMenu(runtime){
   }
   const choose=index=>{
     const popup=runtime.sliderJumpMenu;if(!popup||!popup.matches.some(row=>row.index===index))return
-    if(index!==popup.selected)runtime.sliderJumpFocus={layer:popup.input.dataset.sheetSlider,book:popup.input.closest("[data-connection-book]")?.dataset.connectionBook||"",work:String(runtime.data?.stack?.work?.id||""),connection:String(runtime.data?.connection?.id||"")}
+    if(index!==popup.selected)runtime.sliderJumpFocus={layer:popup.input.dataset.sheetSlider,book:runtime.sliderScope?.(popup.input)??sliderBook(popup.input),work:String(runtime.data?.stack?.work?.id||""),connection:String(runtime.data?.connection?.id||"")}
     runtime.closeSliderJumpMenu({restoreFocus:true});runtime.chooseSlider(popup.input,index)
   }
   const click=runtime.onClick
@@ -1976,8 +2025,8 @@ function setupSliderJumpMenu(runtime){
       if(popup){popup.search.value=saved.query;runtime.filterSliderJump();runtime.highlightSliderJump(saved.highlight)}
     }
     if(focus&&focus.work===String(runtime.data?.stack?.work?.id||"")&&focus.connection===String(runtime.data?.connection?.id||"")){
-      const input=[...root.querySelectorAll(`[data-sheet-slider="${CSS.escape(focus.layer)}"]`)].find(input=>(input.closest("[data-connection-book]")?.dataset.connectionBook||"")===focus.book)
-      input?.closest("[data-slider-control]")?.querySelector("[data-slider-jump]")?.focus({preventScroll:true})
+      const input=[...root.querySelectorAll(`[data-sheet-slider="${CSS.escape(focus.layer)}"]`)].find(input=>(runtime.sliderScope?.(input)??sliderBook(input))===focus.book)
+      sliderPickerForInput(input)?.focus({preventScroll:true})
     }
   }
   runtime.cleanupSliderJumpMenu=()=>{
@@ -2143,18 +2192,24 @@ function sourceRoutePane(data,selectedId,reference){
   const content=sourceFocus?`<div class="route-axiom-row">${passages}${routeArrival(reference)}</div>${exactRouteEdges(reference).some(edge=>String(edge.source_id)===selectedId)?"":`<div class="route-empty">${emptySource}</div>`}`:passages||'<div class="route-empty">No registered passage has been resolved on this route yet. The axiom chain remains visible in the CARE panes.</div>'
   return `<section class="desk-window source-pane route-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE / EXACT ROUTE</strong><span>${items.length} PASSAGES</span></div><div class="window-body"><div class="route-source-copy">${routeFocusHead(reference,"The source pane",sourceFocus?"outgoing":"incoming")}${content}</div></div></section>`
 }
-function sourcePane(data,selectedId,reference,bookmarks=null){
+function bookReadingPane(classes,id,attributes,body,presentation){
+  return presentation?presentation.pane(classes,attributes,body):`<section class="${classes}" data-pane="${esc(id)}" ${attributes}>${body}</section>`
+}
+function sourcePane(data,selectedId,reference,bookmarks=null,presentation=null){
   if(isRouteReference(reference))return sourceRoutePane(data,selectedId,reference)
   const chapter=data?.active_chapter
-  if(!chapter)return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong>SOURCE TEXT</strong><span>NOT REGISTERED</span></div><div class="window-body"><div class="inspector-empty"><div><b>NO READABLE CHAPTER</b><p>This book can still expose its available CARE sheets. Add or repair the source in CARE Library settings when needed.</p></div></div></div></section>`
+  const slider=(chapter&&paneSliderParts(data,"SOURCE",chapter.raw_unit_id,{docked:true}))||presentation?.slider?.()
+  if(!chapter)return bookReadingPane("desk-window source-pane","source",'data-layer="SOURCE" style="--pane-accent:#8a431d"',`<div class="window-titlebar"><strong>SOURCE TEXT</strong>${slider?.heading||""}<span>NOT REGISTERED</span></div>${slider?.rail||""}<div class="window-body"><div class="inspector-empty"><div><b>NO READABLE CHAPTER</b><p>This book can still expose its available CARE sheets. Add or repair the source in CARE Library settings when needed.</p></div></div></div>`,presentation)
   // Direct references can precede passage-alignment registration. Protect
   // every reference visible in the saved reading as well as the trace count.
   const sourceDetailsInUse=new Set(arr(data.care_path).flatMap(unit=>[...arr(unit.items),...arr(unit.sections).flatMap(section=>arr(section.items))]).flatMap(item=>[...arr(item.source_trace),...arr(item.deep_source_trace),...arr(item.matrix_trace),...arr(item.passage_trace_ids)]).map(String))
   const passages=arr(chapter.passages).map(passage=>{
     if(passage.route_available===false)return `<div class="passage-row"><article class="passage" data-beautiful-opening-foldable="${beautifulHeadingDetail(passage)}"><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`
-    return `<div class="passage-row${bookmarks?" reader-has-mark":""}"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}" data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||'')}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(passage.beautiful_reading_block_html||'')}" data-beautiful-original-html="${passage.beautiful_reading_block_html?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false" aria-describedby="desk-selection-help"><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article><button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button>${bookmarks?sourceBookmarkButton(chapter.raw_unit_id,passage.id,bookmarks,passage.address||passage.id):""}</div>`
+    const mark=presentation?presentation.mark(passage,chapter.raw_unit_id,"SOURCE"):bookmarks?sourceBookmarkButton(chapter.raw_unit_id,passage.id,bookmarks,passage.address||passage.id):""
+    const route=presentation?presentation.route(passage):`<button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button>`
+    return `<div class="passage-row${bookmarks||mark?" reader-has-mark":""}"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}"${presentation?.item(passage,chapter.raw_unit_id,"passage")||""} data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||'')}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(passage.beautiful_reading_block_html||'')}" data-beautiful-original-html="${passage.beautiful_reading_block_html?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false"${presentation?"":' aria-describedby="desk-selection-help"'}><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article>${route}${mark}</div>`
   }).join("")
-  return `<section class="desk-window source-pane" data-pane="source" data-layer="SOURCE" data-studio-source-variant="${esc(chapter.source_rendition_type||"canonical")}" style="--pane-accent:#8a431d"><div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong><span>${arr(chapter.passages).length} PASSAGES</span>${bookmarks?sourceBookmarkButton(chapter.raw_unit_id,"",bookmarks,chapter.title):""}</div>${paneSlider(data,"SOURCE",chapter.raw_unit_id)}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div></section>`
+  return bookReadingPane("desk-window source-pane","source",`data-layer="SOURCE" data-studio-source-variant="${esc(chapter.source_rendition_type||"canonical")}" style="--pane-accent:#8a431d"`,`<div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong>${slider?.heading||""}<span>${arr(chapter.passages).length} PASSAGES</span>${presentation?presentation.bookmark(chapter):bookmarks?sourceBookmarkButton(chapter.raw_unit_id,"",bookmarks,chapter.title):""}</div>${slider?.rail||""}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>CHAPTER ${esc(chapter.chapter_number||"")} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}</span>${presentation?"":sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${passages||'<p class="trace-empty">No registered passages in this chapter.</p>'}</main></div></div>`,presentation)
 }
 function traceLabel(item,layer){
   if(String(layer).toUpperCase()==="SOURCE")return "Saved source passage"
@@ -2171,11 +2226,12 @@ function traceLabel(item,layer){
   return traces.length?`${traces.length} exact trace${traces.length===1?"":"s"}`:"No explicit trace in this record"
 }
 function routeHistoryControls(history={},options={}){
-  const historyAction=options.connected?'data-connection-route-history':'data-route-history',closeAction=options.connected?'data-connection-clear':'data-clear-reference'
+  const historyAction=options.lateral?'data-lateral-route-history':options.connected?'data-connection-route-history':'data-route-history'
+  const closeAction=options.lateral?'data-close-route':options.connected?'data-connection-clear':'data-clear-reference'
   const arrow=(direction,label,enabled,path)=>`<button type="button" class="route-history-arrow" ${historyAction}="${direction}" aria-label="${label}" title="${label}" ${enabled?"":"disabled"}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="${path}"/></svg></button>`
-  return `<div class="route-history-actions" role="group" aria-label="Route navigation">${arrow(-1,"Previous route",history.can_back,"M16 10H4m6-6-6 6 6 6")}${arrow(1,"Next route",history.can_forward,"M4 10h12m-6-6 6 6-6 6")}<button type="button" class="route-close" ${closeAction} title="Close route and return to reading"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg><span>Close route</span></button></div>`
+  return `<div class="route-history-actions" role="group" aria-label="Route navigation">${arrow(-1,"Previous route",history.can_back,"M16 10H4m6-6-6 6 6 6")}${arrow(1,"Next route",history.can_forward,"M4 10h12m-6-6 6 6-6 6")}<button type="button" class="route-close" ${closeAction} title="Close route and return to reading">Close route</button></div>`
 }
-function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),showVersions=false,bookmarks=[],fieldBookmarks=false){
+function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),showVersions=false,bookmarks=[],fieldBookmarks=false,presentation=null){
   const color=unit.pane_accent||layerColor(unit.type,unit)
   const focusLayer=String(reference?.layer||(reference?.kind==="passage"?"PASSAGE":"")).toUpperCase(),isRoute=isRouteReference(reference),isUpstream=isRoute&&readingRank(unit)<readingRank({...reference,layer:focusLayer}),isDownstream=isRoute&&routeMode(reference)!=="incoming"&&readingRank(unit)>readingRank({...reference,layer:focusLayer})
   const mcPartition=unit.type==="MC"&&Boolean(mcLevel(unit)||unit.mc_partitioned),isFocus=String(unit.id)===String(reference?.unit_id),routedItems=routeItemsForUnit(reference,unit),levelAttribute=unit.type==="MC"&&mcLevel(unit)?` data-mc-level="${mcLevel(unit)}"`:""
@@ -2194,15 +2250,18 @@ function carePane(unit,index,selectedId,reference,stack,relocatedIds=new Set(),s
     const items=visibleItems.map(item=>{
       const content=`<span class="axiom-id" ${axiomCopyAttributes(item.id)}>${esc(item.address||item.id)} · ${esc(item.id)}</span><span class="axiom-text">${item.reading_html ?? esc(item.text)}</span><span class="axiom-trace">${esc(traceLabel(item,unit.type))}</span>`
       if(isRoute){const button=`<article role="button" tabindex="0" class="axiom-button ${String(item.id)===selectedId?"selected":feederIds.has(String(item.id))?"route-feeder":""}" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" data-selection-unit="${esc(unit.id)}" aria-pressed="false">${content}</article>`;return `<div class="axiom-row route-axiom-row">${button}${axiomCopyStatus()}${String(item.id)===selectedId?routeArrival(reference):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`}</div>`}
-      return `<div class="axiom-row"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><article role="button" tabindex="0" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false" aria-describedby="desk-selection-help">${content}</article>${axiomCopyStatus()}<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button></div>`
+      const route=presentation?presentation.route(item):`<button type="button" class="axiom-routes" data-open-axiom-routes="${esc(item.id)}" aria-label="Open Routes for ${esc(item.id)}" hidden>Routes →</button>`
+      const mark=presentation?.mark(item,unit.id,unit.type)||""
+      return `<div class="axiom-row${mark?" reader-has-mark":""}"${item.source_pane?` data-connection-source-pane="${esc(item.source_pane)}"`:""}><article role="button" tabindex="0" class="axiom-button" data-ref-id="${esc(item.id)}" data-select-axiom="${esc(item.id)}" aria-pressed="false"${presentation?presentation.item(item,unit.id,"axiom"):' aria-describedby="desk-selection-help"'}>${content}</article>${axiomCopyStatus()}${route}${mark}</div>`
     }).join("")
-    return `<details class="care-section"${section.source_pane?` data-connection-reading="${esc(section.source_pane)}"`:""} ${contains||(!isRoute&&sectionIndex===defaultSectionIndex)?"open":""}><summary><span>${esc(section.number||String(sectionIndex+1))} · ${esc(section.name)}</span><small>${visibleItems.length}</small></summary><div class="axiom-list">${items}</div></details>`
+    return `<details class="care-section"${presentation?` data-section="${sectionIndex}"`:""}${section.source_pane?` data-connection-reading="${esc(section.source_pane)}"`:""} ${contains||(!isRoute&&sectionIndex===defaultSectionIndex)?"open":""}><summary><span>${esc(section.number||String(sectionIndex+1))} · ${esc(section.name)}</span><small>${visibleItems.length}</small></summary><div class="axiom-list">${items}</div></details>`
   }).join("")
   const identity=unit.identity||{}
   const sheetItems=new Set(arr(unit.sections).flatMap(section=>arr(section.items)).map(item=>String(item.id))),levelPeers=isRoute&&mcPartition&&isFocus?routedItems.filter(item=>!sheetItems.has(String(item.id))&&String(item.id)!==selectedId):[],levelPeerMarkup=levelPeers.length?`<div class="mc-level-peers">${routeGroups(levelPeers,selectedId)}</div>`:""
   const selectedNote=isRoute&&String(unit.type).toUpperCase()===focusLayer&&(!mcPartition||isFocus)?`<div class="route-recipient"><span>${routeMode(reference)==="incoming"?"Receiving at":routeMode(reference)==="both"?"Flowing through":"Flowing from"} <b>${esc(identity.title||unit.title||unit.id)}</b></span><button type="button" class="route-close route-pane-close" data-clear-reference aria-label="Close route focus" title="Close route"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div>`:""
   const sectionActions=!isRoute&&arr(unit.sections).length?`<div class="sheet-actions" role="group" aria-label="${esc(identity.title||unit.title||unit.id)} sections"><button type="button" data-sheet-sections="collapse" aria-label="Collapse all sections" title="Collapse all sections"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 3 4 4 4-4M4 10h12m-10 7 4-4 4 4"/></svg></button><button type="button" data-sheet-sections="expand" aria-label="Expand all sections" title="Expand all sections"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 4-4 4 4M4 10h12m-10 4 4 4 4-4"/></svg></button></div>`:""
-  return `<section class="desk-window care-pane" data-pane="${esc(unit.id)}" data-layer="${esc(unit.type)}"${levelAttribute}${isRoute?"":" data-reading-sheet"}${unit.reader_slot?` data-reader-slot="${esc(unit.reader_slot)}"`:""} style="--pane-accent:${color}"><div class="window-titlebar"><strong>${isRoute?`${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}`:`<span class="reader-full-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}</span><span class="reader-simple-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(["CL","MC"].includes(unit.type)?paneSimpleTitle(unit,stack):unit.type==="CH"?`Chapter ${unit.chapter_number||unit.sequence_number||arr(stack?.sheet_options?.CH).findIndex(row=>String(row.id)===String(unit.id))+1||index+1}`:unit.type==="WB"?"Whole book":identity.title||unit.title||unit.id)}</span>`}</strong><span>${unit.item_count??arr(unit.items).length} AXIOMS</span>${showVersions&&!isRoute?paneBookmarkButton(unit,bookmarks,fieldBookmarks):""}</div>${isRoute?"":paneSlider(stack,unit.reader_slot||unit.type,unit.reader_option_id||unit.id)}<div class="window-body" data-reading-id="${esc(unit.reader_option_id||unit.id)}"><header class="care-head">${showVersions&&!isRoute?sheetVersionTrigger(unit,{pane:true}):""}<span class="pane-kicker"${isRoute?"":" data-slider-preview-kicker"}>${esc(identity.kicker||unit.type||"CARE SHEET")}</span><div class="care-heading"><h2>${isRoute?esc(identity.title||unit.title||unit.label):`<span class="reader-full-title" data-slider-preview-title>${esc(identity.title||unit.title||unit.label)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(unit,stack))}</span>`}</h2>${sectionActions}</div>${readerPaneImprint(unit)}<p${isRoute?"":` data-slider-preview-context${["CL","MC"].includes(unit.type)?` class="title-chapter-trail" title="${esc(identity.context||unit.id)}"`:""}`}>${esc(identity.context||unit.id)}</p></header>${selectedNote}${levelPeerMarkup}<div class="care-sections">${sections||'<p class="trace-empty">No readable axioms in this sheet.</p>'}</div></div></section>`
+  const slider=!isRoute&&(paneSliderParts(stack,unit.reader_slot||unit.type,unit.reader_option_id||unit.id,{docked:true})||presentation?.slider?.())
+  return bookReadingPane("desk-window care-pane",unit.id,`data-layer="${esc(unit.type)}"${levelAttribute}${isRoute?"":" data-reading-sheet"}${unit.reader_slot?` data-reader-slot="${esc(unit.reader_slot)}"`:""} style="--pane-accent:${color}"`,`<div class="window-titlebar"><strong>${isRoute?`${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}`:`<span class="reader-full-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(identity.title||unit.title||unit.id)}</span><span class="reader-simple-title">${esc(readerLayerLabel(unit.type,unit))} / ${esc(["CL","MC"].includes(unit.type)?paneSimpleTitle(unit,stack):unit.type==="CH"?`Chapter ${unit.chapter_number||unit.sequence_number||arr(stack?.sheet_options?.CH).findIndex(row=>String(row.id)===String(unit.id))+1||index+1}`:unit.type==="WB"?"Whole book":identity.title||unit.title||unit.id)}</span>`}</strong>${slider?.heading||""}<span>${unit.item_count??arr(unit.items).length} AXIOMS</span>${presentation?presentation.bookmark(unit):showVersions&&!isRoute?paneBookmarkButton(unit,bookmarks,fieldBookmarks):""}</div>${slider?.rail||""}<div class="window-body" data-reading-id="${esc(unit.reader_option_id||unit.id)}"><header class="care-head">${showVersions&&!isRoute?sheetVersionTrigger(unit,{pane:true}):""}<span class="pane-kicker"${isRoute?"":" data-slider-preview-kicker"}>${esc(identity.kicker||unit.type||"CARE SHEET")}</span><div class="care-heading"><h2>${isRoute?esc(identity.title||unit.title||unit.label):`<span class="reader-full-title" data-slider-preview-title>${esc(identity.title||unit.title||unit.label)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(unit,stack))}</span>`}</h2>${sectionActions}</div>${readerPaneImprint(unit)}<p${isRoute?"":` data-slider-preview-context${["CL","MC"].includes(unit.type)?` class="title-chapter-trail" title="${esc(identity.context||unit.id)}"`:""}`}>${esc(identity.context||unit.id)}</p></header>${selectedNote}${levelPeerMarkup}<div class="care-sections">${sections||'<p class="trace-empty">No readable axioms in this sheet.</p>'}</div></div>`,presentation)
 }
 function traceGroup(title,items,empty){
   const rows=arr(items).map(item=>`<button type="button" class="trace-card" data-ref-id="${esc(item.id)}" ${item.kind==="unresolved"?"disabled":""}><strong>${esc(item.layer||item.kind)} · ${esc(item.id)}</strong><span>${esc(textClip(item.reading_text ?? item.text ?? item.title,220))}</span></button>`).join("")
@@ -2266,7 +2325,7 @@ function connectionLayerSlider(pane){
   const choices=[{id:"",title:"All traced readings"},...members.map(member=>({id:member.id,title:resolutionUnitTitle(member)}))]
   const input=`<input type="range" class="sheet-slider" data-connection-layer-slider min="0" max="${choices.length-1}" step="1" value="0" aria-label="${esc(pane.work_title||pane.title)} · ${esc(pane.layer)} route reading" aria-valuetext="All traced readings">`
   const stops=choices.map((choice,index)=>`<button type="button" class="slider-stop${index===0?" active":""}" data-connection-layer-stop="${index}" data-connection-layer-reading="${esc(choice.id)}" data-connection-layer-label="${esc(choice.title)}" style="--stop-x:${index*100/(choices.length-1)}%" title="${esc(choice.title)}" aria-label="Show ${esc(choice.title)}" aria-pressed="${index===0}" tabindex="${index===0?0:-1}"><span class="slider-dot" aria-hidden="true"></span><span class="slider-stop-label">${index===0?"All":esc(choice.title)}</span></button>`).join("")
-  return `<div class="pane-slider" data-connection-layer-control><div class="slider-heading"><span>${esc(connectionLayerLabel(pane))} readings</span><strong data-connection-layer-title>All traced readings</strong><output data-connection-layer-count>${members.length} readings</output></div>${sliderTrack(choices.length,0,"reading",input,`<div class="slider-stops" role="group" aria-label="${esc(pane.layer)} route readings">${stops}</div>`)}</div>`
+  return `<div class="pane-slider" data-connection-layer-control><div class="slider-heading"><span>${esc(connectionLayerLabel(pane))} readings</span><strong data-connection-layer-title>All traced readings</strong></div>${sliderTrack(choices.length,0,"reading",input,`<div class="slider-stops" role="group" aria-label="${esc(pane.layer)} route readings">${stops}</div>`)}</div>`
 }
 function connectionFieldWindows(connection){
   const reference=connection?.reference,all=connectionAllPanes(connection),cards=reference?[reference,...Object.values(reference.route_layers||{}).flatMap(arr)]:[],byPane=new Map()
@@ -2563,6 +2622,15 @@ function fieldSourceCover(book){
   while(members.length<4)members.push(members[members.length-1])
   return `<span class="book-cover field-stack-cover" style="${style(book)}" aria-hidden="true">${members.map(member=>`<span class="field-stack-book" style="${style(member)}">${fieldMemberCover(member,book)}</span>`).join("")}<span class="field-cover-badge">${count} ${count===1?"book":"books"}</span></span>`
 }
+const shelfTitleMeasure = globalThis.document?.createElement?.("canvas")?.getContext?.("2d")
+if(shelfTitleMeasure)shelfTitleMeasure.font='600 100px Georgia,"Times New Roman",serif'
+function shelfTitle(title){
+  const text=String(title??"")
+  const words=text.normalize("NFC").split(/\s+/u)
+  const wordWidth=word=>shelfTitleMeasure?shelfTitleMeasure.measureText(word).width/100:Array.from(word).length*.64
+  const wordMeasure=words.reduce((widest,word)=>Math.max(widest,wordWidth(word)),1)
+  return `<strong title="${esc(text)}" style="--shelf-title-word:${(wordMeasure+.28).toFixed(2)}">${esc(text)}</strong>`
+}
 function fieldShelfCard(book,data={}){
   const label=shelfFieldLabel(book.field),count=Number(book.member_count||arr(book.member_titles).length||0)
   const motifs={
@@ -2578,7 +2646,7 @@ function fieldShelfCard(book,data={}){
   const memberText=count?`${count} ${count===1?"source book":"source books"}`:""
   const cover=["lateral","corpus"].includes(book.field)?fieldSourceCover(book):`<span class="book-cover" style="--cloth:${esc(book.cloth||"#263239")};--foil:${esc(book.foil||"#f4e8cc")}"><span class="book-cover-fallback"><span class="field-cover-label">${esc(label)}</span><svg class="field-cover-art" viewBox="0 0 100 92" aria-hidden="true">${motifs[book.field]||motifs.corpus}</svg><strong>${esc(book.title)}</strong><small>${esc(subtitle)}</small></span>${image}</span>`
   const menu=data.library_selection_enabled&&(["lateral","corpus"].includes(book.field)||studySetsAvailable(data))?shelfMenuToggle(book,"Reading options"):""
-  return `<div class="book-card book-field" data-book-field="${esc(book.id)}"><button type="button" class="book-open" data-open-field="${esc(book.id)}" data-reading-title="${esc(book.title)}"${book.field==="corpus"?` data-corpus-covers="${esc(JSON.stringify(arr(book.members).map(member=>({title:member.title,cover_url:member.cover_url}))))}"`:""} aria-label="${esc(`Read ${label}: ${book.title}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong>${esc(book.title)}</strong>${book.author?`<span>${esc(book.author)}</span>`:""}${book.description?`<span class="field-description">${esc(book.description)}</span>`:""}${memberText?`<span class="field-members">${esc(memberText)}</span>`:""}<span class="book-layers"><b class="book-kind">${esc(label)}</b>${arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")}</span></span></button>${menu}</div>`
+  return `<div class="book-card book-field" data-book-field="${esc(book.id)}"><button type="button" class="book-open" data-open-field="${esc(book.id)}" data-reading-title="${esc(book.title)}"${book.field==="corpus"?` data-corpus-covers="${esc(JSON.stringify(arr(book.members).map(member=>({title:member.title,cover_url:member.cover_url}))))}"`:""} aria-label="${esc(`Read ${label}: ${book.title}`)}"><span class="book-object">${cover}</span><span class="book-copy">${shelfTitle(book.title)}${book.author?`<span>${esc(book.author)}</span>`:""}${book.description?`<span class="field-description">${esc(book.description)}</span>`:""}${memberText?`<span class="field-members">${esc(memberText)}</span>`:""}<span class="book-layers"><b class="book-kind">${esc(label)}</b>${arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")}</span></span></button>${menu}</div>`
 }
 function dialogueJacketTitle(book){
   const title=String(book.dialogue_cover?.title||book.title||"Untitled conversation")
@@ -2611,19 +2679,51 @@ function dialogueBookCover(book){
 function shelfMenuToggle(book,label="Book options"){
   return `<button type="button" class="book-menu-toggle" data-book-menu-toggle="${esc(book.id)}" aria-label="${esc(`Options for ${book.title}`)}" aria-haspopup="menu" aria-expanded="false" title="${esc(label)}"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/></svg></button>`
 }
+function boundVolume(binding,jacket,stackStep=0){
+  return `<span class="bound-volume${stackStep?" collection-volume":""}" aria-hidden="true" style="${binding}${stackStep?`;--stack-step:${stackStep}`:""}">
+    <span class="bound-volume-spine"></span><span class="bound-volume-pages bound-volume-foot"></span><span class="bound-volume-pages bound-volume-edge"></span>
+    ${jacket}
+  </span>`
+}
+function shelfJacketImage(book){
+  return book.cover_url?`<img src="${esc(book.cover_url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`:""
+}
+function shelfBookVolume(book,{stackStep=0,dialogue=false}={}){
+  const image=shelfJacketImage(book)
+  const binding=`--cloth:${esc(book.cloth||"#263239")};--foil:${esc(book.foil||"#f4e8cc")}`
+  const title=String(book.title||""),words=title.match(/[\p{L}\p{N}]+/gu)||[]
+  const jacketTitle=title.replace(/\s+·/g,"\u00a0·")
+  const jacket=`<span class="book-cover"${dialogue?` style="${binding}"`:""}><span class="book-cover-fallback"><i aria-hidden="true"></i><strong>${esc(jacketTitle)}</strong><small>${esc(book.author)}</small></span>${image}</span>`
+  const longestWord=Math.max(0,...words.map(word=>word.length))
+  const jacketSize=title.length>145||longestWord>18?.59:longestWord>=14||title.length>100?.64:longestWord>12||title.length>66?.71:longestWord>10?.77:.83
+  return dialogue?jacket:boundVolume(`${binding};--jacket-title-size:${jacketSize}rem`,jacket,stackStep)
+}
+function boundStack(front,members){
+  const seenBindings=new Set()
+  const bindings=arr(members).filter(member=>{
+    // Multiple texts can be catalogued separately inside one printed volume.
+    if(!member.collection_key||!member.volume_label||!member.cover_url)return true
+    const binding=JSON.stringify([member.collection_key,member.volume_label,member.cover_url])
+    if(seenBindings.has(binding))return false
+    seenBindings.add(binding)
+    return true
+  })
+  const below=bindings.slice(1,4).map((member,index)=>shelfBookVolume(member,{stackStep:index+1})).reverse().join("")
+  return below?`<span class="bound-stack" aria-hidden="true">${below}${front}</span>`:front
+}
 function shelfCard(book,data={}){
   if(book.item_type==="study_set")return studySetCard(book)
   if(isShelfField(book))return fieldShelfCard(book,data)
   const collection=isCollection(book),count=arr(book.members).length,dialogue=!collection&&book.content_kind==="dialogue"
-  const image=book.cover_url?`<img src="${esc(book.cover_url)}" alt="" loading="lazy" onerror="this.remove()">`:""
-  const cover=dialogue&&!book.cover_url?dialogueBookCover(book):`<span class="book-cover" style="--cloth:${esc(book.cloth||"#263239")};--foil:${esc(book.foil||"#f4e8cc")}"><span class="book-cover-fallback"><i aria-hidden="true"></i><strong>${esc(book.title)}</strong><small>${esc(book.author)}</small></span>${image}</span>`
+  const volume=dialogue&&!book.cover_url?dialogueBookCover(book):shelfBookVolume(book,{dialogue})
+  const cover=collection?boundStack(volume,book.members):volume
   const layers=arr(book.layers).map(layer=>`<b>${esc(layer)}</b>`).join("")
   const kind=collection?`${count} ${book.content_kind==="lecture"?"lectures":"volumes"}`:book.content_kind==="lecture"?"Lecture":book.content_kind==="dialogue"?"Dialogue":""
   const menu=collection&&!studySetsAvailable(data)?"":shelfMenuToggle(book,collection?"Collection options":dialogue?"Dialogue options":"Book options")
   const canSelect=librarySelectionAvailable(data)&&libraryMemberIds(book).length>0,checked=libraryCheckState(book,new Set(librarySelectedIds(data)))
   const selection=canSelect?`<button type="button" class="book-selection" data-library-select="${esc(book.id)}" role="checkbox" aria-checked="${checked}" aria-label="${esc(collection?`Select all ${count} books in ${book.title}`:`Select ${book.title}`)}"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path data-selection-mark d="${checked==="mixed"?"M6 10h8":checked==="true"?"m6 10 3 3 5-6":""}"/></svg></button>`:""
   const cardIdentity=collection?(menu?`data-book-collection="${esc(book.id)}"`:""):`data-book-work="${esc(book.id)}"`
-  return `<div class="book-card ${collection?"book-collection":dialogue?"book-dialogue":""} ${canSelect&&checked==="true"?"is-selected":canSelect&&checked==="mixed"?"is-part-selected":""}" ${cardIdentity}><button type="button" class="book-open" ${collection?"data-open-collection":"data-open-work"}="${esc(book.id)}" data-reading-title="${esc(book.title)}" aria-label="${esc(`${collection?"Open collection":"Study"}: ${book.title}${collection?`, ${kind}`:""}`)}"><span class="book-object">${cover}</span><span class="book-copy"><strong title="${esc(book.title)}">${esc(book.title)}</strong><span>${esc(book.author)}${book.year?` · ${esc(book.year)}`:""}</span><span class="book-layers">${kind?`<b class="book-kind">${esc(kind)}</b>`:""}${book.archived?'<b class="book-kind">Archived</b>':""}${layers}</span></span></button>${selection}${menu}</div>`
+  return `<div class="book-card ${collection?"book-collection":dialogue?"book-dialogue":""} ${canSelect&&checked==="true"?"is-selected":canSelect&&checked==="mixed"?"is-part-selected":""}" ${cardIdentity}><button type="button" class="book-open" ${collection?"data-open-collection":"data-open-work"}="${esc(book.id)}" data-reading-title="${esc(book.title)}" aria-label="${esc(`${collection?"Open collection":"Study"}: ${book.title}${collection?`, ${kind}`:""}`)}"><span class="book-object">${cover}</span><span class="book-copy">${shelfTitle(book.title)}<span>${esc(book.author)}${book.year?` · ${esc(book.year)}`:""}</span><span class="book-layers">${kind?`<b class="book-kind">${esc(kind)}</b>`:""}${book.archived?'<b class="book-kind">Archived</b>':""}${layers}</span></span></button>${selection}${menu}</div>`
 }
 function setupBookMenu(runtime){
   const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
@@ -2829,10 +2929,10 @@ function shelfCategory(data,state,collection){
 }
 function studySetCard(set){
   const count=Number(set.count)||0,members=arr(set.members),front=members[0]||{}
-  const leafImage=book=>book.cover_url?`<img src="${esc(book.cover_url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`:""
-  const leaves=members.length>1?members.slice(1,4).reverse():[{}]
-  const fan=leaves.map(book=>`<i class="study-set-leaf" style="--cloth:${esc(book.cloth||"#365148")}">${leafImage(book)}</i>`).join("")
-  return `<div class="book-card book-study-set"><button type="button" class="book-open" data-study-set-action="study_set_open" data-study-set-id="${esc(set.id)}" aria-label="${esc(`Open study set: ${set.title}`)}"><span class="book-object" aria-hidden="true"><span class="study-set-fan">${fan}</span><span class="book-cover study-set-jacket" style="--cloth:${esc(front.cloth||"#274238")};--foil:${esc(front.foil||"#d9d1ad")}"><span class="book-cover-fallback">${STUDY_SET_MARK}<strong>${esc(set.title)}</strong><small>CARE Study set</small></span>${leafImage(front)}</span></span><span class="book-copy"><strong>${esc(set.title)}</strong><span>${count} ${count===1?"item":"items"}</span><span class="book-layers"><b class="book-kind">Study set</b></span></span></button></div>`
+  const image=shelfJacketImage(front),binding=`--cloth:${esc(front.cloth||"#274238")};--foil:${esc(front.foil||"#d9d1ad")}`
+  const jacket=`<span class="book-cover study-set-jacket"><span class="book-cover-fallback">${STUDY_SET_MARK}<strong>${esc(set.title)}</strong><small>CARE Study set</small></span>${image}</span>`
+  const cover=boundStack(boundVolume(binding,jacket),members)
+  return `<div class="book-card book-study-set"><button type="button" class="book-open" data-study-set-action="study_set_open" data-study-set-id="${esc(set.id)}" aria-label="${esc(`Open study set: ${set.title}`)}"><span class="book-object" aria-hidden="true">${cover}</span><span class="book-copy">${shelfTitle(set.title)}<span>${count} ${count===1?"item":"items"}</span><span class="book-layers"><b class="book-kind">Study set</b></span></span></button></div>`
 }
 const STUDY_SET_DRAG_TYPE="application/x-care-study-set-items"
 const STUDY_SET_ADD_LIMIT=500
@@ -3183,7 +3283,6 @@ function setupConnectionReader(runtime){
     const pane=input.closest("[data-pane]"),control=input.closest("[data-connection-layer-control]"),stops=[...control.querySelectorAll("[data-connection-layer-stop]")],index=Math.max(0,Math.min(stops.length-1,Number(value)||0)),stop=stops[index],source=stop.dataset.connectionLayerReading
     input.value=String(index);input.setAttribute("aria-valuetext",stop.dataset.connectionLayerLabel)
     control.querySelector("[data-connection-layer-title]").textContent=stop.dataset.connectionLayerLabel
-    control.querySelector("[data-connection-layer-count]").textContent=index?`${index} / ${stops.length-1}`:`${stops.length-1} readings`
     stops.forEach((button,position)=>{
       const selected=position===index
       button.classList.toggle("active",selected);button.setAttribute("aria-pressed",String(selected));button.tabIndex=selected?0:-1
@@ -3516,7 +3615,7 @@ function setup(root,studioEmbed=false){
     if(runtime.shelfSignature===signature)return false
     runtime.shelfSignature=signature
     runtime.shelfSetId=setId
-    const sort=!previousSet&&SHELF_SORTS.some(([id])=>id===runtime.shelf.sort)?runtime.shelf.sort:runtime.mainShelfSort
+    const sort=!previousSet&&!runtime.shelf.collection&&SHELF_SORTS.some(([id])=>id===runtime.shelf.sort)?runtime.shelf.sort:runtime.mainShelfSort
     runtime.mainShelfSort=sort
     runtime.shelf={...shelfDefaults(shelfScope(data)),sort}
     if(setId){runtime.shelf.kind="all";runtime.shelf.sort="study_set"}
@@ -3525,7 +3624,7 @@ function setup(root,studioEmbed=false){
     return true
   }
   runtime.saveShelf=()=>{
-    if(runtime.data?.active_study_set)return
+    if(runtime.data?.active_study_set||runtime.shelf.collection)return
     if(SHELF_SORTS.some(([id])=>id===runtime.shelf.sort))runtime.mainShelfSort=runtime.shelf.sort
     try{if(!studioEmbed)root.ownerDocument.defaultView?.sessionStorage?.setItem(SHELF_STATE_KEY,JSON.stringify({...runtime.shelf,sort:runtime.mainShelfSort}))}catch(_){}
   }
@@ -3628,7 +3727,7 @@ function setup(root,studioEmbed=false){
     if(routes&&!routes.hidden){runtime.openPreparedReference(routes.dataset.openPassageRoutes||routes.dataset.openAxiomRoutes);return}
     if(runtime.onSliderClick?.(event))return
     const collection=event.target.closest("[data-open-collection]");if(collection){runtime.shelf={...shelfDefaults(),kind:"all",collection:collection.dataset.openCollection,sort:"collection"};runtime.paintShelf(true);root.querySelector("[data-close-collection]")?.focus();return}
-    const closeCollection=event.target.closest("[data-close-collection]");if(closeCollection){const previous=runtime.shelf.collection;runtime.shelf={...shelfDefaults(),...(runtime.data?.active_study_set?{kind:"all",sort:"study_set"}:{})};runtime.paintShelf(true);root.querySelector(`[data-open-collection="${CSS.escape(previous)}"]`)?.focus();return}
+    const closeCollection=event.target.closest("[data-close-collection]");if(closeCollection){const previous=runtime.shelf.collection;runtime.shelf={...shelfDefaults(),sort:runtime.mainShelfSort,...(runtime.data?.active_study_set?{kind:"all",sort:"study_set"}:{})};runtime.paintShelf(true);root.querySelector(`[data-open-collection="${CSS.escape(previous)}"]`)?.focus();return}
     if(runtime.data?.web_study_sets&&event.target.closest("[data-open-web-study-sets],[data-new-web-study-set]")){
       runtime.api?.setTriggerValue("open_study_sets",{create:Boolean(event.target.closest("[data-new-web-study-set]"))})
       return
@@ -3657,28 +3756,9 @@ function setup(root,studioEmbed=false){
     const pane=event.target.closest("[data-pane-target]");if(pane){runtime.focus(pane.dataset.paneTarget);return}
     const step=event.target.closest("[data-step]");if(step){runtime.step(Number(step.dataset.step));return}
   }
-  runtime.paintSlider=(input,position,neighbors=false)=>{
-    const options=sliderOptions(runtime.data?.stack,input.dataset.sheetSlider),index=sliderIndex(position,options.length),option=options[index]
-    if(!option)return
-    const title=sliderTitle(option),control=input.closest?.("[data-slider-control]")
-    input.value=String(sliderPosition(position,options.length))
-    input.setAttribute?.("aria-valuetext",`${title} · ${index+1} of ${options.length}`)
-    if(control){
-      const heading=control.querySelector("[data-slider-title]"),count=control.querySelector("[data-slider-count]")
-      if(heading){heading.textContent=title;heading.title=title}
-      if(count)count.textContent=`${index+1} / ${options.length}`
-      // Long books have over a thousand stops. A drag changes only two dots;
-      // rewriting every stop on every pointer event stalls the reading line.
-      const previous=control.querySelector("[data-slider-stop].active"),next=control.querySelector(`[data-slider-stop="${index}"]`)
-      if(previous!==next){
-        if(previous){previous.classList.toggle("active",false);previous.setAttribute("aria-pressed","false");previous.tabIndex=-1}
-        if(next){next.classList.toggle("active",true);next.setAttribute("aria-pressed","true");next.tabIndex=0}
-      }
-    }
-    paintSliderSteps(input,index,options.length)
-    paintSliderHeading(input,option,index)
-    keepSliderVisible(input,neighbors)
-  }
+  runtime.paintSlider=(input,position,neighbors=false)=>paintReadingSlider(
+    input,position,sliderOptions(runtime.data?.stack,input.dataset.sheetSlider),{neighbors,scrubbing:runtime.touchSlider?.input===input}
+  )
   runtime.chooseSlider=(input,position)=>{
     if(!input||input.disabled||runtime.isRouting())return
     const layer=input.dataset.sheetSlider,options=sliderOptions(runtime.data?.stack,layer),index=sliderIndex(position,options.length),option=options[index]
@@ -3710,13 +3790,26 @@ function setup(root,studioEmbed=false){
   }
   runtime.onSliderStart=event=>{
     const input=event.target.closest?.('[data-sheet-slider]')
-    if(input&&!input.disabled&&!runtime.isRouting())runtime.sliderGesture=input
+    if(!input||input.disabled||runtime.isRouting()||runtime.touchSlider||event.isPrimary===false)return
+    runtime.sliderGesture=input
+    if(!studioEmbed&&event.pointerType==='touch'&&input.dataset.sheetSlider!=='ORIGINAL'){
+      const track=input.closest('[data-slider-track]')
+      runtime.touchSlider={input,track,pointerId:event.pointerId,value:input.value}
+      track?.setAttribute('data-touch-scrubbing','')
+    }
   }
   runtime.onSliderEnd=event=>{
     const input=runtime.sliderGesture
     if(!input)return
+    const touch=runtime.touchSlider,cancelled=event.type==='pointercancel'
+    if(touch&&event.pointerId!==touch.pointerId)return
+    // A cancelled vertical gesture should restore the detent without panning
+    // the rail, even if the browser briefly moved the native range.
+    if(touch&&cancelled)runtime.paintSlider(input,touch.value)
+    touch?.track?.removeAttribute('data-touch-scrubbing')
+    runtime.touchSlider=null
     runtime.sliderGesture=null
-    if(event.type!=='pointercancel')runtime.chooseSlider(input,input.value)
+    if(!cancelled&&input.isConnected!==false)runtime.chooseSlider(input,input.value)
     studyNavigationSchedule(runtime)
     studyNavigationPrefetch(runtime)
   }
@@ -3725,6 +3818,9 @@ function setup(root,studioEmbed=false){
     if(!input||input.disabled||runtime.isRouting())return
     const options=sliderOptions(runtime.data?.stack,input.dataset.sheetSlider)
     runtime.paintSlider(input,sliderMagneticPosition(input.value,options.length))
+    // Keep the rail and the reading surface stable while a finger scrubs.
+    // Mouse users can still see prepared readings as they drag.
+    if(runtime.touchSlider?.input===input)return
     if(runtime.sliderGesture===input&&studyNavigationEligible(runtime.data)){
       const option=options[sliderIndex(input.value,options.length)]
       const request=option&&studyNavigationRequest(runtime,input.dataset.sheetSlider,option.id,runtime.data.stack.active_raw_unit_id)
@@ -3735,7 +3831,7 @@ function setup(root,studioEmbed=false){
   }
   runtime.onSliderChange=event=>{
     const input=event.target.closest?.("[data-sheet-slider]")
-    if(input)runtime.chooseSlider(input,input.value)
+    if(input&&runtime.touchSlider?.input!==input)runtime.chooseSlider(input,input.value)
   }
   runtime.onSliderClick=event=>{
     const step=event.target.closest?.("[data-slider-step]")
@@ -4457,23 +4553,34 @@ function setupConnectionResolution(runtime){
 }
 
 
+const paneSizeStates=new WeakMap()
 function fitPaneSize(pane){
   const strip=pane.parentElement,view=pane.ownerDocument?.defaultView
   if(!pane.dataset.paneSize||!strip?.matches?.('[data-strip]')||!view?.getComputedStyle)return
   const style=view.getComputedStyle(strip),available=strip.clientWidth-(parseFloat(style.paddingLeft)||0)-(parseFloat(style.paddingRight)||0)
   if(available<=0)return
-  // Layout widths exclude both the local track zoom and any corpus zoom.
-  const standard=Number(pane.dataset.paneStandardWidth)||0
-  const peers=[...strip.children].filter(other=>other!==pane&&!other.hidden&&other.matches?.('.desk-window[data-pane],.field-pane[data-pane]')&&!other.classList.contains('care-pane-minimized'))
-  const neighbour=peers.find(other=>other===pane.nextElementSibling)||peers.find(other=>other===pane.previousElementSibling)
-  const neighbourWidth=neighbour?(neighbour.dataset.paneSize?Number(neighbour.dataset.paneStandardWidth):neighbour.offsetWidth)||0:0
-  const beside=neighbour?available-neighbourWidth-(parseFloat(style.columnGap)||0):available
-  // Keep the neighbour fully visible when there is room. When it cannot fit,
-  // let it move partly offscreen so Wide still enlarges the selected pane.
-  const wide=Math.max(standard*1.2,Math.min(Math.max(680,available*.62),beside))
-  const wideLimit=available-Math.min(56,Math.max(0,(available-standard)*.35))
-  const width=pane.dataset.paneSize==='full'?available:Math.min(wideLimit,wide)
-  const value=width+'px'
+  const state=paneSizeStates.get(pane)
+  let preferred=state?.preferredWidth
+  if(!preferred){
+    preferred=available
+    if(pane.dataset.paneSize==='wide'){
+      // Layout widths exclude both local track zoom and any corpus zoom.
+      const standard=Number(pane.dataset.paneStandardWidth)||0
+      const peers=[pane.nextElementSibling,pane.previousElementSibling]
+      const neighbour=peers.find(other=>other&&!other.hidden&&other.matches?.('.desk-window[data-pane],.field-pane[data-pane]')&&!other.classList.contains('care-pane-minimized'))
+      const neighbourWidth=neighbour?(neighbour.dataset.paneSize?Number(neighbour.dataset.paneStandardWidth):neighbour.offsetWidth)||0:0
+      const beside=neighbour?available-neighbourWidth-(parseFloat(style.columnGap)||0):available
+      // Keep the neighbour fully visible when there is room. When it cannot fit,
+      // let it move partly offscreen so Wide still enlarges the selected pane.
+      const wide=Math.max(standard*1.2,Math.min(Math.max(680,available*.62),beside))
+      const wideLimit=available-Math.min(56,Math.max(0,(available-standard)*.35))
+      preferred=Math.min(wideLimit,wide)
+    }
+    // Window resizing can temporarily constrain the choice. Only the size
+    // control replaces it, so widening the window restores the same measure.
+    if(state)state.preferredWidth=preferred
+  }
+  const value=Math.min(available,preferred)+'px'
   if(pane.style.getPropertyValue('--care-pane-sized-width')!==value)pane.style.setProperty('--care-pane-sized-width',value)
 }
 function paintPaneSizeControl(button,pane,state){
@@ -4484,8 +4591,8 @@ function paintPaneSizeControl(button,pane,state){
   const names={standard:'Standard',wide:'Wide',full:'Full width'},next={standard:'wide',wide:'full',full:'standard'}
   const label=`Pane size: ${names[size]}. Change to ${names[next[size]]}`
   button.title=label;button.setAttribute('aria-label',label);button.setAttribute('aria-pressed',String(size!=='standard'))
-  const path={standard:'M4 2h4v8H4z',wide:'M2.5 2h7v8h-7z',full:'M1 2h10v8H1z'}
-  button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${path[size]}"/></svg>`
+  const width={standard:4,wide:6,full:9}[size]
+  button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="${(12-width)/2}" y="2.5" width="${width}" height="7" rx=".55"/></svg>`
 }
 function alignSizedPane(pane){
   const strip=pane.parentElement,view=pane.ownerDocument?.defaultView
@@ -4610,6 +4717,7 @@ function installPaneControls(root,states,onChange=()=>{},scope=""){
     const bar=pane.querySelector(":scope > .window-titlebar,:scope > .pane-top")
     if(!bar||pane.dataset.pane==="connection:explore")continue
     const key=scope+"|"+pane.dataset.pane,state=states[key]||(states[key]={}),name=(bar.querySelector("strong .reader-full-title")||bar.querySelector("strong"))?.textContent?.trim()||"pane"
+    paneSizeStates.set(pane,state)
     let controls=bar.querySelector(".care-pane-controls")
     if(!controls){controls=root.ownerDocument.createElement("div");controls.className="care-pane-controls";controls.setAttribute("role","group");controls.setAttribute("aria-label",`Controls for ${name}`);for(const [action,glyph] of [["minimize","−"],["sections","⌃"],["size","↔"],["reading","⤢"]]){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl=action;button.textContent=glyph;controls.append(button)}bar.prepend(controls)}
     if(![...controls.children].some(button=>button.dataset.paneControl==="reading")){const button=root.ownerDocument.createElement("button");button.type="button";button.dataset.paneControl="reading";controls.append(button)}
@@ -4633,7 +4741,20 @@ function installPaneControls(root,states,onChange=()=>{},scope=""){
         }
       }
       pane.classList.toggle("care-pane-minimized",Boolean(state.minimized))
-      for(const button of controls.children){const action=button.dataset.paneControl;if(action==="reading"){paintPaneReadingControl(button,pane);continue}if(action==="size"){paintPaneSizeControl(button,pane,state);continue}const label=action==="minimize"?(state.minimized?"Restore":"Minimise")+` ${name}`:([...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open)?"Fold":"Unfold")+` all sections in ${name}`;button.title=label;button.setAttribute("aria-label",label);button.setAttribute("aria-pressed",String(action==="minimize"?Boolean(state.minimized):![...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open)));const folded=![...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")).some(section=>section.open),path=action==="minimize"?(state.minimized?"M2 6h8M6 2v8":"M2 6h8"):(folded?"M3 4l3-3 3 3M3 8l3 3 3-3":"M3 1l3 3 3-3M3 11l3-3 3 3");button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${path}"/></svg>`;if(action==="sections")button.disabled=![...pane.querySelectorAll("details")].some(section=>!section.matches?.(".sheet-versions"))}
+      const sections=[...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions"))
+      for(const button of controls.children){
+        const action=button.dataset.paneControl
+        if(action==="reading"){paintPaneReadingControl(button,pane);continue}
+        if(action==="size"){paintPaneSizeControl(button,pane,state);continue}
+        const minimize=action==="minimize",pressed=minimize?Boolean(state.minimized):!sections.some(section=>section.open)
+        const label=minimize?`${pressed?"Restore":"Minimise"} ${name}`:`${pressed?"Unfold":"Fold"} all sections in ${name}`
+        const path=minimize
+          ?(pressed?"M2.5 6h7M6 2.5v7":"M2.5 6h7")
+          :(pressed?"M3.5 4.5 6 2l2.5 2.5M3.5 7.5 6 10l2.5-2.5":"M3.5 2 6 4.5 8.5 2M3.5 10 6 7.5 8.5 10")
+        button.title=label;button.setAttribute("aria-label",label);button.setAttribute("aria-pressed",String(pressed))
+        button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${path}"/></svg>`
+        if(!minimize)button.disabled=!sections.length
+      }
     }
     // Assign a local handler so repeated renders neither duplicate events nor
     // invoke Streamlit. The reading body and scroll positions stay mounted.
@@ -4643,7 +4764,10 @@ function installPaneControls(root,states,onChange=()=>{},scope=""){
       const action=button.dataset.paneControl
       if(action==="reading"){togglePaneReading(pane);return}
       if(action==="minimize")state.minimized=!state.minimized
-      else if(action==="size")state.size=state.size==="wide"?"full":state.size==="full"?"standard":"wide"
+      else if(action==="size"){
+        state.size=state.size==="wide"?"full":state.size==="full"?"standard":"wide"
+        delete state.preferredWidth
+      }
       else{const sections=[...pane.querySelectorAll("details")].filter(section=>!section.matches?.(".sheet-versions")),open=!sections.some(section=>section.open);sections.forEach(section=>section.open=open)}
       paint();onChange(pane)
       // Queue after the reader's track refit, so the clicked pane stays in view.
@@ -4666,7 +4790,7 @@ function paneReadingContains(outer,node){
 function paintPaneReadingControl(button,pane){
   const owner=pane.ownerDocument?.[PANE_READING_KEY]?.owner,active=Boolean(owner&&paneReadingContains(owner,pane)),label=active?'Exit reading mode':'Enter reading mode'
   button.title=label;button.setAttribute('aria-label',label);button.setAttribute('aria-pressed',String(active))
-  button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${active?'M1 4h3V1M8 1v3h3M1 8h3v3M8 11V8h3':'M4 1H1v3M8 1h3v3M1 8v3h3M11 8v3H8'}"/></svg>`
+  button.innerHTML=`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${active?'M7 5V1l4 4zM5 7v4L1 7z':'M10.5 1.5v4l-4-4zM1.5 10.5v-4l4 4z'}"/></svg>`
 }
 function togglePaneReading(pane){pane.ownerDocument?.[PANE_READING_KEY]?.toggle(pane)}
 function startStudioPaneReading(runtime){
@@ -5199,10 +5323,13 @@ function replaceStudyDeskMarkup(runtime,markup){
   const root=runtime.root,host=runtime.dialoguePlayer?.host
   const original=root.querySelector('[data-pane="original"]'),source=runtime.data?.stack?.original_reader
   const retainedPanes=new Map([...root.querySelectorAll('[data-pane]')].map(pane=>[pane.dataset.pane,pane]))
-  const retainedSliders=new Map([...root.querySelectorAll('[data-sheet-slider]')].filter(input=>!input.closest('[data-connection-book]')).map(input=>[input.dataset.sheetSlider,input.closest('[data-slider-control]')]))
+  const retainedSliders=new Map([...root.querySelectorAll('[data-sheet-slider]')].filter(input=>!input.closest('[data-connection-book]')).map(input=>[
+    input.dataset.sheetSlider,{rail:input.closest('[data-slider-control]'),heading:paneSliderHeading(input)},
+  ]))
   const restoreReading=()=>{
     for(const placeholder of root.querySelectorAll('[data-retained-pane]')){const pane=retainedPanes.get(placeholder.dataset.retainedPane);if(pane)placeholder.replaceWith(pane)}
-    for(const placeholder of root.querySelectorAll('[data-retained-slider]')){const slider=retainedSliders.get(placeholder.dataset.retainedSlider);if(slider)placeholder.replaceWith(slider)}
+    for(const placeholder of root.querySelectorAll('[data-retained-slider]')){const rail=retainedSliders.get(placeholder.dataset.retainedSlider)?.rail;if(rail)placeholder.replaceWith(rail)}
+    for(const placeholder of root.querySelectorAll('[data-retained-slider-heading]')){const heading=retainedSliders.get(placeholder.dataset.retainedSliderHeading)?.heading;if(heading)placeholder.replaceWith(heading)}
   }
   const keepOriginal=original&&source&&runtime.originalState?.id===source.id
   const restoreOriginal=()=>{restoreReading();const replacement=root.querySelector('[data-pane="original"]');if(keepOriginal&&replacement)replacement.replaceWith(original)}
@@ -6332,20 +6459,38 @@ function beautifulTextOpeningLabel(value,semanticHeading=false){
   return ''
 }
 
-function beautifulTextHeadingKey(value){return String(value??'').normalize('NFC').replace(/\s+/g,' ').trim().toLocaleLowerCase()}
+function beautifulTextHeadingKey(value){return String(value??'').normalize('NFC').replace(/\s+/g,' ').trim().replace(/(?<!\.)\.$/u,'').toLowerCase()}
 
 function beautifulTextOpeningTitles(source){
   const encoded=source.dataset.beautifulOpeningTitles??source.querySelector(':scope>.source-head')?.dataset.beautifulOpeningTitles
-  try{const titles=JSON.parse(encoded||'[]');return new Set(Array.isArray(titles)?titles.filter(value=>typeof value==='string'&&value.trim()&&value.length<=140).map(beautifulTextHeadingKey):[])}catch(_){return new Set()}
+  const title=source.querySelector(':scope>.source-head h2 .reader-full-title')?.textContent
+  let titles=[]
+  try{const saved=JSON.parse(encoded||'[]');if(Array.isArray(saved))titles=saved}catch(_){}
+  return new Set([title,...titles].filter(value=>typeof value==='string'&&value.trim()&&value.length<=300).map(beautifulTextHeadingKey))
 }
 
+const BEAUTIFUL_HEADING='h1,h2,h3,h4,h5,h6'
+const BEAUTIFUL_HEADING_PROTECTED='a,pre,code,kbd,samp,math,svg,table,ul,ol,li,blockquote,br,img,.care-reading-math,.katex,.MathJax,[data-verse],[data-poetry],.verse,.poem,.poetry'
+
 function beautifulTextOpeningKind(container,verifiedTitles=null){
-  if(!container||container.querySelector('a,pre,code,kbd,samp,math,svg,table,ul,ol,li,blockquote,br,img,.care-reading-math,.katex,.MathJax,[data-verse],[data-poetry],.verse,.poem,.poetry'))return ''
-  const blocks=container.querySelectorAll('p,h1,h2,h3,h4,h5,h6')
+  if(!container||container.matches?.(BEAUTIFUL_HEADING_PROTECTED)||container.querySelector(BEAUTIFUL_HEADING_PROTECTED))return ''
+  const blocks=container.querySelectorAll('p,'+BEAUTIFUL_HEADING)
   if(blocks.length>1)return ''
-  const heading=container.querySelector('h1,h2,h3,h4,h5,h6'),text=container.textContent.trim()
-  if(verifiedTitles?.has(beautifulTextHeadingKey(text)))return beautifulTextOpeningLabel(text,true)
+  const heading=container.matches?.(BEAUTIFUL_HEADING)?container:container.querySelector(BEAUTIFUL_HEADING),text=container.textContent.trim()
+  if(text&&verifiedTitles?.has(beautifulTextHeadingKey(text)))return beautifulTextOpeningLabel(text,true)||'heading'
   return beautifulTextOpeningLabel(text,!!heading&&heading.textContent.trim()===text)
+}
+
+function beautifulTextMixedOpening(container,titles){
+  const wrapper=container?.querySelector(':scope>.care-reading-text')||container
+  const blocks=[...(wrapper?.childNodes||[])].filter(node=>node.nodeType===1?!node.matches('.beautiful-source-notes'):node.nodeType===3&&node.nodeValue.trim())
+  const duplicates=[]
+  let opening=blocks.length>0
+  for(const block of blocks){
+    if(!block.matches?.('p,'+BEAUTIFUL_HEADING)||!beautifulTextOpeningKind(block,titles)){opening=false;break}
+    if(titles.has(beautifulTextHeadingKey(block.textContent)))duplicates.push(block)
+  }
+  return {duplicates,opening,onlyDuplicates:duplicates.length>0&&duplicates.length===blocks.length}
 }
 
 function beautifulSourceDetail(passage){
@@ -6414,6 +6559,17 @@ function beautifulTextNormalizeProse(value,knownOCR=false){
 
 const BEAUTIFUL_TEXT_PROTECTED='a,pre,code,kbd,samp,math,svg,script,style,textarea,table,ul,ol,li,blockquote,details,h1,h2,h3,h4,h5,h6,.care-reading-math,.katex,.MathJax,[data-verse],[data-poetry],.verse,.poem,.poetry,[contenteditable]'
 
+function beautifulTextRunningParagraph(paragraph,titles){
+  if(paragraph.tagName!=='P'||paragraph.querySelector('br,img,figure,pre,table,blockquote,math,svg,[data-verse],[data-poetry],.verse,.poem,.poetry'))return false
+  const text=paragraph.textContent.trim()
+  if(!text||/[\r\n]/.test(text)||beautifulTextOpeningLabel(text)||titles?.has(beautifulTextHeadingKey(text)))return false
+  if(/^(?:[\[>#•*–—-]|`{3,}|~{3,}|(?:\d+|[a-z])[.)]\s|(?:page|p\.)\s+(?:\d|[ivxlcdm]+\b))/i.test(text))return false
+  const words=text.match(/\p{L}[\p{L}\p{M}’'-]*/gu)||[]
+  const sentence=/[.!?。！？][’”"')»\]]*$/u.test(text)
+  if(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text))return sentence&&text.length>=12
+  return /\p{Ll}/u.test(text)&&(words.length>=8||sentence&&words.length>=4)
+}
+
 function beautifulTextOmitVerifiedPrefix(container,prefix){
   // This is an evidence-backed hint from the source payload, never a guess
   // from the shape or length of a word. Only the first standalone fragment
@@ -6437,7 +6593,7 @@ function beautifulTextOmitVerifiedPrefix(container,prefix){
   return true
 }
 
-function beautifulTextProseClone(container){
+function beautifulTextProseClone(container,titles){
   const clone=container.cloneNode(true),document=container.ownerDocument
   const article=container.closest('.passage'),projection=article?.dataset.beautifulReadingHtml,original=article?.dataset.beautifulOriginalHtml
   if(projection&&original){
@@ -6482,6 +6638,7 @@ function beautifulTextProseClone(container){
         token.node.replaceWith(document.createTextNode(gap))
       }
     }
+    if(beautifulTextRunningParagraph(paragraph,titles))paragraph.setAttribute('data-beautiful-paragraph','')
   }
   return clone
 }
@@ -6533,10 +6690,9 @@ function beautifulTypesetSource(source){
     for(const block of blocks){
       if(!opening)break
       const label=block.textContent.trim()
+      if(block.hasAttribute('data-beautiful-duplicate-heading'))continue
       if(block.tagName==='P'&&beautifulTextOpeningLabel(label)==='heading'){
-        const title=source.querySelector(':scope>.source-head h2')?.textContent||''
-        const duplicate=!studio&&beautifulTextHeadingKey(title).includes(beautifulTextHeadingKey(label))
-        attr(block,'data-beautiful-chapter-label',duplicate?'duplicate':'true')
+        attr(block,'data-beautiful-chapter-label','true')
       }
       else if(block.tagName==='P'&&label.length<420&&/^(?:concerning\b|dionysius\b|to\s+\w+.*:|sur\b|de\s+[“"«])/i.test(label))attr(block,'data-beautiful-subtitle','true')
       else opening=false
@@ -6667,33 +6823,55 @@ function setupBeautifulText(runtime){
     root.dataset.beautifulText=String(enabled)
     root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed',String(enabled)))
   }
+  const setOpening=(node,name,value)=>{
+    openings.set(node,{name,previous:node.getAttribute(name)})
+    node.setAttribute(name,value)
+  }
+  const clearOpenings=()=>{
+    for(const [node,{name,previous}] of openings)if(root.contains(node)){
+      if(previous===null)node.removeAttribute(name)
+      else node.setAttribute(name,previous)
+    }
+    openings.clear()
+  }
   const refresh=()=>mutate(()=>{
     clearTypesets()
-    for(const [node,previous] of openings){if(root.contains(node)){if(previous===null)node.removeAttribute('data-beautiful-opening');else node.setAttribute('data-beautiful-opening',previous)}}
-    openings.clear()
+    clearOpenings()
     for(const [container,nodes] of originals){if(!root.contains(container)){originals.delete(container);continue}if(!enabled){container.replaceChildren(...nodes);originals.delete(container);prepared.delete(container)}}
     for(const [article,record] of details){if(!root.contains(article)){details.delete(article);continue}if(!enabled||routeContext()||studioFiltered(article)||studioMarked(article)||(record.kind==='heading'?article.dataset.beautifulOpeningFoldable!=='true':article.dataset.beautifulCompact!=='true')){restoreDetail(article,record);details.delete(article)}}
     paint()
     if(!enabled){runtime.paintSelection?.();return}
+    const sources=[...root.querySelectorAll('.source-copy')]
+    const openingTitles=new Map(sources.map(source=>[source,beautifulTextOpeningTitles(source)]))
     for(const container of root.querySelectorAll('.source-copy .passage>.passage-text')){
       if(container.closest('.route-pane,.route-source-card,.inspector-pane,.inspect-card')||originals.has(container)||prepared.has(container))continue
-      const clone=beautifulTextProseClone(container)
+      const clone=beautifulTextProseClone(container,openingTitles.get(container.closest('.source-copy')))
       prepared.add(container)
       if(clone.innerHTML!==container.innerHTML){originals.set(container,[...container.childNodes]);container.replaceChildren(...clone.childNodes)}
     }
     const headingDuplicates=new Set()
-    for(const source of root.querySelectorAll('.source-copy')){
+    for(const source of sources){
       if(studioFiltered(source)||source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
-      const leading=[...source.querySelectorAll(':scope>.passage-row>.passage,:scope>.passage')],titles=beautifulTextOpeningTitles(source)
+      const leading=[...source.querySelectorAll(':scope>.passage-row>.passage,:scope>.passage')],titles=openingTitles.get(source)
       let count=0
       for(const article of leading.slice(0,8)){
         if(article.dataset.beautifulCompact==='true')continue
         const text=article.querySelector(':scope>.passage-text'),kind=beautifulTextOpeningKind(text,titles)
-        if(!kind)break
-        openings.set(article,article.getAttribute('data-beautiful-opening'));article.dataset.beautifulOpening=kind;count++
-        if(article.dataset.beautifulOpeningFoldable==='true'&&titles.has(beautifulTextHeadingKey(text.textContent)))headingDuplicates.add(article)
+        if(kind){
+          setOpening(article,'data-beautiful-opening',kind);count++
+          if(article.dataset.beautifulOpeningFoldable==='true'&&titles.has(beautifulTextHeadingKey(text.textContent)))headingDuplicates.add(article)
+          continue
+        }
+        const {duplicates,opening,onlyDuplicates}=beautifulTextMixedOpening(text,titles)
+        if(onlyDuplicates){
+          if(article.dataset.beautifulOpeningFoldable==='true'&&!text.querySelector(':scope>.beautiful-source-notes'))headingDuplicates.add(article)
+        }else if(!routeContext()&&!studioMarked(article)){
+          // A mixed passage keeps its address and all remaining source blocks.
+          for(const heading of duplicates)setOpening(heading,'data-beautiful-duplicate-heading','')
+        }
+        if(!opening)break
       }
-      if(count){openings.set(source,source.getAttribute('data-beautiful-opening'));source.dataset.beautifulOpening='true'}
+      if(count)setOpening(source,'data-beautiful-opening','true')
     }
     for(const [article,record] of details)if(record.kind==='heading'&&!headingDuplicates.has(article)){restoreDetail(article,record);details.delete(article)}
     const candidates=[...[...root.querySelectorAll('.source-copy .passage[data-beautiful-compact="true"]')].map(article=>({article,kind:'source'})),...[...headingDuplicates].map(article=>({article,kind:'heading'}))]
@@ -6708,7 +6886,7 @@ function setupBeautifulText(runtime){
       }
       fold(article,record)
     }
-    if(!routeContext())for(const source of root.querySelectorAll('.source-copy')){
+    if(!routeContext())for(const source of sources){
       if(studioFiltered(source)||source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
       const typeset=beautifulTypesetSource(source)
       if(typeset){typesets.set(source,typeset);marginObserver?.observe(source)}
@@ -6774,13 +6952,13 @@ function setupBeautifulText(runtime){
     disposed=true;observer?.disconnect();marginObserver?.disconnect();if(frame!==null)view.cancelAnimationFrame(frame);if(marginFrame!==null)view.cancelAnimationFrame(marginFrame)
     if(controlFrame!==null)view.cancelAnimationFrame(controlFrame)
     clearTypesets()
+    clearOpenings()
     root.removeEventListener('click',click,true);root.removeEventListener('keydown',key,true)
     root.removeEventListener('scroll',queueControls,true)
     view.removeEventListener(BEAUTIFUL_TEXT_EVENT,change);view.removeEventListener('storage',storage)
     view.removeEventListener('resize',queueMargins)
     for(const [container,nodes] of originals)if(root.contains(container))container.replaceChildren(...nodes)
     for(const [article,record] of details)if(root.contains(article))restoreDetail(article,record)
-    for(const [node,previous] of openings)if(root.contains(node)){if(previous===null)node.removeAttribute('data-beautiful-opening');else node.setAttribute('data-beautiful-opening',previous)}
     root.removeAttribute('data-beautiful-text')
     root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed','false'))
     if(runtime.cleanupBeautifulText===cleanup){runtime.cleanupBeautifulText=null;runtime.paintBeautifulText=null}
@@ -6892,7 +7070,7 @@ function setupTitleView(runtime){
         const destination=(sliderVisible?slider.querySelector('.slider-heading'):null)||pane?.querySelector(':scope>.window-titlebar')
         if(!destination)continue
         let group=destination.querySelector(':scope>.reader-title-controls')
-        if(!group){group=doc.createElement('div');group.className='reader-title-controls';destination.insertBefore(group,destination.querySelector('[data-slider-count]'));groups.add(group)}
+        if(!group){group=doc.createElement('div');group.className='reader-title-controls';destination.appendChild(group);groups.add(group)}
         if(!moved.has(button)){
           const parent=button.parentNode,next=button.nextSibling,marker=doc.createComment('title-view-control')
           parent.insertBefore(marker,button);moved.set(button,{marker,parent,next})

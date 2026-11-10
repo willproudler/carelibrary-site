@@ -42,8 +42,8 @@
   gap: .45rem .85rem;
   min-height: 48px;
   padding: 4px .55rem;
-  background: linear-gradient(176deg, var(--room-surface, #191f28), #11161d 75%);
-  box-shadow: inset 0 1px #ffffff08;
+  background: color-mix(in srgb, var(--room-surface, #191f28) 58%, #11161d);
+  box-shadow: inset 0 1px #ffffff0b, inset 0 -1px #0003;
 }
 .beta-workbench::before { display: none; }
 .workbench-identity, .workbench-history, .workbench-switch, .workbench-tools { display: flex; align-items: center; }
@@ -243,6 +243,20 @@ html:not([data-care-toolbar-labels="true"]) .care-reference-component .crv-launc
 .reading-tabbar { position: relative; z-index: 50; display: flex; flex: 0 0 auto; min-width: 0; align-items: stretch; background: #0d1015; border-bottom: 1px solid #303641; }
 .reading-tabbar[hidden] { display: none; }
 .reading-tabbar .open-books { flex: 1; min-width: 0; border-bottom: 0; }
+
+/* The tabs sit in the darker cut beneath the main toolbar. */
+.care-library-shell:not([data-workbench-view="numogram"]) .reading-tabbar {
+  background-image: var(--care-workspace-material, none);
+  box-shadow: var(--care-workspace-finish, none);
+}
+.care-library-shell:not([data-workbench-view="numogram"]) .reading-tabbar .open-books { background: transparent; }
+.care-library-shell:not([data-workbench-view="numogram"]) .reading-tabbar .open-tab.active { box-shadow: var(--care-workspace-tab-seat, none); }
+.care-library-shell:not([data-workbench-view="numogram"]) .beta-workbench .workbench-library-menu > summary {
+  box-shadow: inset 0 1px 3px #0003, inset 0 -1px #ffffff08;
+}
+.care-library-shell:not([data-workbench-view="numogram"]) .workbench-menu {
+  box-shadow: inset 0 1px #ffffff0c, 0 12px 34px #0009;
+}
 .workbench-feature {
   width: min(26rem, calc(100% - 2rem)); padding: 1.1rem 1.2rem;
   border: 1px solid #465552; border-radius: .75rem; background: #182125; color: #e9eee7;

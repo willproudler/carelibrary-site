@@ -220,6 +220,7 @@ export default function({parentElement, data, setTriggerValue, onPickerOpen, onP
     hideHint()
     state.anchor.setAttribute('aria-expanded', 'false')
     state.menu = menu
+    panel.dataset.pickerMode = menu
     state.anchor = anchor
     state.folder = null
     search.value = ''

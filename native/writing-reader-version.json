@@ -1,8 +1,9 @@
 {
   "source": "care_platform/writing_review_browser_assets.py",
+  "mode_position_source": "care_platform/writing_editor/mode_position.js",
   "assets": {
     "template": "7ad42a7ca5bc835ed7b763faefda612ca554913bba6563b6b458f77809e124b2",
-    "css": "ea89c5227efeb543c72adafaa339c7bfca85636ad1839dc97b080f5f323529c2",
-    "js": "af8e90853c9928c2453864f3dc184a505b7c8c48d73498012121b516aa1a40c8"
+    "css": "17409ec54d3596fe65a6911b4a6859c138ed30a6a3d1303398aac9e33719288b",
+    "js": "5049a8d44a555c6647a96f273e4abb7766cbe2da636aae154f015781b264b1f4"
   }
 }

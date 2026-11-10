@@ -1,4 +1,4 @@
-import assets from './native/writing-reader-assets.mjs';
+import assets, {rememberWritingModePosition, restoreWritingModePosition, takeWritingModePosition} from './native/writing-reader-assets.mjs';
 import {studioReaderCitation} from './native/studio-footnotes.mjs';
 
 const blockTags = new Set('p div h1 h2 h3 h4 h5 h6 blockquote pre ul ol hr table'.split(' '));
@@ -172,8 +172,16 @@ export function mountNativeDraftReader(host, {
   const callbacks = {studio: onStudio, close: onClose};
 
   function started() {
-    if (stopped) return;
+    if (stopped || active) return;
     active = true;
+    const position = takeWritingModePosition(view, 'reader', draft.id);
+    const doc = frame.contentDocument;
+    if (position && doc?.scrollingElement) {
+      frame.contentWindow.careReaderDocumentZoom?.restore(position.zoom);
+      const block = Array.from(doc.querySelectorAll('[data-review-block]'))
+        .find(node => node.dataset.reviewBlock === position.block);
+      restoreWritingModePosition(position, doc.scrollingElement, block);
+    }
     status.remove();
     finish(true);
   }
@@ -245,6 +253,15 @@ export function mountNativeDraftReader(host, {
     },
     find: () => !readerEvent('care-reader-find'),
     draftPaper: () => frame?.contentDocument?.querySelector('#folio'),
+
+    rememberStudioPosition() {
+      const doc = active && frame.contentDocument;
+      if (!doc) return;
+      rememberWritingModePosition(view, 'studio', draft.id, doc.scrollingElement,
+        doc.querySelectorAll('[data-review-block]'), 'data-review-block', {
+          zoom: frame.contentWindow.careReaderDocumentZoom?.snapshot(),
+        });
+    },
     minimizeLibrary() {
       const button = frame?.contentDocument?.querySelector('#library-pane:not([hidden]) #library-minimize');
       button?.click();

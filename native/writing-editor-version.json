@@ -1,9 +1,9 @@
 {
-  "version": "folio_78",
+  "version": "folio_88",
   "source": "care_platform/writing_editor_assets.py",
   "assets": {
-    "writing-editor.html": "0b8081c1464a7f3035aeecdf08b9b3b55172f6756c5680c9ccb35e669305c7c6",
-    "writing-editor.css": "2070cf02fe27fb789997511d4d356012dc28f4f4ac05f9d30bfa633b8fd5760d",
-    "writing-editor.mjs": "a84705899319d01f193ab93fb5375e09f53ed21daec6762fb6c2de333a9391c6"
+    "writing-editor.html": "e39734e8fadcbb782a7a8ead3b3afbdbd80a870879fe7a2881f88c1222ac7ac1",
+    "writing-editor.css": "23c443e63108b17c8ac95661a1be1a8f96818a7e242edd47ba836144afc12339",
+    "writing-editor.mjs": "1930580da32d6bcf70281f501d2108747e319cec40a6e2106eb04456bf9a1f17"
   }
 }

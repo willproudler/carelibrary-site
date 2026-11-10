@@ -8,7 +8,7 @@ const field = asset('study-field');
 
 test('Wide and Full visibly change the active pane even when both readings do not fit side by side', () => {
   for (const [source, count] of [[desk, 1], [field, 2]]) {
-    const implementations = [...source.matchAll(/function fitPaneSize\(pane\)\{[\s\S]*?\n\}/g)];
+    const implementations = [...source.matchAll(/const paneSizeStates=new WeakMap\(\)\nfunction fitPaneSize\(pane\)\{[\s\S]*?\n\}/g)];
     assert.equal(implementations.length, count);
     for (const [implementation] of implementations) {
       const fit = new Function(implementation + '\nreturn fitPaneSize;')();

@@ -3133,7 +3133,9 @@ function installWritingZoom(runtime) {
   const levels = choices.querySelectorAll("[data-zoom-level]");
   const increase = control.querySelector("[data-zoom-in]");
   const {signal} = runtime.controller;
+  const {well} = runtime.a4;
   let preference = "100";
+  let transferredFit;
   try {
     const saved = localStorage.getItem(writingZoomPreference);
     preference = saved === "fit" ? saved : String(writingZoomPercent(saved));
@@ -3141,6 +3143,7 @@ function installWritingZoom(runtime) {
     // Zoom can still change when browser storage is unavailable.
   }
   let percent = preference === "fit" ? 100 : Number(preference);
+  const fitGeometry = () => `${well.clientWidth}:${well.clientHeight}:${Boolean(runtime.continuous)}`;
 
   function paintControls() {
     readout.textContent = `${percent}%`;
@@ -3153,6 +3156,7 @@ function installWritingZoom(runtime) {
 
   function change(value) {
     if (runtime.composing || runtime.composingFootnote) return;
+    transferredFit = undefined;
     preference = value === "fit" ? value : String(writingZoomPercent(value));
     percent = preference === "fit" ? writingFitPercent(runtime) : Number(preference);
     applyWritingZoom(runtime, percent, true);
@@ -3171,8 +3175,25 @@ function installWritingZoom(runtime) {
     if (returnFocus) summary.focus({preventScroll: true});
   }
 
+  runtime.documentZoom = {
+    snapshot: () => ({preference, percent}),
+    restore(zoom) {
+      if (!zoom) return;
+      preference = zoom.preference === "fit" ? "fit" : String(writingZoomPercent(zoom.preference));
+      if (preference === "fit") {
+        percent = zoom.percent >= 1 && zoom.percent <= 100 ? zoom.percent : writingFitPercent(runtime);
+      } else {
+        percent = Number(preference);
+      }
+      applyWritingZoom(runtime, percent, false);
+      // Keep the incoming visual scale until the viewport or page layout changes.
+      transferredFit = preference === "fit" ? fitGeometry() : undefined;
+      paintControls();
+    },
+  };
   runtime.refreshWritingFit = () => {
-    if (preference !== "fit" || runtime.composing || runtime.composingFootnote) return;
+    if (preference !== "fit" || runtime.composing || runtime.composingFootnote || transferredFit === fitGeometry()) return;
+    transferredFit = undefined;
     const next = writingFitPercent(runtime);
     if (next === percent) return;
     percent = next;
@@ -4691,13 +4712,14 @@ function installWritingCollaboration(runtime) {
 }
 
 // Match the visible prose across the editable and read-only renderers by block ID.
-function rememberWritingModePosition(view, mode, draft, scroller, blocks, attribute, top = 0) {
+function rememberWritingModePosition(view, mode, draft, scroller, blocks, attribute, {top = 0, zoom} = {}) {
   if (!draft || !scroller) return;
   const first = scroller.scrollTop > 1 && Array.from(blocks).find(block => block.getBoundingClientRect().bottom > top + 1);
   const rect = first && first.getBoundingClientRect();
   view.careWritingModePosition = {
     mode, draft, time: Date.now(), block: first ? first.getAttribute(attribute) : "",
     ratio: rect && rect.height ? (top - rect.top) / rect.height : 0,
+    zoom,
   };
 }
 
@@ -5990,16 +6012,49 @@ function setLibraryExpanded(runtime, expanded) {
 function updateLibraryDockVisibility(runtime) {
   const hasLibrary = Boolean(runtime.libraryRequest);
   const minimized = hasLibrary && Boolean(runtime.libraryMinimized);
+  const open = hasLibrary && !minimized && !runtime.writingFullscreen;
   runtime.libraryDock.hidden = !hasLibrary;
-  runtime.libraryDock.inert = minimized;
-  runtime.root.classList.toggle("library-open", hasLibrary && !minimized);
+  runtime.libraryDock.inert = minimized || Boolean(runtime.writingFullscreen);
+  runtime.root.classList.toggle("library-open", open);
   runtime.root.classList.toggle("library-minimized", minimized);
   if (runtime.libraryResume) runtime.libraryResume.hidden = !minimized;
-  const open = hasLibrary && !minimized;
   if (!runtime.compact && runtime.libraryDockOpen !== open) {
     runtime.libraryDockOpen = open;
     const doc = runtime.root.ownerDocument;
     doc.dispatchEvent(new doc.defaultView.CustomEvent("care:library-companion-visibility", {detail:{open}}));
+  }
+}
+
+function setWritingFullscreen(runtime, active) {
+  if (runtime.compact || Boolean(runtime.writingFullscreen) === active) return;
+  const {root, writingFullscreenButton: button} = runtime;
+  const doc = root.ownerDocument;
+  runtime.writingFullscreen = active;
+  root.toggleAttribute("data-writing-fullscreen", active);
+  doc.documentElement.toggleAttribute("data-care-writing-fullscreen", active);
+  button.title = active ? "Exit writing view (Esc)" : "Enter writing view";
+  button.setAttribute("aria-label", active ? "Exit writing view" : "Enter writing view");
+  button.querySelector("span").textContent = active ? "Exit writing view" : "Writing view";
+  if (active) {
+    const style = runtime.writingFullscreenStyle = doc.createElement("style");
+    style.textContent = `
+      html[data-care-writing-fullscreen] { overflow: hidden !important; }
+      html[data-care-writing-fullscreen] :is(.st-key-care_studio_navigation_host, .beta-workbench, .app-header, #open-books) {
+        display: none !important;
+      }
+      html[data-care-writing-fullscreen] :is(.st-key-care_writing_studio_surface, [data-testid="stLayoutWrapper"]:has(> .st-key-care_writing_studio_surface)) {
+        overflow: visible !important;
+      }
+    `;
+    doc.head.append(style);
+  } else {
+    runtime.writingFullscreenStyle?.remove();
+  }
+  updateLibraryDockVisibility(runtime);
+  if (root.isConnected && runtime.a4) {
+    // The window size is unchanged, but the writing well has new bounds.
+    runtime.a4.signature = null;
+    refreshWritingA4(runtime, true);
   }
 }
 
@@ -6193,6 +6248,7 @@ function paintLibraryDock(runtime, dock) {
     return;
   }
   if (runtime.libraryRequest === dock.request) return;
+  setWritingFullscreen(runtime, false);
   runtime.libraryRequest = dock.request;
   runtime.libraryReportedWorkId = "";
   runtime.libraryMinimized = false;
@@ -6294,6 +6350,44 @@ function tuckWritingFormatBar(runtime, tucked) {
   runtime.measureWritingScroll?.();
 }
 
+function fitStudioFormatGroups(formatting, more, groups) {
+  const tools = more.parentElement;
+  // Measure the full row under the same width cap and container queries as
+  // the visible toolbar. Copying keeps focused controls and menus in place.
+  const probe = formatting.cloneNode(false);
+  probe.removeAttribute("id");
+  probe.classList.add("format-fit-probe");
+  probe.inert = true;
+  const row = tools.cloneNode(false);
+  const moreProbe = more.cloneNode(false);
+  moreProbe.open = false;
+  moreProbe.append(more.querySelector("summary").cloneNode(true));
+  const fixed = [...tools.querySelectorAll(".format-caption, .format-group:not([data-format-min])")]
+    .map(control => control.cloneNode(true));
+  fixed.push(moreProbe);
+  const entries = groups.map(entry => ({...entry, copy: entry.group.cloneNode(true)}));
+  row.append(...fixed, ...entries.map(entry => entry.copy));
+  probe.append(row, ...[...formatting.children].filter(child => child !== tools).map(child => child.cloneNode(true)));
+  formatting.parentElement.append(probe);
+
+  const gap = parseFloat(row.ownerDocument.defaultView.getComputedStyle(row).columnGap) || 0;
+  let room = row.getBoundingClientRect().width + gap;
+  for (const control of fixed) {
+    const {width} = control.getBoundingClientRect();
+    if (width) room -= width + gap;
+  }
+  const fitting = new Set();
+  for (const {group, copy} of entries.sort((first, second) => first.minWidth - second.minWidth)) {
+    const cost = copy.getBoundingClientRect().width + gap;
+    if (cost <= room + .1) {
+      fitting.add(group);
+      room -= cost;
+    }
+  }
+  probe.remove();
+  return fitting;
+}
+
 function installWritingFormatOverflow(runtime, options) {
   const rail = runtime.formatting.parentElement;
   if (!rail) return;
@@ -6314,14 +6408,14 @@ function installWritingFormatOverflow(runtime, options) {
   };
   const update = () => {
     const {width} = rail.getBoundingClientRect();
-    if (!width) return;
+    if (!width || (!runtime.compact && runtime.formatting.hidden)) return;
     const doc = rail.ownerDocument;
     const rem = parseFloat(doc.defaultView.getComputedStyle(doc.documentElement).fontSize) || 16;
-    const available = width / rem;
-    runtime.narrowFormat = available < 44;
+    const fitting = runtime.compact ? null : fitStudioFormatGroups(runtime.formatting, runtime.formatMore, groups);
+    runtime.narrowFormat = width / rem < 44;
     if (runtime.compact && !runtime.narrowFormat && runtime.formattingOpen) tuckWritingFormatBar(runtime, false);
     for (const {group, anchor, order, minWidth} of groups) {
-      const intoMore = available < minWidth;
+      const intoMore = fitting ? !fitting.has(group) : width / rem < minWidth;
       if (group.parentNode === (intoMore ? overflow : anchor.parentNode)) continue;
       const active = rail.getRootNode().activeElement;
       const focused = group.contains(active);
@@ -6339,6 +6433,10 @@ function installWritingFormatOverflow(runtime, options) {
   if (typeof ResizeObserver === "function") {
     const observer = new ResizeObserver(update);
     observer.observe(rail);
+    if (!runtime.compact) {
+      observer.observe(runtime.formatting);
+      if (runtime.writingFullscreenButton) observer.observe(runtime.writingFullscreenButton);
+    }
     signal.addEventListener("abort", () => observer.disconnect(), {once: true});
   } else {
     window.addEventListener("resize", update, {signal});
@@ -6346,6 +6444,7 @@ function installWritingFormatOverflow(runtime, options) {
   update();
   if (!runtime.compact) {
     runtime.formatMore.addEventListener("toggle", placeMenu, {signal});
+    rail.ownerDocument?.fonts?.ready.then(() => { if (!signal.aborted) update(); });
     return;
   }
 
@@ -9599,6 +9698,7 @@ function setup(root, api) {
     navigator: get("[data-writing-navigator]"), outline: get("[data-outline]"), outlineList: get("[data-outline-list]"),
     outlineDisclosure: get("[data-outline-disclosure]"), formatting: get("[data-formatting]"),
     formatLauncher: get('[data-action="open-formatting"]'),
+    writingFullscreenButton: get('[data-action="writing-fullscreen"]'),
     query: get("[data-query]"), live: get("[data-live]"), anchor: get("[data-anchor]"), results: get("[data-results]"),
     searchStatus: get("[data-search-status]"), searchKind: "axiom", suggestionKind: "axiom", suggestions: [],
     bookmarkStatus: get("[data-suggestion-bookmark-status]"), savedAxiomIds: new Set(),
@@ -9861,10 +9961,14 @@ function setup(root, api) {
     if (command === "open-care-reader") {
       event.preventDefault();
       const {reader_choice, reader_target} = event.detail;
-      if (reader_choice === "current" && runtime.a4?.well) {
+      const sameDraft = reader_choice === "current" ||
+        (reader_choice === "open" && reader_target === `draft:${runtime.docId}`);
+      if (sameDraft && runtime.a4?.well) {
         const well = runtime.a4.well;
-        rememberWritingModePosition(window, "reader", runtime.docId, well, runtime.paper.children, "data-block-id",
-          well.getBoundingClientRect().top + writingViewportInset(well));
+        rememberWritingModePosition(window, "reader", runtime.docId, well, runtime.paper.children, "data-block-id", {
+          top: well.getBoundingClientRect().top + writingViewportInset(well),
+          zoom: runtime.documentZoom?.snapshot(),
+        });
       }
       return send(runtime, command, {reader_choice, reader_target});
     }
@@ -9898,6 +10002,15 @@ function setup(root, api) {
     if (event.defaultPrevented || event.key !== "Escape" || event.isComposing ||
         runtime.compact || !root.isConnected || runtime.clipboardDialog.open || document.querySelector('[role="dialog"]')) return;
     event.preventDefault();
+    if (runtime.writingFullscreen && runtime.panel.hidden && !runtime.peerReview?.close()) {
+      setWritingFullscreen(runtime, false);
+      runtime.writingFullscreenButton.focus({preventScroll: true});
+      return;
+    }
+    if (runtime.writingFullscreen) {
+      if (!runtime.panel.hidden) togglePane(runtime, "research");
+      return;
+    }
     if (runtime.libraryExpanded && !runtime.libraryMinimized) setLibraryExpanded(runtime, false)?.focus();
     else if (!runtime.peerReview?.close()) togglePane(runtime, "research");
   });
@@ -10006,7 +10119,7 @@ function setup(root, api) {
         event.preventDefault();
         runtime.focus = false;
         renderPanel(runtime);
-      } else if (runtime.formatting.contains(event.target)) {
+      } else if (runtime.formatting.contains(event.target) && (!runtime.writingFullscreen || runtime.formatMore?.open)) {
         event.preventDefault();
         if (runtime.formatMore?.open) {
           runtime.formatMore.open = false;
@@ -10073,6 +10186,12 @@ function setup(root, api) {
     }
     if (action === "open-formatting") openWritingFormatting(runtime);
     if (action === "close-formatting") closeWritingFormatting(runtime);
+    if (action === "writing-fullscreen") {
+      setWritingFullscreen(runtime, !runtime.writingFullscreen);
+      if (event.detail && rangeInPaper(runtime.paper, runtime.range)) {
+        restoreSelection(runtime, runtime.range, runtime.rangeReversed);
+      }
+    }
     if (action === "collaborate") send(runtime, "remote-connect");
     if (action === "ribbon-find" && !requestWritingFind(runtime)) openWritingFind(runtime);
     if (action === "ribbon-export") send(runtime, "export");
@@ -10217,6 +10336,8 @@ export default function(component) {
     scheduleSave(runtime);
   }
   const current = Boolean(incoming && incomingId);
+  if (!current) setWritingFullscreen(runtime, false);
+  runtime.writingFullscreenButton.hidden = !current || runtime.compact;
   root.classList.toggle("no-document", !current);
   runtime.workspace.hidden = !current && runtime.compact;
   runtime.empty.hidden = current || !runtime.compact;
@@ -10280,6 +10401,9 @@ export default function(component) {
   paintLibraryDock(runtime, data.library_dock);
   renderPanel(runtime);
   renderLayout(runtime);
+  const modePosition = !jumpToReference && !focusNewDraft && current && !runtime.compact &&
+    takeWritingModePosition(window, "studio", incomingId);
+  if (modePosition) runtime.documentZoom?.restore(modePosition.zoom);
   if (current) updatePaper(runtime);
   if (current && shared) startWritingCollaboration(runtime, data.collaboration, incoming);
   runtime.peerReview?.render(data.peer_reviews);
@@ -10294,13 +10418,12 @@ export default function(component) {
     });
   }
   if (jumpToReference) requestAnimationFrame(() => jump(runtime, initialBlock, initialReference));
-  else if (focusNewDraft || (changedDocument && current && !runtime.compact)) {
+  else if (modePosition || focusNewDraft || (changedDocument && current && !runtime.compact)) {
     requestAnimationFrame(() => {
-      const position = !focusNewDraft && takeWritingModePosition(window, "studio", incomingId);
       const well = runtime.a4?.well;
-      if (position && well && runtime.docId === incomingId && root.isConnected) {
+      if (modePosition && well && runtime.docId === incomingId && root.isConnected) {
         refreshWritingA4(runtime, true);
-        restoreWritingModePosition(position, well, findBlock(runtime, position.block),
+        restoreWritingModePosition(modePosition, well, findBlock(runtime, modePosition.block),
           well.getBoundingClientRect().top + writingViewportInset(well));
         return;
       }
@@ -10316,6 +10439,7 @@ export default function(component) {
   }));
   return () => queueMicrotask(() => {
     if (root.isConnected) return;
+    setWritingFullscreen(runtime, false);
     storeRecovery(runtime);
     clearTimeout(runtime.scanTimer);
     clearTimeout(runtime.searchPollTimer);
@@ -10329,5 +10453,15 @@ export default function(component) {
     runtime.shellObserver?.disconnect();
     runtime.controller.abort();
     instances.delete(root);
+  });
+}
+
+export function rememberStudioModePosition(parentElement, draft) {
+  const runtime = instances.get(parentElement.querySelector("[data-writing-studio]"));
+  const well = runtime?.a4?.well;
+  if (!well || runtime.compact || runtime.docId !== draft) return;
+  rememberWritingModePosition(well.ownerDocument.defaultView, "reader", draft, well, runtime.paper.children, "data-block-id", {
+    top: well.getBoundingClientRect().top + writingViewportInset(well),
+    zoom: runtime.documentZoom?.snapshot(),
   });
 }

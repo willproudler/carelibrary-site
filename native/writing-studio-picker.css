@@ -6,7 +6,7 @@
 .studio-picker-header span {display:block;margin-bottom:.16rem;color:#9ac0b1;font:650 .57rem/1.2 ui-monospace,monospace;letter-spacing:.12em}
 .studio-picker-header strong {font:500 1.1rem/1.2 Georgia,serif}
 .studio-picker-new {flex:none;padding:.4rem .56rem;border:1px solid #437c6d;border-radius:.4rem;background:#255447;color:#f1faf6}
-.studio-picker-new:hover {background:#34705d}
+.studio-picker-new:hover {background-color:#34705d}
 .studio-picker-search {display:flex;align-items:center;gap:.42rem;padding:0 .5rem;border:1px solid #38554a;border-radius:.38rem;background:#101a17;color:#9eb8ae}
 .studio-picker-search:focus-within {border-color:#85b9a6}
 .studio-picker-search input {width:100%;min-width:0;min-height:2.05rem;padding:0;border:0;outline:none;background:transparent;color:#e5ede7}
@@ -15,7 +15,7 @@
 .studio-picker-results h3 {margin:.55rem .24rem .2rem;color:#a4bfb4;font:650 .58rem/1.35 ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase}
 .studio-picker-results h3:first-child {margin-top:.15rem}
 .studio-picker-row {display:flex;align-items:center;gap:.46rem;width:100%;min-width:0;padding:.4rem .35rem;border:0;border-radius:.32rem;text-align:start;background:transparent}
-.studio-picker-row:hover,.studio-picker-row:focus-visible {background:#203a31}
+.studio-picker-row:hover,.studio-picker-row:focus-visible {background-color:#203a31}
 .studio-picker-row svg {color:#9bc7b6}
 .studio-picker-row span {display:grid;min-width:0;flex:1}
 .studio-picker-row :is(strong,small) {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

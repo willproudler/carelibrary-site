@@ -550,7 +550,7 @@ export function createStudioWorkspace({
   }
 
   async function openEditor(opening) {
-    const [{default: mount}, html, css] = await loadStudioEditor();
+    const [{default: mount, rememberStudioModePosition}, html, css] = await loadStudioEditor();
     if (opening !== ticket) return;
     const container = doc.createElement('div');
     container.className = 'studio-web__native-editor';
@@ -565,7 +565,7 @@ export function createStudioWorkspace({
     `;
     root.prepend(style);
     surface.append(container);
-    mounted = {mount, root};
+    mounted = {mount, root, rememberStudioModePosition};
     renderEditor();
   }
 
@@ -968,6 +968,17 @@ export function createStudioWorkspace({
   async function show(nextMode, nextId = '', nonce = '') {
     const opening = ++ticket;
     const previousMode = mode;
+
+    if (previousMode !== nextMode) {
+      delete win.careWritingModePosition;
+      if (nextId && active?.id === nextId) {
+        if (previousMode === 'studio' && nextMode === 'reader' && mounted) {
+          mounted.rememberStudioModePosition(mounted.root, nextId);
+        } else if (previousMode === 'reader' && nextMode === 'studio') {
+          reader?.rememberStudioPosition();
+        }
+      }
+    }
     const wasBeside = Boolean(besideRequest);
     const beside = nextMode === 'beside';
     besideNonce = beside ? nonce : '';
@@ -1074,6 +1085,7 @@ export function createStudioWorkspace({
   }
 
   function hide() {
+    delete win.careWritingModePosition;
     ticket += 1;
     currentRoute = '';
     pendingNavigation = null;
@@ -1115,6 +1127,7 @@ export function createStudioWorkspace({
     preview = isPreview;
     useLocal = Boolean(useLocal && !next && guestStorage);
     if (next === account && useLocal === local && store) return;
+    delete win.careWritingModePosition;
     store?.pause();
     account = next;
     local = useLocal;
