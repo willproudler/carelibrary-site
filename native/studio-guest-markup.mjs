@@ -8,6 +8,28 @@ const fonts = new Set(['Iowan Old Style', 'Georgia', 'Palatino', 'Times New Roma
   'var(--serif, Georgia)']);
 const defaultSize = 'var(--writing-default-size, 12pt)';
 
+export function guestParagraphStyles(value) {
+  if (typeof value !== 'string' || value.length > 4096) return '';
+  let definitions;
+  try { definitions = JSON.parse(value); } catch { return ''; }
+  if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) return '';
+  const tags = new Set(['p','h1','h2','h3','h4','h5','h6']);
+  const fields = ['font','size','bold','italic','underline','align'];
+  const result = {};
+  for (const tag of Object.keys(definitions).sort()) {
+    const style = definitions[tag];
+    if (!tags.has(tag) || !style || typeof style !== 'object' || Array.isArray(style) ||
+        fields.some(key=>!Object.hasOwn(style,key)) || Object.keys(style).some(key=>!fields.includes(key)&&key!=='weight') ||
+        !(style.font==='default'||fonts.has(style.font)&&style.font!=='var(--serif, Georgia)') ||
+        !(style.size==='default'||typeof style.size==='string'&&/^(?:[89]|[1-6][0-9]|7[0-2])$/.test(style.size)) ||
+        ['bold','italic','underline'].some(key=>typeof style[key]!=='boolean') ||
+        Object.hasOwn(style,'weight')&&!['400','500','600','700','800','900'].includes(style.weight) ||
+        !['left','center','right','justify'].includes(style.align)) return '';
+    result[tag] = Object.fromEntries(Object.entries(style).sort(([left],[right])=>left.localeCompare(right)));
+  }
+  return Object.keys(result).length ? JSON.stringify(result) : '';
+}
+
 function copyStyle(source, target, block) {
   const {textAlign, fontFamily, fontSize} = source.style;
   if (block && ['left', 'right', 'center', 'justify'].includes(textAlign)) target.style.textAlign = textAlign;
@@ -15,6 +37,9 @@ function copyStyle(source, target, block) {
   if (fonts.has(font)) target.style.fontFamily = font;
   const points = Number(/^(\d{1,2})pt$/.exec(fontSize)?.[1]);
   if (fontSize === defaultSize || points >= 8 && points <= 72) target.style.fontSize = fontSize;
+  if (['normal','bold','400','500','600','700','800','900'].includes(source.style.fontWeight)) target.style.fontWeight = source.style.fontWeight;
+  if (['normal','italic'].includes(source.style.fontStyle)) target.style.fontStyle = source.style.fontStyle;
+  if (['none','underline'].includes(source.style.textDecorationLine)) target.style.textDecorationLine = source.style.textDecorationLine;
 }
 
 function safeHref(value) {
@@ -58,6 +83,10 @@ export function sanitizeGuestMarkup(html, document = globalThis.document) {
     const element = clean.createElement(tag);
     const id = node.getAttribute('data-block-id');
     if (block && parent === fragment && id && blockId.test(id)) element.setAttribute('data-block-id', id);
+    if (block && parent === fragment) {
+      const definitions = guestParagraphStyles(node.getAttribute('data-writing-styles'));
+      if (definitions) element.setAttribute('data-writing-styles', definitions);
+    }
     if (block || tag === 'span') copyStyle(node, element, block);
     if (tag === 'a') {
       const href = safeHref(node.getAttribute('href'));
@@ -103,6 +132,7 @@ export function sanitizeGuestMarkup(html, document = globalThis.document) {
   const reserved = new Set(rows.map(node => node.getAttribute('data-block-id')));
   const anchors = new Map();
   rows.forEach((node, index) => {
+    if (index) node.removeAttribute('data-writing-styles');
     let id = node.getAttribute('data-block-id');
     if (!id || anchors.has(id)) {
       id = `guest-block-${index}`;

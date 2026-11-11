@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT_FILES = """
-about.html auth.css auth.mjs boot.mjs brand-header.css
+about.html auth.css auth.mjs boot.mjs brand-header.css care-about.mjs care-version.json
 discover-atlas.css discover-atlas.mjs discover-book-picker.mjs
 discover-experiments.css discover-experiments.mjs discover-field-reader.mjs
 discover-reader.mjs discover-reference-viewer.mjs discover.css
@@ -22,7 +22,7 @@ numo-header-skin.css public-fields.mjs public-library.mjs public-reader-adapter.
 reading-workspace.mjs request-access.html request-access.mjs resource-loader.mjs
 robots.txt saved-library.mjs saved-translations.mjs site.js site.webmanifest
 site-settings.html site-settings.mjs
-studio-workspace.css studio-workspace.mjs study-sets.css study-sets.mjs
+studio-workspace.css studio-workspace.mjs studio-editor-adapter.mjs study-sets.css study-sets.mjs
 sitemap.xml styles.css welcome.html
 ui-fonts-ofl.txt ui-icons-apache.txt web-workspace.css web-workspace.mjs
 """.split()

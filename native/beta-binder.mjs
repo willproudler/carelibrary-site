@@ -26,6 +26,10 @@ const binderErrors = {
 };
 
 export function binderActionPayload(action, activeRevision) {
+  if (action.operation === 'place-draft') {
+    if (action.first_draft !== false) throw new Error('First drafts are available in CARE Studio on the Mac.');
+    action = {...action, operation: 'move', item_kind: 'document'};
+  }
   const {operation, document_id: activeId} = action;
   if (!Object.hasOwn(binderFields, operation)) throw new Error('Unsupported Binder action.');
   const payload = {operation};

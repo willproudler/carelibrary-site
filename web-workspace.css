@@ -52,6 +52,13 @@
 .beta-workbench .brand .brand-mark { width: 4.4rem; height: 2.25rem; margin: 0; object-fit: cover; }
 .beta-workbench .brand-name { color: #e2e5e1; }
 .workbench-library-menu { position: relative; }
+#care-about-dialog { width: min(430px, calc(100vw - 30px)); }
+#care-about-dialog .dialog-heading h2 { margin-bottom: 10px; }
+.care-about-description { margin: 0 0 24px; }
+.care-about-details { display: grid; grid-template-columns: max-content 1fr; gap: 10px 24px; font-size: 14px; }
+.care-about-details dt { color: #9ca9a8; }
+.care-about-details dd { margin: 0; color: #edeae2; overflow-wrap: anywhere; }
+.care-about-status:empty { display: none; }
 .beta-workbench .workbench-library-menu > summary {
   padding-inline-end: .55rem;
   border: 1px solid #a6c6bb29;
@@ -111,7 +118,7 @@ body[data-workbench-view="reader"] .workbench-switch a.active { border-color: #5
 .workbench-saved svg { color: #c991a0; }
 .beta-workbench svg[data-material-symbol] { width: 20px; height: 20px; fill: currentColor; stroke: none; }
 .beta-workbench button:disabled { opacity: .34; cursor: default; }
-.beta-workbench :is(a, button:not(:disabled), summary):hover:where(:not(.studio-picker-panel *)) { background-color: #263139; }
+.beta-workbench :is(a, button:not(:disabled), summary):hover { background-color: #263139; }
 .beta-workbench nav :is(.active, [aria-current="page"]) {
   background: color-mix(in srgb, var(--workbench-accent) 61%, var(--workbench-surface));
   border-color: var(--workbench-accent);
@@ -571,3 +578,7 @@ main > :is(#studio-workspace, #study-sets-view) { flex: 1; min-height: 0; min-wi
   }
   #main[data-tab-write-split] [data-care-write-beside-resize] { display: none; }
 }
+[data-beta-studio] [data-action="collaborate"],
+[data-beta-studio] [data-action="remote-send"],
+[data-beta-studio] [data-action="remote-connect"],
+[data-beta-studio] .binder-archive { display: none !important; }

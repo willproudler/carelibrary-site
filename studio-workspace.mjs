@@ -412,7 +412,7 @@ function loadStudioEditor() {
     return response.text();
   });
   editorAssets = Promise.all([
-    import('./native/writing-editor.mjs'), asset('/native/writing-editor.html'), asset('/native/writing-editor.css'),
+    import('./studio-editor-adapter.mjs'), asset('/native/writing-editor.html'), asset('/native/writing-editor.css'),
   ]).catch(error => {
     editorAssets = null;
     throw error;
@@ -966,6 +966,7 @@ export function createStudioWorkspace({
           binder = snapshot;
           const entries = state.reconcile(snapshot.drafts);
           const {binder_title: renamedTitle, revision: renamedRevision, ...binderAck} = snapshot.ack;
+          if (action.operation === 'place-draft') binderAck.binder_placed = true;
           Object.assign(ack, binderAck);
           const current = entries.find(entry => entry.id === draft.id);
           if (!current) after = () => go(writingMode, entries[0]?.id || '', true);

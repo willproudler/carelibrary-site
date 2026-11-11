@@ -59,7 +59,42 @@ def _style(value, block):
     points = re.fullmatch(r"([0-9]{1,2})pt", size)
     if size == DEFAULT_FONT_SIZE or points and 8 <= int(points[1]) <= 72:
         styles.append(f"font-size: {size}")
+    for key, allowed in (("font-weight", {"normal", "bold", "400", "500", "600", "700", "800", "900"}),
+                         ("font-style", {"normal", "italic"}), ("text-decoration-line", {"none", "underline"})):
+        if declarations.get(key) in allowed:
+            styles.append(f"{key}: {declarations[key]}")
     return "; ".join(styles)
+
+
+def _paragraph_styles(value):
+    if not isinstance(value, str) or len(value) > 4096:
+        return ""
+    try:
+        definitions = json.loads(value)
+    except (ValueError, RecursionError):
+        return ""
+    if not isinstance(definitions, dict) or not definitions or not set(definitions) <= {"p", "h1", "h2", "h3", "h4", "h5", "h6"}:
+        return ""
+    fields = {"font", "size", "bold", "italic", "underline", "align"}
+    result = {}
+    for tag, style in definitions.items():
+        if not isinstance(style, dict) or not fields <= set(style) or not set(style) <= fields | {"weight"}:
+            return ""
+        font, size = style["font"], style["size"]
+        if not isinstance(font, str) or font not in (FONT_FAMILIES - {"var(--serif, Georgia)"}) | {"default"}:
+            return ""
+        if not isinstance(size, str) or (size != "default" and not (size.isascii() and size.isdecimal() and str(int(size)) == size and 8 <= int(size) <= 72)):
+            return ""
+        if any(type(style[key]) is not bool for key in ("bold", "italic", "underline")):
+            return ""
+        if "weight" in style and (not isinstance(style["weight"], str) or style["weight"] not in {"400", "500", "600", "700", "800", "900"}):
+            return ""
+        if not isinstance(style["align"], str) or style["align"] not in {"left", "center", "right", "justify"}:
+            return ""
+        result[tag] = {key: style[key] for key in ("font", "size", "bold", "italic", "underline", "align")}
+        if "weight" in style:
+            result[tag]["weight"] = style["weight"]
+    return json.dumps(result, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
 
 
 def _safe_href(value):
@@ -115,6 +150,8 @@ class _StudioMarkupParser(HTMLParser):
         block_id = source.get("data-block-id", "")
         if block and len(self.stack) == 1 and ANCHOR_ID.fullmatch(block_id):
             result["data-block-id"] = block_id
+        if block and len(self.stack) == 1 and (definitions := _paragraph_styles(source.get("data-writing-styles"))):
+            result["data-writing-styles"] = definitions
         if block or tag == "span":
             style = _style(source.get("style", ""), block)
             if style:
@@ -182,6 +219,8 @@ def _studio_html(body):
     reserved = {node.attrs.get("data-block-id") for node in blocks}
     seen = set()
     for index, node in enumerate(blocks):
+        if index:
+            node.attrs.pop("data-writing-styles", None)
         identity = node.attrs.get("data-block-id")
         if not identity or identity in seen:
             identity = uuid5(NAMESPACE_URL, f"care-beta-studio:{index}:{node.render()}").hex

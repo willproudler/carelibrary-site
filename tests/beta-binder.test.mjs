@@ -34,3 +34,14 @@ test('Binder API is account-scoped and preserves conflict status', async () => {
   assert.deepEqual(JSON.parse(requests[1].body), {account, operation: 'move', item_kind: 'document',
     target_id: 'active', target_revision: 3, folder_id: null});
 });
+
+test('the current Studio placement dialog uses the supported beta move API', () => {
+  const action = {operation:'place-draft',document_id:'active',target_id:'active',target_revision:2,
+    folder_id:'a-folder',first_draft:false,html:'Private manuscript markup'};
+  assert.deepEqual(binderActionPayload(action,3),{operation:'move',item_kind:'document',target_id:'active',
+    target_revision:3,folder_id:'a-folder'});
+  assert.equal(action.operation,'place-draft');
+  assert.throws(()=>binderActionPayload({...action,first_draft:true},3),/First drafts.*Mac/);
+  for(const operation of ['create-book','book-save','book-drag','book-container-drop','convert-folder-to-book'])
+    assert.throws(()=>binderActionPayload({operation}),/Unsupported Binder action/);
+});

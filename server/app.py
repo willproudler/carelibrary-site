@@ -39,7 +39,7 @@ PUBLIC_FILES = frozenset({
     "auth.css", "styles.css", "discover.css", "discover-atlas.css",
     "discover-experiments.css", "brand-header.css", "site.webmanifest",
     "favicon.ico", "favicon.svg", "quick-start.pdf", "robots.txt", "sitemap.xml", "llms.txt",
-    "ui-fonts-ofl.txt", "ui-icons-apache.txt",
+    "ui-fonts-ofl.txt", "ui-icons-apache.txt", "care-version.json",
 })
 PUBLIC_BRANDING = frozenset({
     "assets/care-header-mark.svg", "assets/care-mark.svg", "assets/favicon-32.png",

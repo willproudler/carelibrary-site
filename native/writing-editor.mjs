@@ -917,6 +917,370 @@ function revealWritingA4(runtime, blockId, reference) {
   return true;
 }
 
+// Book pages use the native draft's measured A4 compositor. Only disposable
+// page furniture and its existing, capture-safe line gaps touch the live view.
+function bookPaginationRoman(value) {
+  let result = "";
+  for (const [amount, letters] of [[1000,"m"],[900,"cm"],[500,"d"],[400,"cd"],[100,"c"],[90,"xc"],[50,"l"],[40,"xl"],[10,"x"],[9,"ix"],[5,"v"],[4,"iv"],[1,"i"]]) {
+    while (value >= amount) { result += letters; value -= amount; }
+  }
+  return result;
+}
+
+function bookPaginationFolios(groups) {
+  let physical = 0, front = 0, main = 0, started = false;
+  return groups.flatMap(group => {
+    if (group.kind === "chapter" && !started) { started = true; main = 0; }
+    return Array.from({length: group.count}, (_, index) => {
+      const label = started ? String(++main) : bookPaginationRoman(++front);
+      return {section: group.id, index, physical: ++physical, label,
+        show: group.kind !== "title" && group.kind !== "part", arabic: started};
+    });
+  });
+}
+
+function bookPaginationContext(runtime) {
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && !binder.reading.hidden && binder.contents.booksById.get(binder.bookOverviewId);
+  return book && binder.readingText && binder.bookPages ? {binder, book} : null;
+}
+
+function bookPaginationClean(node) {
+  const copy = node.cloneNode(true);
+  stripWritingA4Layout(copy);
+  for (const decoration of copy.querySelectorAll("[data-book-pagination-pages], [data-book-pagination-probe]")) decoration.remove();
+  return copy;
+}
+
+function bookPaginationSignature(runtime, context) {
+  const {binder, book} = context;
+  const styles = body => {
+    const value = getComputedStyle(body);
+    return [value.fontFamily, value.fontSize, value.lineHeight, value.letterSpacing, value.fontWeight];
+  };
+  return JSON.stringify([book.id, book.layout, runtime.footnotes?.dataset.mode,
+    [...binder.bookPages.keys()],
+    ["title", "author", "contents"].map(key => binder.bookFields?.[key]?.textContent || ""),
+    book.sections.map(section => {
+      const body = binder.bookBodies.get(section.id), title = binder.bookTitles.get(section.id);
+      const editor = typeof binderBookCitationEditor === "function" && binderBookCitationEditor(runtime, section.id);
+      return [section.id, section.kind, section.parent_section_id, section.heading_level,
+        title?.textContent, body?.bookLoaded, body && bookPaginationClean(body).innerHTML,
+        body && styles(body), title && styles(title), editor?.footnoteList?.innerHTML];
+    }),
+  ]);
+}
+
+function bookPaginationUnits(runtime, sheet) {
+  const units = [], binder = runtime.binder;
+  const bodySections = new Map([...binder.bookBodies].map(([identity, body]) => [body, identity]));
+  const titles = new Map([...binder.bookTitles].map(([identity, title]) => [title, identity]));
+  const add = (node, section, block = "", headings = new Map()) => {
+    if (!node || getComputedStyle(node).display === "none") return;
+    units.push({node, section, block, headings, key: String(units.length)});
+  };
+  const visit = (node, section = "") => {
+    if (node.matches?.("[data-book-pagination-pages], [data-book-pagination-probe], .binder-book-footnotes, .binder-book-next-entry")) return;
+    if (bodySections.has(node)) {
+      const identity = bodySections.get(node);
+      const headings = new Map([...node.querySelectorAll("h1,h2,h3,h4,h5,h6")].map((heading, index) => [heading, index]));
+      for (const block of node.children) if (!block.matches(a4Break)) add(block, identity, block.dataset.blockId || "", headings);
+    } else if (titles.has(node)) add(node, titles.get(node));
+    else if (node.matches?.(".binder-book-nested-section")) {
+      for (const child of node.children) visit(child, node.dataset.bookSectionHost || section);
+    } else if (node.matches?.(".binder-book-pages")) {
+      for (const row of node.children) if (!row.matches(".binder-book-next-entry")) add(row, "contents");
+    } else add(node, section);
+  };
+  const identity = sheet.dataset.bookSectionHost || (sheet.classList.contains("binder-book-cover") ? "title" : "contents");
+  for (const child of sheet.children) visit(child, identity);
+  return units;
+}
+
+function bookPaginationGroupSignature(sheet, units, generation) {
+  const clean = bookPaginationClean(sheet);
+  for (const field of clean.querySelectorAll("[data-book-page-ref]")) {
+    field.textContent = ""; field.removeAttribute("aria-label");
+  }
+  return JSON.stringify([generation, clean.innerHTML, units.map(unit => {
+    const value = getComputedStyle(unit.node);
+    return [value.fontFamily, value.fontSize, value.lineHeight, value.letterSpacing, value.fontWeight];
+  })]);
+}
+
+function bookPaginationCopyTypography(source, target) {
+  const style = getComputedStyle(source);
+  for (const property of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "whiteSpace", "textAlign", "tabSize", "wordBreak", "overflowWrap"]) {
+    if (style[property]) target.style[property] = style[property];
+  }
+}
+
+function bookPaginationFurniture(sheet, pages) {
+  // Keep these structural rules with the generated nodes as well as the CSS.
+  // An already-open desktop view can receive the new renderer before its
+  // cached stylesheet: an uncontained absolute page must never cover Binder.
+  Object.assign(sheet.style, {position: "relative", isolation: "isolate", background: "transparent",
+    borderColor: "transparent", boxShadow: "none"});
+  Object.assign(pages.style, {position: "absolute", inset: "0 auto auto 0", insetInlineStart: "0px",
+    inlineSize: "100%", margin: "0px", padding: "0px", gap: "24px", zIndex: "0", pointerEvents: "none"});
+  for (const child of sheet.children) if (child !== pages) {
+    child.style.position = "relative"; child.style.zIndex = "1";
+  }
+}
+
+function clearBookPaginationFurniture(sheet) {
+  for (const property of ["position", "isolation", "background", "border-color", "box-shadow", "min-block-size", "--book-pagination-height"]) {
+    sheet.style.removeProperty(property);
+  }
+  for (const child of sheet.children) {
+    child.style.removeProperty("position"); child.style.removeProperty("z-index");
+  }
+}
+
+function bookPaginationProbe(runtime, sheet, units) {
+  const doc = sheet.ownerDocument, context = runtime.binder;
+  const stage = element("div", undefined, "writing-a4-stage writing-a4-live book-pagination-probe");
+  stage.dataset.bookPaginationProbe = ""; stage.setAttribute("aria-hidden", "true"); stage.inert = true;
+  Object.assign(stage.style, {position: "absolute", inset: "0 auto auto -100000px", inlineSize: "210mm",
+    visibility: "hidden", pointerEvents: "none"});
+  // Retain contextual Book selectors when measuring Contents and source blocks.
+  for (const name of ["binder-book-contents", "binder-book-cover", "binder-book-part"]) {
+    if (sheet.classList.contains(name)) stage.classList.add(name);
+  }
+  const source = element("article", undefined, "page"), paper = element("div", undefined, "paper");
+  const pages = element("div", undefined, "writing-a4-pages");
+  source.append(paper); stage.append(source, pages); context.readingText.append(stage);
+  const origin = sheet.getBoundingClientRect(), scale = origin.width / parseFloat(getComputedStyle(sheet).width) || runtime.a4.scale || 1;
+  const top = origin.top + (parseFloat(getComputedStyle(sheet).paddingTop) || 0) * scale;
+  let previous = top;
+  for (const unit of units) {
+    const bounds = unit.node.getBoundingClientRect();
+    const wrapper = element("div", undefined, "binder-book-chapter-text book-pagination-unit");
+    wrapper.dataset.bookPaginationKey = unit.key;
+    wrapper.style.marginBlockStart = `${Math.max(0, (bounds.top - previous) / scale)}px`;
+    previous = bounds.bottom;
+    const copy = bookPaginationClean(unit.node);
+    bookPaginationCopyTypography(unit.node, copy);
+    copy.style.marginBlockStart = "0px"; copy.style.marginBlockEnd = "0px";
+    const originals = [unit.node, ...unit.node.querySelectorAll("h1,h2,h3,h4,h5,h6")];
+    const copies = [copy, ...copy.querySelectorAll("h1,h2,h3,h4,h5,h6")];
+    originals.forEach((heading, index) => {
+      if (unit.headings.has(heading)) copies[index].dataset.bookPaginationHeading = String(unit.headings.get(heading));
+    });
+    wrapper.append(copy); paper.append(wrapper);
+  }
+  const list = element("ol"), mode = runtime.footnotes?.dataset.mode || "citation";
+  const sections = new Set(units.map(unit => unit.section));
+  for (const identity of sections) {
+    const editor = typeof binderBookCitationEditor === "function" && binderBookCitationEditor(runtime, identity);
+    for (const row of editor?.footnoteList?.children || []) {
+      const copy = row.cloneNode(true); copy.dataset.bookPaginationSection = identity; list.append(copy);
+    }
+  }
+  const footnotes = element("aside"); footnotes.dataset.mode = mode;
+  const proxy = Object.assign(Object.create(runtime), {paper, docId: `book-pages:${context.bookOverviewId}`,
+    footnotes, footnoteList: list, composing: false, composingFootnote: false,
+    a4: {active: true, pages, stage, well: {scrollTop: 0, getBoundingClientRect: () => stage.getBoundingClientRect()},
+      scale, signature: null, layoutNodes: [], followCaret: false}});
+  return {proxy, stage, pages, units, scale};
+}
+
+function bookPaginationTurns(probe) {
+  const byKey = new Map(probe.units.map(unit => [unit.key, unit]));
+  return probe.proxy.a4.layoutNodes.flatMap((layout, index) => {
+    const wrapper = layout.closest("[data-book-pagination-key]");
+    const unit = wrapper && byKey.get(wrapper.dataset.bookPaginationKey);
+    const page = probe.pages.children[index + 1]?.querySelector(".writing-a4-paper");
+    if (!unit || !page) return [];
+    const text = layout === wrapper ? 0 : writingA4Boundary(wrapper, layout.parentNode,
+      Array.prototype.indexOf.call(layout.parentNode.childNodes, layout));
+    const point = text ? pointAtOffset(unit.node, text) : [unit.node, 0];
+    return point ? [{part: {block: unit.node, start: {node: point[0], offset: point[1], text}}, paper: page}] : [];
+  });
+}
+
+function bookPaginationPageMap(probe) {
+  const sections = new Map(), blocks = new Map(), headings = new Map();
+  const descriptors = new Map(probe.units.map(unit => [unit.key, unit]));
+  [...probe.pages.children].forEach((page, index) => {
+    for (const copy of page.querySelectorAll("[data-book-pagination-key]")) {
+      const unit = descriptors.get(copy.dataset.bookPaginationKey);
+      if (!unit) continue;
+      if (unit.section && !sections.has(unit.section)) sections.set(unit.section, index);
+      const key = unit.section + ":" + unit.block;
+      if (unit.block && !blocks.has(key)) blocks.set(key, index);
+      for (const heading of copy.querySelectorAll("[data-book-pagination-heading]")) {
+        const key = unit.section + ":" + heading.dataset.bookPaginationHeading;
+        if (!headings.has(key)) headings.set(key, index);
+      }
+    }
+  });
+  return {sections, blocks, headings};
+}
+
+function bookPaginationValues(runtime, state) {
+  for (const field of runtime.binder.bookContentsList?.querySelectorAll("[data-book-page-ref]") || []) {
+    const section = field.dataset.bookPageRef, block = field.dataset.bookPageBlock;
+    const heading = field.dataset.bookPageHeadingIndex;
+    const value = (heading != null && state.headings.get(section + ":" + heading)) ||
+      (block && state.blocks.get(section + ":" + block)) || state.sections.get(section) || "—";
+    if (field.textContent !== value) field.textContent = value;
+    field.setAttribute("aria-label", value === "—" ? "Page is loading" : `Go to page ${value}`);
+  }
+}
+
+function observeBookPagination(runtime, state) {
+  state.observer?.takeRecords();
+  state.observer?.observe(runtime.binder.readingText, {childList: true, characterData: true, subtree: true,
+    attributes: true, attributeFilter: ["style", "class", "hidden", "data-mode"]});
+}
+
+function clearBookPagination(runtime, state) {
+  state.observer?.disconnect();
+  try {
+    for (const sheet of runtime.binder.readingText.querySelectorAll(".book-paginated-sheet")) {
+      sheet.querySelector(":scope > [data-book-pagination-pages]")?.remove();
+      sheet.classList.remove("book-paginated-sheet"); sheet.style.removeProperty("--book-pagination-height");
+      clearBookPaginationFurniture(sheet);
+      stripWritingA4Layout(sheet);
+    }
+    runtime.binder.reading.classList.remove("book-pagination-live");
+    state.signature = null; state.sections = new Map(); state.blocks = new Map(); state.headings = new Map();
+    state.cache?.clear();
+    bookPaginationValues(runtime, state);
+  } finally { observeBookPagination(runtime, state); }
+}
+
+function paintBookPagination(runtime, state) {
+  const context = bookPaginationContext(runtime);
+  if (!context || runtime.binder.bookComposing || runtime.composing) return;
+  const {binder, book} = context;
+  // Missing chapter text has no measurable pagination. Loading placeholders
+  // must never become invented page counts for the rest of the manuscript.
+  if (book.sections.some(section => !section.available || !binder.bookBodies.get(section.id)?.bookLoaded)) {
+    clearBookPagination(runtime, state); return;
+  }
+  binder.reading.classList.add("book-pagination-live");
+  const signature = bookPaginationSignature(runtime, context);
+  if (signature === state.signature) { bookPaginationValues(runtime, state); return; }
+  const roots = [...binder.readingText.children].filter(sheet => sheet.matches(".binder-book-sheet"));
+  if (!roots.length || roots.some(sheet => sheet.getBoundingClientRect().width <= 0)) return;
+  const oldTop = runtime.a4.well.scrollTop;
+  state.observer?.disconnect();
+  const groups = [], cache = new Map();
+  try {
+    for (const sheet of roots) {
+      const existingUnits = bookPaginationUnits(runtime, sheet);
+      const key = bookPaginationGroupSignature(sheet, existingUnits, state.generation || 0);
+      const prior = state.cache?.get(sheet);
+      if (prior?.key === key && prior.group.pages.parentElement === sheet) {
+        groups.push(prior.group); cache.set(sheet, prior); continue;
+      }
+      sheet.querySelector(":scope > [data-book-pagination-pages]")?.remove();
+      sheet.classList.remove("book-paginated-sheet"); sheet.style.removeProperty("--book-pagination-height");
+      clearBookPaginationFurniture(sheet);
+      stripWritingA4Layout(sheet);
+      const units = bookPaginationUnits(runtime, sheet);
+      const probe = bookPaginationProbe(runtime, sheet, units);
+      try {
+        paintWritingA4(probe.proxy);
+        const count = probe.pages.children.length;
+        if (!count) continue;
+        const map = bookPaginationPageMap(probe), turns = bookPaginationTurns(probe);
+        const identity = sheet.dataset.bookSectionHost || (sheet.classList.contains("binder-book-cover") ? "title" : "contents");
+        const section = book.sections.find(section => section.id === identity);
+        probe.pages.dataset.bookPaginationPages = ""; probe.pages.classList.add("book-pagination-pages");
+        probe.pages.setAttribute("aria-label", `Pages for ${section?.title || identity}`);
+        sheet.prepend(probe.pages); sheet.classList.add("book-paginated-sheet"); sheet.dataset.bookPageCount = String(count);
+        bookPaginationFurniture(sheet, probe.pages);
+        const box = probe.pages.getBoundingClientRect();
+        sheet.style.setProperty("--book-pagination-height", `${box.height / probe.scale}px`);
+        sheet.style.minBlockSize = `${box.height / probe.scale}px`;
+        alignWritingA4(Object.assign(Object.create(runtime), {paper: sheet, a4: {scale: probe.scale}}), turns);
+        for (const page of probe.pages.children) {
+          const paper = page.querySelector(".writing-a4-paper");
+          const height = paper.getBoundingClientRect().height / probe.scale;
+          paper.replaceChildren(); paper.style.blockSize = `${height}px`;
+        }
+        const group = {id: identity, kind: section?.kind || identity, count, pages: probe.pages, map};
+        groups.push(group); cache.set(sheet, {key, group});
+      } finally { probe.stage.remove(); }
+    }
+    state.sections = new Map(); state.blocks = new Map(); state.headings = new Map();
+    const folios = bookPaginationFolios(groups);
+    let offset = 0;
+    for (const group of groups) {
+      const labels = folios.slice(offset, offset + group.count); offset += group.count;
+      state.sections.set(group.id, labels[0].label);
+      for (const type of ["sections", "blocks", "headings"]) {
+        for (const [identity, page] of group.map[type]) state[type].set(identity, labels[page].label);
+      }
+      [...group.pages.children].forEach((page, index) => {
+        page.dataset.bookPhysicalPage = String(labels[index].physical);
+        let folio = page.querySelector(":scope > .book-page-folio");
+        if (!folio) {
+          folio = element("span", "", "book-page-folio"); folio.setAttribute("aria-hidden", "true");
+          Object.assign(folio.style, {position: "absolute", inset: "auto 10% 4.5% auto"}); page.append(folio);
+        }
+        const text = labels[index].show ? labels[index].label : "";
+        if (folio.textContent !== text) folio.textContent = text;
+      });
+    }
+    state.cache = cache; state.signature = signature; state.error = null; bookPaginationValues(runtime, state);
+    runtime.a4.well.scrollTop = oldTop;
+  } catch (error) {
+    // A geometry failure leaves the native sources and their ordinary
+    // footnotes readable. Do not retain partly measured page labels.
+    clearBookPagination(runtime, state); state.error = error;
+    if (typeof status === "function") status(runtime, "CARE could not lay out the Book pages. Your chapter text is still here.", true);
+  } finally {
+    observeBookPagination(runtime, state);
+  }
+}
+
+function refreshBookPagination(runtime) {
+  const context = bookPaginationContext(runtime);
+  if (!context || typeof requestAnimationFrame !== "function" || typeof paintWritingA4 !== "function") return;
+  const binder = context.binder;
+  let state = binder.bookPagination;
+  if (!state) {
+    state = binder.bookPagination = {frame: 0, timer: 0, signature: null, sections: new Map(), blocks: new Map(), headings: new Map()};
+    const signal = runtime.controller?.signal;
+    if (typeof MutationObserver === "function") {
+      state.observer = new MutationObserver(records => {
+        if (records.some(record => !record.target.closest?.("[data-book-pagination-pages], [data-book-pagination-probe]"))) refreshBookPagination(runtime);
+      });
+      state.observer.observe(binder.readingText, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden", "data-mode"]});
+    }
+    const force = () => { state.signature = null; state.generation = (state.generation || 0) + 1; refreshBookPagination(runtime); };
+    if (typeof ResizeObserver === "function") {
+      state.resize = new ResizeObserver(() => refreshBookPagination(runtime)); state.resize.observe(runtime.a4.well);
+    }
+    const fonts = binder.reading.ownerDocument.fonts;
+    fonts?.ready.then(() => { if (!signal?.aborted) force(); });
+    fonts?.addEventListener?.("loadingdone", force, {signal});
+    const openFootnote = event => {
+      const link = event.target.closest?.("[data-open-printed-footnote]");
+      const section = link?.closest?.("[data-book-pagination-section]")?.dataset.bookPaginationSection;
+      if (section && link.closest("[data-book-pagination-pages]")) {
+        if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+        event.preventDefault(); event.stopPropagation(); openBinderBookCitation(runtime, section, link.dataset.openPrintedFootnote);
+      }
+    };
+    binder.readingText.addEventListener("click", openFootnote, {capture: true, signal});
+    binder.readingText.addEventListener("keydown", openFootnote, {capture: true, signal});
+    signal?.addEventListener("abort", () => {
+      cancelAnimationFrame(state.frame); clearTimeout(state.timer); state.observer?.disconnect(); state.resize?.disconnect();
+    }, {once: true});
+  }
+  if (state.frame) cancelAnimationFrame(state.frame);
+  clearTimeout(state.timer);
+  state.timer = setTimeout(() => {
+    state.timer = 0;
+    state.frame = requestAnimationFrame(() => { state.frame = 0; paintBookPagination(runtime, state); });
+  }, 100);
+}
+
 // The editor's pagination and paragraph commands can replace DOM nodes used
 // by native undo. Keep one history for the editable draft and its footnotes.
 const writingHistorySteps = 60;
@@ -1160,6 +1524,7 @@ function acknowledgeWritingFootnoteHistory(runtime, ack, snapshot) {
   if (history) history.footnoteReplay = null;
   if (ack.error) return;
   runtime.paper.replaceChildren(safeFragment(snapshot.html, true));
+  if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(runtime);
   runtime.blocks = new Map([...runtime.paper.children].map(block => [block.dataset.blockId, blockText(block)]));
   runtime.snapshot = null;
   if (!replay) return;
@@ -1197,6 +1562,7 @@ function applyWritingHistory(runtime, direction, nativeChanged = false) {
   if (target.footnotes) {
     if (nativeChanged) {
       runtime.paper.replaceChildren(safeFragment(history.current.html, true));
+      if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(runtime);
       restoreWritingFootnotePositions(runtime, history.current.positions);
       runtime.snapshot = null;
       updatePaper(runtime);
@@ -1217,6 +1583,7 @@ function applyWritingHistory(runtime, direction, nativeChanged = false) {
   history.replaying = true;
   try {
     runtime.paper.replaceChildren(safeFragment(target.html, true));
+    if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(runtime);
     restoreWritingFootnotePositions(runtime, target.positions);
     restoreWritingHistoryBookmark(runtime, target.bookmark);
     markEdited(runtime, true);
@@ -1785,18 +2152,1187 @@ function installWritingSelection(runtime) {
   }, {once: true});
 }
 
+// One Book outline for the navigator and its editable Contents page.
+const binderBookHeadingSelector = "h1,h2,h3,h4,h5,h6";
+
+function binderBookHeadingBlock(body, heading) {
+  let block = heading;
+  while (block?.parentElement && block.parentElement !== body) block = block.parentElement;
+  return block?.parentElement === body ? block : null;
+}
+
+function binderBookOutlineRows(runtime) {
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && !binder.reading.hidden && binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book) return null;
+  const layout = {...binderBookLayout(book), ...binder.bookLayoutDraft};
+  const rows = [];
+  if (layout.title_page) rows.push({id: "title", label: layout.title_page_title, level: 1,
+    section: "title", block: "", kind: "title"});
+  if (layout.contents_page) rows.push({id: "contents", label: binder.bookFields?.contents?.textContent.trim() || layout.contents_title,
+    level: 1, section: "contents", block: "", kind: "contents"});
+  const byId = new Map(book.sections.map(section => [section.id, section]));
+  const parentOf = section => section?.parent_section_id || section?.parent_part_id || null;
+  const depthOf = section => {
+    let depth = 0, parent = parentOf(section); const seen = new Set([section.id]);
+    while (parent && byId.has(parent) && !seen.has(parent)) { seen.add(parent); depth++; parent = parentOf(byId.get(parent)); }
+    return depth;
+  };
+  let chapterNumber = 0, partNumber = 0;
+  for (const section of book.sections) {
+    if (section.kind === "chapter") chapterNumber++;
+    if (section.kind === "part") partNumber++;
+    const depth = depthOf(section);
+    const label = binder.bookTitles?.get(section.id)?.textContent.trim() || section.display_title || section.title ||
+      (section.kind === "part" ? `Part ${partNumber}` : section.kind === "subheading" ? "Untitled heading" : "Untitled chapter");
+    rows.push({id: section.id, label, level: depth + 1, parent_section_id: parentOf(section), structural_depth: depth,
+      ...(section.kind === "chapter" ? {chapter_number: chapterNumber} : {}),
+      ...(section.kind === "subheading" ? {heading_level: Math.max(1, Math.min(6, Number(section.heading_level) || 1))} : {}),
+      section: section.id, block: "", kind: section.kind});
+    const body = binder.bookBodies?.get(section.id);
+    if (!body?.bookLoaded) continue;
+    [...body.querySelectorAll(binderBookHeadingSelector)].forEach((heading, index) => {
+      const block = binderBookHeadingBlock(body, heading);
+      if (!block) return;
+      if (!block.dataset.blockId) block.dataset.blockId = `book-${id()}`;
+      const label = typeof writingHeadingLabel === "function" ? writingHeadingLabel(heading) : heading.textContent.trim();
+      const headingLevel = Number(heading.localName.slice(1));
+      rows.push({id: `${section.id}:${block.dataset.blockId}${block === heading ? "" : ":" + index}`, label: label || "Untitled heading", empty: !label,
+        level: depth + headingLevel + 1, section: section.id, block: block.dataset.blockId,
+        parent_section_id: section.id,
+        kind: "heading", heading_level: headingLevel, heading_index: index});
+    });
+  }
+  return rows;
+}
+
+function binderBookOutlineHeading(runtime, row) {
+  const body = runtime.binder?.bookBodies?.get(row.section);
+  if (!body?.bookLoaded || !row.block) return null;
+  const headings = [...body.querySelectorAll(binderBookHeadingSelector)];
+  const heading = headings[row.heading_index];
+  if (heading && binderBookHeadingBlock(body, heading)?.dataset.blockId === row.block) return heading;
+  return headings.find(node => binderBookHeadingBlock(body, node)?.dataset.blockId === row.block) || null;
+}
+
+function navigateBinderBookOutline(runtime, row) {
+  const rows = binderBookOutlineRows(runtime);
+  if (!rows || !rows.some(current => current.id === row.id)) return false;
+  jumpToBinderBookPage(runtime, row.section, row.block);
+  const heading = row.kind === "heading" && binderBookOutlineHeading(runtime, row);
+  if (heading) {
+    const body = runtime.binder.bookBodies.get(row.section);
+    body.focus({preventScroll: true});
+    const range = body.ownerDocument.createRange?.();
+    const selection = body.getRootNode().getSelection?.() || body.ownerDocument.getSelection?.();
+    if (range && selection) {
+      range.selectNodeContents(heading); range.collapse(true);
+      selection.removeAllRanges(); selection.addRange(range);
+      runtime.binder.bookRange = range.cloneRange();
+    }
+    runtime.binder.activeBookBody = body;
+    const well = runtime.a4.well;
+    const top = well.scrollTop + heading.getBoundingClientRect().top - well.getBoundingClientRect().top - 22;
+    well.scrollTo(0, Math.max(0, top));
+  }
+  return true;
+}
+
+function binderBookContentsEntrySelected(field) {
+  if (!field.textContent.trim()) return true;
+  const selection = field.getRootNode().getSelection?.() || field.ownerDocument.getSelection?.();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  return !range.collapsed && field.contains(range.startContainer) && field.contains(range.endContainer) &&
+    range.toString() === field.textContent;
+}
+
+function deleteBinderBookContentsEntry(runtime, row) {
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book || binder.locked || binder.bookComposing || binder.bookSaveError) return false;
+  const section = book.sections.find(part => part.id === row.section);
+  if (!section) return false;
+  if (flushBinderBook(runtime, () => deleteBinderBookContentsEntry(runtime, row))) return true;
+  if (row.kind !== "heading") {
+    // The server detaches this page and keeps its full source in First drafts.
+    // No edition or original draft is deleted by a Contents edit.
+    binderBookAction(runtime, book.id, "book-remove-section", {section_id: section.id});
+    return true;
+  }
+  const body = binder.bookBodies.get(section.id), heading = binderBookOutlineHeading(runtime, row);
+  if (!heading || body.contentEditable !== "true") return false;
+  const entries = binderBookOutlineRows(runtime).filter(entry => !["title", "contents"].includes(entry.kind));
+  const position = entries.findIndex(entry => entry.id === row.id);
+  const adjacent = entries[position + 1] || entries[position - 1];
+  const adjacentHeading = adjacent?.kind === "heading" ? binderBookOutlineHeading(runtime, adjacent) : null;
+  body.focus({preventScroll: true});
+  const range = body.ownerDocument.createRange?.();
+  const selection = body.getRootNode().getSelection?.() || body.ownerDocument.getSelection?.();
+  if (range && selection) {
+    range.selectNode(heading);
+    selection.removeAllRanges(); selection.addRange(range);
+    // A native edit preserves Undo for the removed heading. The range contains
+    // that node only; writing before and after it stays in the chapter.
+    body.ownerDocument.execCommand?.("delete", false);
+  }
+  if (body.contains(heading)) heading.remove();
+  if (!body.childNodes.length) body.innerHTML = "<p><br></p>";
+  binder.activeBookBody = body;
+  let caret = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (selection && (!caret || !body.contains(caret.startContainer) || !body.contains(caret.endContainer))) {
+    caret = body.ownerDocument.createRange(); caret.selectNodeContents(body); caret.collapse(true);
+    selection.removeAllRanges(); selection.addRange(caret);
+  }
+  binder.bookRange = caret?.cloneRange() || null;
+  markBinderBookChanged(runtime, body);
+  refreshBinderBookContents(runtime, true);
+  const next = binderBookOutlineRows(runtime).find(entry => adjacentHeading ?
+    entry.kind === "heading" && binderBookOutlineHeading(runtime, entry) === adjacentHeading : entry.id === adjacent?.id);
+  binder.bookFocusAfterPaint = {section: next?.section || section.id, block: next?.block || "",
+    headingIndex: next?.heading_index, contents: true, collapse: true};
+  focusBinderBookOutline(runtime);
+  if (typeof paintOutline === "function") paintOutline(runtime);
+  return true;
+}
+
+// Chapter citations use the same marker, scholarly text, and saved anchors as a draft.
+function binderBookCitationContext(runtime, sectionId = "") {
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && !binder.reading.hidden && binder.contents.booksById.get(binder.bookOverviewId);
+  const identity = sectionId || binder?.activeBookBody?.dataset.bookSection || "";
+  const section = book?.sections.find(part => part.id === identity && part.available);
+  const body = section && binder.bookBodies?.get(section.id);
+  return book && section && body?.bookLoaded ? {book, section, body} : null;
+}
+
+function binderBookCitationFields(context) {
+  return {studio_book_id: context.book.id, studio_book_revision: context.book.revision,
+    ...(context.book.shared ? {studio_book_scope: context.book._remote_scope} : {}),
+    studio_section_id: context.section.id, studio_scan_scope: "chapter",
+    studio_document_revisions: {[context.section.document_id]: context.section.revision}};
+}
+
+function binderBookCitationEditor(runtime, sectionId = "") {
+  const context = binderBookCitationContext(runtime, sectionId);
+  const state = context && runtime.binder.bookCitations?.get(context.section.id);
+  if (!state) return null;
+  const proxy = state.editor;
+  proxy.references = state.references.filter(reference => !state.removed.has(reference.id));
+  proxy.revision = context.section.revision;
+  proxy.footnotes.dataset.mode = runtime.footnotes?.dataset.mode || "citation";
+  return proxy;
+}
+
+function openBinderBookCitation(runtime, sectionId, referenceId) {
+  const context = binderBookCitationContext(runtime, sectionId);
+  const editor = binderBookCitationEditor(runtime, sectionId);
+  if (!context || !editor?.references.some(reference => reference.id === referenceId)) return;
+  runtime.binder.activeBookBody = context.body;
+  const perform = () => {
+    const saved = binderBookCitationContext(runtime, sectionId);
+    if (saved) send(runtime, "axiom-footnote", {reference_id: referenceId, ...binderBookCitationFields(saved)});
+  };
+  if (!flushBinderBook(runtime, perform)) perform();
+}
+
+function paintBinderBookReferences(runtime) {
+  const binder = runtime.binder;
+  if (!binder?.bookOverviewId || binder.reading.hidden) return false;
+  const context = binderBookCitationContext(runtime);
+  const editor = context && binderBookCitationEditor(runtime, context.section.id);
+  const references = editor?.references || [];
+  const signature = JSON.stringify(["book", binder.bookOverviewId, context?.section.id, references]);
+  if (signature === runtime.referenceSignature) return true;
+  runtime.referenceSignature = signature;
+  runtime.refCount.textContent = references.length ? "(" + references.length + ")" : "";
+  runtime.sharedReferenceCards = null;
+  const cards = references.map(reference => {
+    const {card, actions, target} = resultCard(reference);
+    actions.append(makeButton("Read beside draft", () => openBinderBookCitation(runtime, context.section.id, reference.id)),
+      makeButton("Go to passage", () => jumpToBinderBookPage(runtime, context.section.id, reference.block_id)));
+    if (reference.note) card.append(element("p", reference.note, "reference-location"));
+    card.append(citationDetails(target));
+    return card;
+  });
+  runtime.referenceList.replaceChildren(...(cards.length ? cards : [element("p", context ?
+    "Axioms and source passages linked in this chapter will appear here." : "Select a chapter to see its references.", "empty-results")]));
+  return true;
+}
+
+function observeBinderBookCitationMode(runtime) {
+  const binder = runtime.binder;
+  if (binder.bookCitationModeObserver || typeof MutationObserver !== "function" || !runtime.footnotes) return;
+  const observer = new MutationObserver(() => {
+    for (const [sectionId] of binder.bookCitations || []) {
+      const editor = binderBookCitationEditor(runtime, sectionId);
+      if (editor) paintFootnotes(editor);
+    }
+  });
+  observer.observe(runtime.footnotes, {attributes: true, attributeFilter: ["data-mode"]});
+  binder.bookCitationModeObserver = observer;
+  runtime.controller?.signal.addEventListener("abort", () => observer.disconnect(), {once: true});
+}
+
+function installBinderBookCitationEvents(runtime, sectionId, body, footnotes) {
+  const open = event => {
+    const printed = event.target.closest?.("[data-open-printed-footnote]");
+    const marker = event.target.closest?.("[data-writing-footnote]");
+    if (!printed && !marker) return;
+    if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+    event.stopPropagation();
+    const identity = printed?.dataset.openPrintedFootnote || marker?.dataset.writingFootnote;
+    const activate = printed || event.metaKey || event.ctrlKey || event.detail === 0 ||
+      event.type === "keydown" && ["Enter", " "].includes(event.key);
+    if (activate) {
+      event.preventDefault(); openBinderBookCitation(runtime, sectionId, identity);
+    } else if (marker && event.detail === 1 && !event.altKey && !event.shiftKey) {
+      const editor = binderBookCitationEditor(runtime, sectionId);
+      if (!editor) return;
+      const range = footnoteBoundary(marker, true);
+      restoreSelection(editor, range);
+      runtime.binder.activeBookBody = body; runtime.binder.bookRange = range.cloneRange();
+    }
+  };
+  for (const node of [body, footnotes]) {
+    node.addEventListener("click", open, {capture: true});
+    node.addEventListener("keydown", open, {capture: true});
+  }
+  footnotes.addEventListener("keydown", event => {
+    if (["Backspace", "Delete"].includes(event.key)) {
+      event.preventDefault(); event.stopPropagation();
+    }
+  }, {capture: true});
+  body.addEventListener("input", () => {
+    const state = runtime.binder.bookCitations?.get(sectionId);
+    if (!state) return;
+    const present = new Set([...body.querySelectorAll("[data-writing-footnote]")].map(marker => marker.dataset.writingFootnote));
+    const painted = new Set(state.editor.paintedFootnotes || []);
+    const cancelled = new Set();
+    for (const reference of state.references) {
+      if (present.has(reference.id)) state.removed.delete(reference.id);
+      else if (painted.has(reference.id)) {
+        if (state.restored?.delete(reference.id)) {
+          cancelled.add(reference.id);
+          const submitted = runtime.binder.bookSent?.edits?.find(edit => edit.id === sectionId)?.restored_footnotes || [];
+          if (state.savedIds?.has(reference.id) || submitted.includes(reference.id)) state.removed.add(reference.id);
+          else state.removed.delete(reference.id);
+        } else state.removed.add(reference.id);
+      }
+    }
+    if (cancelled.size) state.references = state.references.filter(reference => !cancelled.has(reference.id));
+  }, {capture: true});
+  body.addEventListener("focusin", () => {
+    runtime.binder.activeBookBody = body;
+    paintBinderBookReferences(runtime);
+  });
+}
+
+function paintBinderBookCitations(runtime, book, section, saved, body, sheet) {
+  const binder = runtime.binder;
+  binder.bookCitations ||= new Map();
+  let state = binder.bookCitations.get(section.id);
+  if (state?.editor.paper !== body) {
+    state?.editor.footnotes.remove();
+    const footnotes = element("aside", undefined, "draft-footnotes binder-book-footnotes");
+    footnotes.dataset.bookCitationSection = section.id;
+    footnotes.setAttribute("aria-label", `Footnotes for ${section.title}`);
+    footnotes.hidden = true;
+    const list = element("ol"); footnotes.append(list); sheet.append(footnotes);
+    const editor = Object.assign(Object.create(runtime), {paper: body, docId: section.document_id,
+      revision: section.revision, references: [], footnotes, footnoteList: list, footnoteModeButton: null,
+      footnoteNotes: new Map(), editorReadOnly: true, bookCitationOwner: runtime, bookCitationSectionId: section.id});
+    state = {editor, references: [], removed: new Set(), restored: new Set(), savedIds: new Set(), sourceRevision: 0};
+    binder.bookCitations.set(section.id, state);
+    installBinderBookCitationEvents(runtime, section.id, body, footnotes);
+  }
+  if (body.nextElementSibling !== state.editor.footnotes && typeof body.after === "function") body.after(state.editor.footnotes);
+  if (Array.isArray(saved?.references) && saved.revision >= state.sourceRevision) {
+    state.restored ||= new Set();
+    state.savedIds = new Set(saved.references.map(reference => reference.id));
+    for (const identity of state.restored) if (state.savedIds.has(identity)) state.restored.delete(identity);
+    const provisional = state.references.filter(reference => state.restored.has(reference.id));
+    state.references = [...saved.references, ...provisional];
+    state.sourceRevision = saved.revision;
+    const savedIds = new Set(state.references.map(reference => reference.id));
+    for (const identity of state.removed) if (!savedIds.has(identity)) state.removed.delete(identity);
+  }
+  const editor = binderBookCitationEditor(runtime, section.id);
+  if (editor) paintFootnotes(editor);
+  observeBinderBookCitationMode(runtime);
+  if (binder.activeBookBody === body) paintBinderBookReferences(runtime);
+}
+
+function removeBinderBookCitations(runtime, sectionId) {
+  const state = runtime.binder?.bookCitations?.get(sectionId);
+  if (!state) return;
+  const pending = new Set(state.restored || []);
+  state.references = state.references.filter(reference => !pending.has(reference.id));
+  state.restored?.clear();
+  for (const reference of state.references) state.removed.add(reference.id);
+}
+
+function restoreBinderBookCitations(runtime, sectionId, references, removed = []) {
+  const state = runtime.binder?.bookCitations?.get(sectionId);
+  if (!state) return;
+  state.references = references.map(reference => ({...reference}));
+  state.removed = new Set(removed);
+  state.savedIds ||= new Set();
+  state.restored = new Set(state.references.filter(reference => !state.removed.has(reference.id) &&
+    !state.savedIds.has(reference.id)).map(reference => reference.id));
+  state.editor.references = state.references.filter(reference => !state.removed.has(reference.id));
+  state.editor.footnoteSignature = null;
+}
+
+function captureBinderBookCitations(runtime, section, body) {
+  const editor = binderBookCitationEditor(runtime, section.id);
+  const positions = {};
+  if (editor) footnotePositions(editor, null, positions, {compareSaved: false});
+  const clone = body.cloneNode(true);
+  if (typeof stripWritingA4Layout === "function") stripWritingA4Layout(clone);
+  for (const marker of clone.querySelectorAll("[data-writing-footnote]")) marker.remove();
+  const removed = runtime.binder.bookCitations?.get(section.id)?.removed;
+  const restored = runtime.binder.bookCitations?.get(section.id)?.restored;
+  return {html: clone.innerHTML, ...(Object.keys(positions).length ? {footnote_positions: positions} : {}),
+    ...(editor?.footnoteNotes?.size ? {footnote_notes: Object.fromEntries(editor.footnoteNotes)} : {}),
+    ...(removed?.size ? {removed_footnotes: [...removed]} : {}),
+    ...(restored?.size ? {restored_footnotes: [...restored]} : {})};
+}
+
+// Select All in an assembled manuscript belongs to the focused chapter.
+// Its title and body are separate editing hosts, so keep the exact bounded
+// chapter intent for native Copy/Cut rather than falling back to the Book.
+function binderBookChapterContext(runtime, target = null) {
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && !binder.reading.hidden && binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book) return null;
+  const doc = binder.reading.ownerDocument || runtime.paper?.ownerDocument;
+  const active = target || binder.reading.getRootNode().activeElement || doc?.activeElement;
+  const field = active?.closest?.("[data-book-section], [data-book-section-title]");
+  const identity = field?.dataset.bookSection || field?.dataset.bookSectionTitle;
+  const section = identity && book.sections.find(part => part.id === identity && ["chapter", "subheading"].includes(part.kind) && part.available);
+  const body = section && binder.bookBodies?.get(section.id), title = section && binder.bookTitles?.get(section.id);
+  const sheet = section && binder.bookPages?.get(section.id);
+  if (!body?.isConnected || !title?.isConnected || !sheet?.contains(body) || !sheet.contains(title) ||
+      body.contentEditable !== "true" || !["true", "plaintext-only"].includes(title.contentEditable)) return null;
+  return {book, section, body, title, sheet};
+}
+
+function clearBinderBookChapterSelection(runtime) {
+  if (runtime.binder) {
+    const selected = runtime.binder.chapterSelection;
+    if (selected) runtime.binder.chapterSelectionTombstone = selected;
+    runtime.binder.chapterSelection = null;
+  }
+}
+
+function binderBookCrossHostSelection(runtime) {
+  const binder = runtime.binder;
+  if (!binder?.bookOverviewId || binder.reading.hidden) return false;
+  const selection = selectionFor(binder.reading);
+  if (!selection || selection.isCollapsed) return false;
+  const field = node => (node?.nodeType === 1 ? node : node?.parentElement)
+    ?.closest?.("[data-book-section], [data-book-section-title]");
+  const range = typeof writingSelectionRange === "function" && writingSelectionRange(binder.reading);
+  const start = field(range?.startContainer || selection.anchorNode);
+  const end = field(range?.endContainer || selection.focusNode);
+  if (start && end && start !== end) return true;
+  const old = binder.chapterSelectionTombstone;
+  return Boolean(old && selection === old.selection &&
+    ["anchorNode", "anchorOffset", "focusNode", "focusOffset"].every(key => selection[key] === old[key]));
+}
+
+function selectBinderBookChapter(runtime, target = null) {
+  const context = binderBookChapterContext(runtime, target);
+  if (!context || runtime.binder.locked || runtime.binder.bookComposing) return false;
+  const {body, title, sheet} = context, doc = body.ownerDocument;
+  const well = runtime.a4?.well;
+  const viewport = well && {top: well.scrollTop, left: well.scrollLeft};
+  body.focus({preventScroll: true});
+  const range = doc.createRange();
+  range.setStart(title, 0); range.setEnd(body, body.childNodes.length);
+  const selection = selectionFor(sheet);
+  if (!selection) return false;
+  try {
+    if (selection.setBaseAndExtent) selection.setBaseAndExtent(title, 0, body, body.childNodes.length);
+    else { selection.removeAllRanges(); selection.addRange(range); }
+  } catch {
+    try { selection.removeAllRanges(); selection.addRange(range); } catch { return false; }
+  }
+  if (selection.isCollapsed === true) return false;
+  runtime.binder.activeBookBody = body;
+  // A cross-editable chapter range is not an in-body axiom selection. Never
+  // leave an older paragraph/caret as the target of a subsequent link action.
+  runtime.binder.bookRange = null;
+  runtime.binder.bookClipboardRange = null;
+  runtime.binder.chapterSelection = {...context, range: range.cloneRange(), selection,
+    titleText: title.textContent || "", bodyHTML: body.innerHTML,
+    anchorNode: selection.anchorNode, anchorOffset: selection.anchorOffset,
+    focusNode: selection.focusNode, focusOffset: selection.focusOffset};
+  runtime.binder.chapterSelectionTombstone = null;
+  if (well) { well.scrollTop = viewport.top; well.scrollLeft = viewport.left; }
+  return true;
+}
+
+function currentBinderBookChapterSelection(runtime) {
+  const binder = runtime.binder, selected = binder?.chapterSelection;
+  if (!selected) return null;
+  const book = binder.bookOverviewId === selected.book.id && !binder.reading.hidden &&
+    binder.contents.booksById.get(binder.bookOverviewId);
+  const selection = selectionFor(selected.sheet);
+  if (!book || !book.sections.some(part => part.id === selected.section.id && part.document_id === selected.section.document_id) ||
+      binder.bookBodies?.get(selected.section.id) !== selected.body || binder.bookTitles?.get(selected.section.id) !== selected.title ||
+      !selected.body.isConnected || !selected.title.isConnected || selected.body.innerHTML !== selected.bodyHTML ||
+      (selected.title.textContent || "") !== selected.titleText || selection !== selected.selection || selection.isCollapsed === true ||
+      ["anchorNode", "anchorOffset", "focusNode", "focusOffset"].some(key => selection[key] !== selected[key])) {
+    clearBinderBookChapterSelection(runtime); return null;
+  }
+  return selected;
+}
+
+function binderBookChapterClipboard(runtime, selected) {
+  const bodyRange = selected.body.ownerDocument.createRange();
+  bodyRange.selectNodeContents(selected.body);
+  const editor = typeof binderBookCitationEditor === "function" && binderBookCitationEditor(runtime, selected.section.id);
+  const source = editor || Object.assign(Object.create(runtime), {
+    paper: selected.body, docId: selected.section.document_id, references: [], footnoteNotes: new Map(),
+  });
+  const copied = writingClipboardContent(source, bodyRange);
+  const heading = selected.titleText ? `<h2>${writingClipboardEscape(selected.titleText)}</h2>` : "";
+  const text = [selected.titleText, copied.text].filter(Boolean).join("\n\n");
+  const packet = {...copied.packet, html: heading + copied.packet.html, text};
+  const portable = copied.html.replace(/\sdata-care-studio-fragment="[^"]*"/g, "");
+  let attribute = "";
+  if (packet.slots.length) {
+    const token = id();
+    writingFragmentCache.set(token, packet);
+    while (writingFragmentCache.size > 10) writingFragmentCache.delete(writingFragmentCache.keys().next().value);
+    try { sessionStorage.setItem("care-studio-fragment-clipboard-v1", JSON.stringify({token, packet})); } catch {}
+    attribute = ` data-care-studio-fragment="${writingClipboardEscape(token)}"`;
+  }
+  return {packet, text, html: `<div${attribute}>${heading}${portable}</div>`};
+}
+
+function binderBookChapterCanChange(runtime, selected) {
+  return currentBinderBookChapterSelection(runtime) === selected && !runtime.pending && !runtime.navigationLocked &&
+    !runtime.binder.locked && !runtime.binder.bookComposing && selected.body.contentEditable === "true" &&
+    ["true", "plaintext-only"].includes(selected.title.contentEditable);
+}
+
+function replaceBinderBookChapterSelection(runtime, selected, text = "") {
+  if (!binderBookChapterCanChange(runtime, selected)) return false;
+  const state = runtime.binder.bookCitations?.get(selected.section.id);
+  const before = {titleText: selected.title.textContent || "", bodyHTML: selected.body.innerHTML,
+    references: (state?.references || []).map(reference => ({...reference})), removed: [...(state?.removed || [])]};
+  if (typeof removeBinderBookCitations === "function") removeBinderBookCitations(runtime, selected.section.id);
+  clearBinderBookChapterSelection(runtime);
+  runtime.binder.chapterSelectionTombstone = null;
+  selected.title.textContent = "Untitled chapter";
+  const paragraph = selected.body.ownerDocument.createElement("p");
+  if (text) paragraph.textContent = text.replace(/\r\n?/g, "\n");
+  else paragraph.append(selected.body.ownerDocument.createElement("br"));
+  selected.body.replaceChildren(paragraph);
+  markBinderBookChanged(runtime, selected.body);
+  runtime.binder.chapterHistory = {bookId: selected.book.id, sectionId: selected.section.id,
+    before, after: {titleText: selected.title.textContent, bodyHTML: selected.body.innerHTML}, applied: true};
+  const caret = selected.body.ownerDocument.createRange();
+  caret.selectNodeContents(paragraph); caret.collapse(false);
+  restoreSelection(Object.assign(Object.create(runtime), {paper: selected.body}), caret);
+  runtime.binder.bookRange = caret.cloneRange();
+  return true;
+}
+
+function nativeBinderBookChapterClipboard(runtime, event, cut = false) {
+  if (!binderBookChapterContext(runtime, event.composedPath?.()[0] || event.target)) return false;
+  const selected = currentBinderBookChapterSelection(runtime);
+  if (!event.clipboardData || event.defaultPrevented) return false;
+  if (!selected) {
+    if (!cut || !binderBookCrossHostSelection(runtime)) return false;
+    event.preventDefault();
+    status(runtime, "Select the chapter again before cutting its title and text.", true); return true;
+  }
+  event.preventDefault();
+  if (cut && !binderBookChapterCanChange(runtime, selected)) {
+    status(runtime, "Wait for the chapter save, then cut again.", true); return true;
+  }
+  try {
+    const copied = binderBookChapterClipboard(runtime, selected);
+    event.clipboardData.setData("text/plain", copied.text);
+    event.clipboardData.setData("text/html", copied.html);
+    if (copied.packet.slots.length) event.clipboardData.setData(studioFragmentMime, JSON.stringify(copied.packet));
+  } catch {
+    status(runtime, "CARE could not copy the chapter. Its text is still here.", true); return true;
+  }
+  if (cut) replaceBinderBookChapterSelection(runtime, selected);
+  return true;
+}
+
+async function copyBinderBookChapterSelection(runtime) {
+  const selected = currentBinderBookChapterSelection(runtime);
+  if (!selected) return false;
+  try {
+    const copied = binderBookChapterClipboard(runtime, selected);
+    if (typeof navigator.clipboard.write === "function" && typeof ClipboardItem === "function") {
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/plain": new Blob([copied.text], {type: "text/plain"}),
+        "text/html": new Blob([copied.html], {type: "text/html"}),
+      })]);
+    } else await navigator.clipboard.writeText(copied.text);
+  } catch { status(runtime, "Press Copy with the chapter selected to copy it.", true); }
+  return true;
+}
+
+async function pasteBinderBookChapterSelection(runtime, providedText = null) {
+  const selected = currentBinderBookChapterSelection(runtime);
+  if (!selected) {
+    if (!binderBookCrossHostSelection(runtime)) return false;
+    status(runtime, "Select the chapter again before replacing its title and text.", true); return true;
+  }
+  try {
+    const text = providedText == null ? await navigator.clipboard.readText() : providedText;
+    if (typeof text === "string" && text && !replaceBinderBookChapterSelection(runtime, selected, text)) {
+      status(runtime, "The chapter changed. Select the text again before pasting.", true);
+    }
+  } catch { status(runtime, "Press Paste with the chapter text selected.", true); }
+  return true;
+}
+
+function binderBookChapterHistoryCommand(runtime, command) {
+  if (!["undo", "redo"].includes(command)) return false;
+  const binder = runtime.binder, history = binder?.chapterHistory;
+  if (!history || history.bookId !== binder.bookOverviewId || binder.reading.hidden ||
+      (command === "undo") !== history.applied) return false;
+  const body = binder.bookBodies?.get(history.sectionId), title = binder.bookTitles?.get(history.sectionId);
+  const expected = history.applied ? history.after : history.before;
+  if (!body?.isConnected || !title?.isConnected || body.innerHTML !== expected.bodyHTML || title.textContent !== expected.titleText) {
+    binder.chapterHistory = null; return false;
+  }
+  if (runtime.pending || runtime.navigationLocked || binder.locked || binder.bookComposing) {
+    status(runtime, "Wait for the chapter save, then try again.", true); return true;
+  }
+  const active = binderBookChapterContext(runtime);
+  if (active && active.section.id !== history.sectionId) return false;
+  const next = command === "undo" ? history.before : history.after;
+  clearBinderBookChapterSelection(runtime); binder.chapterSelectionTombstone = null;
+  title.textContent = next.titleText; body.innerHTML = next.bodyHTML;
+  if (command === "undo" && typeof restoreBinderBookCitations === "function") {
+    restoreBinderBookCitations(runtime, history.sectionId, history.before.references, history.before.removed);
+  } else if (command === "redo" && typeof removeBinderBookCitations === "function") {
+    removeBinderBookCitations(runtime, history.sectionId);
+  }
+  history.applied = command === "redo";
+  binder.activeBookBody = body;
+  markBinderBookChanged(runtime, body);
+  next.titleText = title.textContent; next.bodyHTML = body.innerHTML;
+  const range = body.ownerDocument.createRange(); range.selectNodeContents(body); range.collapse(false);
+  restoreSelection(Object.assign(Object.create(runtime), {paper: body}), range);
+  binder.bookRange = range.cloneRange();
+  return true;
+}
+
+function installBinderBookChapterSelection(runtime) {
+  const doc = runtime.paper.ownerDocument, view = doc.defaultView, signal = runtime.controller.signal;
+  const clipboardControl = target => target?.closest?.('[data-action="copy"], [data-action="paste"], [data-action="paste-match"], [data-file-command="copy"], [data-file-command="paste"], [data-file-command="paste-match"]');
+  const clear = () => clearBinderBookChapterSelection(runtime);
+  const historyAtTarget = (event, command) => {
+    const context = binderBookChapterContext(runtime, event.composedPath?.()[0] || event.target);
+    if (context && typeof binderBookQuoteHistoryCommand === "function" && binderBookQuoteHistoryCommand(runtime, command)) return true;
+    return context?.section.id === runtime.binder?.chapterHistory?.sectionId && binderBookChapterHistoryCommand(runtime, command);
+  };
+  doc.addEventListener("pointerdown", event => { if (!clipboardControl(event.composedPath?.()[0] || event.target)) clear(); }, {capture: true, signal});
+  doc.addEventListener("keydown", event => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Escape"].includes(event.key)) clear();
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key?.toLowerCase() === "z" &&
+        historyAtTarget(event, event.shiftKey ? "redo" : "undo")) event.preventDefault();
+  }, {capture: true, signal});
+  doc.addEventListener("selectionchange", () => { if (runtime.binder?.chapterSelection) currentBinderBookChapterSelection(runtime); }, {signal});
+  doc.addEventListener("input", event => {
+    clear();
+    if (event.target?.closest?.("[data-book-section], [data-book-section-title]") && runtime.binder) runtime.binder.chapterHistory = null;
+  }, {capture: true, signal});
+  doc.addEventListener("beforeinput", event => {
+    if (!binderBookChapterContext(runtime, event.composedPath?.()[0] || event.target)) return;
+    if (["historyUndo", "historyRedo"].includes(event.inputType) &&
+        historyAtTarget(event, event.inputType === "historyUndo" ? "undo" : "redo")) {
+      event.preventDefault(); event.stopImmediatePropagation(); return;
+    }
+    const selected = currentBinderBookChapterSelection(runtime);
+    if (!selected && !binderBookCrossHostSelection(runtime)) return;
+    if (!/^(insert|delete)/.test(event.inputType || "")) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (!selected) { status(runtime, "Select the chapter again before replacing its title and text.", true); return; }
+    if (["insertText", "insertCompositionText", "insertParagraph", "insertLineBreak"].includes(event.inputType) || /^delete/.test(event.inputType)) {
+      const text = /^delete/.test(event.inputType) ? "" : event.data || (["insertParagraph", "insertLineBreak"].includes(event.inputType) ? "\n" : "");
+      if (!replaceBinderBookChapterSelection(runtime, selected, text)) status(runtime, "Wait for the chapter save, then try again.", true);
+    }
+  }, {capture: true, signal});
+  doc.addEventListener("focusin", event => {
+    const selected = runtime.binder?.chapterSelection, target = event.composedPath?.()[0] || event.target;
+    if (selected && !selected.title.contains(target) && !selected.body.contains(target) && !clipboardControl(target)) clear();
+  }, {signal});
+  // Native cross-host paste must not let WebKit choose another editing root.
+  doc.addEventListener("paste", event => {
+    const context = binderBookChapterContext(runtime, event.composedPath?.()[0] || event.target);
+    if (!context) return;
+    if (typeof pasteBinderBookSourceQuote === "function" && pasteBinderBookSourceQuote(runtime, context.body, event)) {
+      event.stopImmediatePropagation(); return;
+    }
+    if (!event.clipboardData || !currentBinderBookChapterSelection(runtime) && !binderBookCrossHostSelection(runtime)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    void pasteBinderBookChapterSelection(runtime, event.clipboardData.getData("text/plain"));
+  }, {capture: true, signal});
+  view?.addEventListener("blur", clear, {signal});
+  view?.addEventListener("care-workspace-before-navigation", clear, {signal});
+  signal.addEventListener("abort", clear, {once: true});
+}
+
+// Keep a Book citation attached to the chapter and words chosen at the click.
+function binderBookLinkSelection(runtime) {
+  const context = binderBookSearchContext(runtime);
+  if (!context?.section?.available || !context.body?.bookLoaded || !context.range || context.range.collapsed) return null;
+  const editing = Object.assign(Object.create(runtime), {paper: context.body, range: context.range});
+  const passage = passageSelection(editing, context.range);
+  return passage ? {context, passage} : null;
+}
+
+function binderBookLinkTexts(body) {
+  return new Map([...body.children].filter(block => block.dataset.blockId)
+    .map(block => [block.dataset.blockId, writingSharedBlockText(block, false)]));
+}
+
+function binderBookSourceFields(runtime, sectionId) {
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && !binder.reading.hidden && binder.contents.booksById.get(binder.bookOverviewId);
+  const section = book?.sections.find(part => part.id === sectionId && part.available);
+  return section ? {studio_book_id: book.id, studio_book_revision: book.revision,
+    ...(book.shared ? {studio_book_scope: book._remote_scope} : {}),
+    studio_section_id: section.id, studio_scan_scope: "passage", studio_document_revisions: {[section.document_id]: section.revision}} : null;
+}
+
+function linkBinderBookSelection(runtime, target) {
+  const selected = binderBookLinkSelection(runtime);
+  if (!selected) return;
+  const {context, passage} = selected;
+  const chosen = {bookId: context.book.id, sectionId: context.section.id, documentId: context.section.document_id,
+    before: binderBookLinkTexts(context.body), extra: {
+      item_id: target.item_id || "", target_key: target.target_key || "", block_id: passage.blockId,
+      ...(target.history_item_id ? {history_item_id: target.history_item_id, work_id: target.work_id || "",
+        history_scope: target.history_scope || "", history_route: target.history_route && {...target.history_route}} : {}),
+      quote: passage.selection.text, selection: {...passage.selection},
+    }};
+  const perform = () => {
+    const binder = runtime.binder;
+    if (binder?.bookOverviewId !== chosen.bookId || binder.reading.hidden) return;
+    if (flushBinderBook(runtime, perform)) return;
+    const fields = binderBookSourceFields(runtime, chosen.sectionId);
+    const section = binder.contents.booksById.get(chosen.bookId)?.sections.find(part => part.id === chosen.sectionId);
+    const body = binder.bookBodies.get(chosen.sectionId);
+    if (!fields || section.document_id !== chosen.documentId || !body?.bookLoaded) return;
+    const rebased = rebaseWritingSharedLink(chosen.extra, chosen.before, binderBookLinkTexts(body));
+    if (!rebased) {
+      status(runtime, "The selected passage changed. Highlight it again to add this link.", true);
+      return;
+    }
+    send(runtime, "link", {...fields, ...rebased});
+  };
+  perform();
+}
+
+function sendBinderBookCitationAction(runtime, sectionId, type, extra = {}) {
+  const bookId = runtime.binder?.bookOverviewId;
+  const perform = () => {
+    if (runtime.binder?.bookOverviewId !== bookId || runtime.binder.reading.hidden) return;
+    if (flushBinderBook(runtime, perform)) return;
+    const fields = binderBookSourceFields(runtime, sectionId);
+    if (fields) send(runtime, type, {...fields, ...extra});
+  };
+  perform();
+}
+
+function sendWritingReferenceAction(runtime, type, extra) {
+  const binder = runtime.binder;
+  if (!binder?.bookOverviewId) return send(runtime, type, extra);
+  const section = binderBookSearchContext(runtime)?.section ||
+    binder.contents.booksById.get(binder.bookOverviewId)?.sections.find(part => part.available);
+  if (section) sendBinderBookCitationAction(runtime, section.id, type, extra);
+}
+
+function binderBookQuotedText(text) {
+  const value = String(text || "").trim();
+  const pairs = [["“", "”"], ["‘", "’"], ['"', '"'], ["'", "'"], ["«", "»"]];
+  return pairs.some(([first, last]) => value.length > 1 && value.startsWith(first) && value.endsWith(last)) ? value : `“${value}”`;
+}
+
+function binderBookQuoteSnapshot(runtime, context) {
+  const clone = context.body.cloneNode(true);
+  if (typeof stripWritingA4Layout === "function") stripWritingA4Layout(clone);
+  const state = runtime.binder.bookCitations?.get(context.section.id);
+  return {bodyHTML: clone.innerHTML,
+    cleanHTML: captureBinderBookCitations(runtime, context.section, context.body).html,
+    references: JSON.parse(JSON.stringify(state?.references || [])), removed: [...(state?.removed || [])]};
+}
+
+function restoreBinderBookQuoteSnapshot(runtime, context, snapshot) {
+  context.body.innerHTML = snapshot.bodyHTML;
+  const state = runtime.binder.bookCitations?.get(context.section.id);
+  const desired = new Set(snapshot.references.filter(reference => !snapshot.removed.includes(reference.id)).map(reference => reference.id));
+  const removed = new Set(snapshot.removed);
+  for (const identity of state?.savedIds || []) if (!desired.has(identity)) removed.add(identity);
+  restoreBinderBookCitations(runtime, context.section.id, snapshot.references, [...removed]);
+  runtime.binder.activeBookBody = context.body;
+  if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(Object.assign(Object.create(runtime), {paper: context.body}));
+}
+
+function pasteBinderBookSourceQuote(runtime, body, event) {
+  if (event.defaultPrevented || !event.clipboardData) return false;
+  const clipboard = event.clipboardData;
+  let source;
+  try {
+    source = studioClipboardSource(runtime, clipboard.getData("text/plain"), clipboard.getData("text/html"),
+      clipboard.getData(studioSourceMime));
+  } catch { return false; }
+  if (!source || !["passage-quote", "reference"].includes(source.mode)) return false;
+  event.preventDefault();
+  const context = binderBookCitationContext(runtime, body?.dataset.bookSection);
+  const binder = runtime.binder;
+  if (!context || context.body !== body || body.contentEditable !== "true" || binder.locked || binder.bookComposing ||
+      runtime.pending || binder.bookSent || runtime.queued && !["scan", "scan-deeper"].includes(runtime.queued.type)) {
+    status(runtime, "Wait for the chapter save, then paste the quotation again.", true); return true;
+  }
+  if (typeof binderBookCrossHostSelection === "function" && binderBookCrossHostSelection(runtime)) {
+    status(runtime, "Place the cursor in the chapter text to paste a source quotation.", true); return true;
+  }
+  const current = writingSelectionRange(body);
+  const selected = rangeInPaper(body, current) ? current : rangeInPaper(body, binder.bookRange) ? binder.bookRange : null;
+  if (!selected || selectedFootnotes(body, selected).length) {
+    status(runtime, "Place the cursor beside the existing footnotes to paste this quotation.", true); return true;
+  }
+  const before = binderBookQuoteSnapshot(runtime, context);
+  const dirty = new Map([...binder.bookDirty || []].map(([identity, value]) => [identity, {...value}]));
+  const pendingBefore = {dirty, metadata: binder.bookMetaDirty, revision: binder.bookEditRevision};
+  try {
+    binder.activeBookBody = body;
+    const editor = binderBookCitationEditor(runtime, context.section.id) || Object.assign(Object.create(runtime), {paper: body});
+    const range = restoreSelection(editor, selected.cloneRange()).cloneRange();
+    let anchor;
+    if (source.mode === "passage-quote") {
+      const quotation = body.ownerDocument.createTextNode(binderBookQuotedText(source.quote));
+      range.deleteContents(); range.insertNode(quotation);
+      normalizeBlocks(body);
+      range.selectNodeContents(quotation);
+      anchor = passageSelection(editor, range, studioReferenceSelectionLimit);
+    } else anchor = passageSelection(editor, range, studioReferenceSelectionLimit) || citationPoint(editor, range);
+    if (!anchor) throw new Error("Place the cursor in a paragraph to paste this quotation.");
+    range.collapse(false); restoreSelection(editor, range);
+    binder.bookRange = range.cloneRange();
+    markBinderBookChanged(runtime, body);
+    clearTimeout(binder.bookSaveTimer); binder.bookSaveTimer = 0;
+    const snapshot = captureBinderBook(runtime);
+    if (!snapshot) throw new Error("This Book could not save the quotation.");
+    binder.bookQuoteEdit = {bookId: context.book.id, sectionId: context.section.id, documentId: context.section.document_id,
+      before, pendingBefore, range: range.cloneRange(), snapshot};
+    binder.bookQuoteHistory = null; binder.chapterHistory = null;
+    binder.bookSent = snapshot;
+    runtime.queued = null;
+    send(runtime, "paste-cited", {source, ...binderBookSourceFields(runtime, context.section.id),
+      book_snapshot: snapshot, block_id: anchor.blockId, selection: anchor.selection});
+    binder.bookQuoteEdit.nonce = runtime.pending?.nonce || "";
+  } catch (error) {
+    restoreBinderBookQuoteSnapshot(runtime, context, before);
+    binder.bookDirty = dirty; binder.bookMetaDirty = pendingBefore.metadata; binder.bookEditRevision = pendingBefore.revision;
+    binder.bookSent = null; binder.bookQuoteEdit = null;
+    status(runtime, error.message || "CARE could not paste this quotation. Try again.", true);
+  }
+  return true;
+}
+
+function acknowledgeBinderBookQuotePaste(runtime, ack) {
+  const binder = runtime.binder, edit = binder?.bookQuoteEdit;
+  if (!edit || edit.nonce && ack.nonce !== edit.nonce) return;
+  if (ack.error || ack.citation_error || !ack.citation_reference_id) {
+    const context = binderBookCitationContext(runtime, edit.sectionId);
+    if (context && context.book.id === edit.bookId && context.section.document_id === edit.documentId) {
+      restoreBinderBookQuoteSnapshot(runtime, context, edit.before);
+      binder.bookDirty = edit.pendingBefore.dirty; binder.bookMetaDirty = edit.pendingBefore.metadata;
+      binder.bookEditRevision = edit.pendingBefore.revision; binder.bookSent = null; binder.bookSaveError = false;
+    }
+    binder.bookQuoteEdit = null;
+    status(runtime, ack.error || ack.citation_error || "The quotation could not be linked. Its original text has been kept.", true);
+    return;
+  }
+  edit.referenceId = ack.citation_reference_id;
+}
+
+function finishBinderBookQuotePaste(runtime) {
+  const binder = runtime.binder, edit = binder?.bookQuoteEdit;
+  if (!edit?.referenceId) return;
+  const context = binderBookCitationContext(runtime, edit.sectionId);
+  const editor = binderBookCitationEditor(runtime, edit.sectionId);
+  if (!context || context.book.id !== edit.bookId || !editor?.references.some(reference => reference.id === edit.referenceId)) return;
+  const after = binderBookQuoteSnapshot(runtime, context);
+  binder.bookQuoteHistory = {bookId: edit.bookId, sectionId: edit.sectionId, documentId: edit.documentId,
+    before: edit.before, after, applied: true};
+  binder.bookQuoteEdit = null;
+  const marker = [...context.body.querySelectorAll("[data-writing-footnote]")].find(node => node.dataset.writingFootnote === edit.referenceId);
+  const range = marker ? footnoteBoundary(marker, true) : edit.range;
+  if (rangeInPaper(context.body, range)) {
+    restoreSelection(editor, range); binder.bookRange = range.cloneRange();
+  }
+}
+
+function binderBookQuoteHistoryCommand(runtime, command) {
+  if (!["undo", "redo"].includes(command)) return false;
+  const binder = runtime.binder, history = binder?.bookQuoteHistory;
+  if (!history || history.bookId !== binder.bookOverviewId || binder.reading.hidden ||
+      (command === "undo") !== history.applied) return false;
+  const context = binderBookCitationContext(runtime, history.sectionId);
+  if (!context || context.section.document_id !== history.documentId) return false;
+  const expected = history.applied ? history.after : history.before;
+  const current = binderBookQuoteSnapshot(runtime, context);
+  const activeIds = snapshot => snapshot.references.filter(reference => !snapshot.removed.includes(reference.id))
+    .map(reference => reference.id).sort();
+  if (current.cleanHTML !== expected.cleanHTML || JSON.stringify(activeIds(current)) !== JSON.stringify(activeIds(expected))) {
+    binder.bookQuoteHistory = null; return false;
+  }
+  if (runtime.pending || runtime.navigationLocked || binder.locked || binder.bookComposing) {
+    status(runtime, "Wait for the chapter save, then try again.", true); return true;
+  }
+  const active = binderBookCitationContext(runtime);
+  if (active && active.section.id !== history.sectionId) return false;
+  restoreBinderBookQuoteSnapshot(runtime, context, command === "undo" ? history.before : history.after);
+  history.applied = command === "redo";
+  markBinderBookChanged(runtime, context.body);
+  const editor = binderBookCitationEditor(runtime, context.section.id);
+  if (editor) paintFootnotes(editor);
+  const range = context.body.ownerDocument.createRange(); range.selectNodeContents(context.body); range.collapse(false);
+  restoreSelection(editor || Object.assign(Object.create(runtime), {paper: context.body}), range);
+  binder.bookRange = range.cloneRange();
+  return true;
+}
+
+const binderBookDragMime = "application/x-care-book-drag";
+
+function paintBinderBookDrag(runtime) {
+  const binder = runtime.binder;
+  if (!binder?.tree) return;
+  for (const row of binder.tree.querySelectorAll("[data-binder-book-section]")) {
+    const book = binder.contents.booksById.get(row.dataset.binderBook);
+    const section = book?.sections.find(part => part.id === row.dataset.binderBookSection);
+    const button = row.querySelector(".binder-draft-open");
+    if (!section || !button) continue;
+    row.draggable = Boolean(section.available && !binder.locked && (!book.shared || !book.read_only && ["owner", "editor"].includes(book.role)));
+    if (section.kind === "part") {
+      const label = section.title || `Part ${book.sections.filter(part => part.kind === "part").findIndex(part => part.id === section.id) + 1}`;
+      const name = button.querySelector(".binder-book-section-name");
+      if (name) name.textContent = label;
+      button.setAttribute("aria-label", section.title ? `Part: ${label}` : label);
+      continue;
+    }
+    const number = section.kind === "chapter" ? book.sections.filter(part => part.kind === "chapter")
+      .findIndex(part => part.id === section.id) + 1 : "";
+    button.setAttribute("aria-label", number ? `Chapter ${number}: ${section.title}` : section.title);
+    const existing = button.querySelector(".binder-book-number");
+    if (!existing) {
+      const gutter = element("span", number ? String(number) : "", "binder-book-number");
+      gutter.setAttribute("aria-hidden", "true");
+      button.replaceChildren(gutter, element("span", section.title, "binder-book-section-name"));
+    } else { existing.textContent = number ? String(number) : "";
+      button.querySelector(".binder-book-section-name").textContent = section.title; }
+  }
+}
+
+function binderBookDragSource(runtime, node) {
+  const binder = runtime.binder;
+  const row = node?.closest?.("[data-binder-book-section]");
+  if (row && binder.panel.contains(row)) {
+    const book = binder.contents.booksById.get(row.dataset.binderBook);
+    const section = book?.sections.find(part => part.id === row.dataset.binderBookSection);
+    return section?.available && (!book.shared || !book.read_only && ["owner", "editor"].includes(book.role)) ? {kind: "section", book: book.id, section: section.id,
+      ...(book.shared ? {scope: JSON.stringify(book._remote_scope)} : {}),
+      document: section.document_id, node: row} : null;
+  }
+  const bookSource = node?.closest?.("[data-binder-drag-book]");
+  const sourceBook = bookSource && binder.contents.booksById.get(bookSource.dataset.binderDragBook);
+  if (sourceBook && !sourceBook.shared && binder.panel.contains(bookSource)) return {kind: "book", book: sourceBook.id, node: bookSource};
+  const folderSource = node?.closest?.("[data-binder-drag-folder]");
+  if (folderSource && binder.panel.contains(folderSource) && binder.contents.foldersById.has(folderSource.dataset.binderDragFolder))
+    return {kind: "folder", folder: folderSource.dataset.binderDragFolder, node: folderSource};
+  const source = node?.closest?.("[data-binder-drag-draft]");
+  const draft = source && binder.contents.byId.get(source.dataset.binderDragDraft);
+  if (!draft || !binder.panel.contains(source) ||
+      binder.order.includes(draft.id) && binder.order.length > 1 || draft.shared && draft.offline) return null;
+  return {kind: draft.shared ? "shared" : "document", document: draft.id, node: source};
+}
+
+const binderBookSectionParent = section => section?.parent_section_id || section?.parent_part_id || null;
+function binderBookDragBranch(book, sectionId) {
+  const result = new Set([sectionId]);
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const section of book.sections) if (!result.has(section.id) && result.has(binderBookSectionParent(section))) {
+      result.add(section.id); changed = true;
+    }
+  }
+  return result;
+}
+
+function binderBookSectionHead(row) {
+  const head = row.children[0];
+  return head?.classList.contains("binder-section-head") || head?.classList.contains("binder-part-head") ? head : row;
+}
+
+function binderBookDropIntent(runtime, node, clientY, source) {
+  const binder = runtime.binder;
+  let row = node?.closest?.("[data-binder-book-section]");
+  const drop = node?.closest?.("[data-binder-book-drop]");
+  const blankBranch = drop && (drop.classList.contains("binder-section-children") ||
+    drop.classList.contains("binder-part-children")) && (!row || !drop.contains(row));
+  if (blankBranch) row = null;
+  let target = blankBranch ? drop : row || drop;
+  if (target && binder.panel.contains(target)) {
+    const book = binder.contents.booksById.get(target.dataset.binderBook || target.dataset.binderBookDrop);
+    if (!book || !source) return null;
+    if (source.kind === "book" && source.book === book.id) return null;
+    const sourceBook = source.kind === "section" && binder.contents.booksById.get(source.book);
+    const sourceSection = sourceBook && sourceBook.sections.find(part => part.id === source.section);
+    if (source.kind === "section" && !sourceSection) return null;
+    if (book.shared && (source.kind !== "section" || source.book !== book.id ||
+        book.read_only || !["owner", "editor"].includes(book.role))) return null;
+    if (sourceBook?.shared && (source.book !== book.id || source.scope !== JSON.stringify(sourceBook._remote_scope))) return null;
+    const branch = sourceBook && source.book === book.id ? binderBookDragBranch(sourceBook, source.section) : new Set();
+    const container = ["book", "folder"].includes(source.kind);
+    let before = "", edge = "append", parent = blankBranch ?
+      drop.dataset.binderBookDropParent || drop.dataset.binderBookDropPart || null : null;
+    if (row) {
+      const section = book.sections.find(part => part.id === row.dataset.binderBookSection);
+      if (!section) return null;
+      const head = binderBookSectionHead(row), rect = head.getBoundingClientRect();
+      const fraction = rect.height ? (clientY - rect.top) / rect.height : 0;
+      if (fraction >= .2 && fraction <= .8) {
+        if (!["part", "chapter", "subheading"].includes(section.kind)) return null;
+        parent = section.id; edge = "inside"; target = head;
+      } else {
+        parent = binderBookSectionParent(section);
+        const siblings = book.sections.filter(part => binderBookSectionParent(part) === parent);
+        const index = siblings.findIndex(part => part.id === section.id);
+        edge = fraction < .2 ? "before" : "after";
+        before = edge === "before" ? section.id : siblings[index + 1]?.id || "";
+        target = edge === "before" ? head : row;
+      }
+    }
+    const parentSection = parent && book.sections.find(part => part.id === parent);
+    if (parent && (!parentSection || parentSection.available === false || branch.has(parent))) return null;
+    if ((container || sourceSection?.kind === "part") && parentSection && parentSection.kind !== "part") return null;
+    if (parent && ["front_matter", "back_matter"].includes(sourceSection?.kind)) return null;
+    if (branch.has(before)) return null;
+    if (parentSection && ["chapter", "subheading"].includes(parentSection.kind)) {
+      let height = 0;
+      if (sourceSection) for (const part of sourceBook.sections) {
+        let current = part, depth = 0; const seen = new Set();
+        while (current && current.id !== sourceSection.id && !seen.has(current.id)) {
+          seen.add(current.id); current = sourceBook.sections.find(row => row.id === binderBookSectionParent(current)); depth++;
+        }
+        if (current?.id === sourceSection.id) height = Math.max(height, depth);
+      }
+      if ((parentSection.kind === "chapter" ? 0 : Number(parentSection.heading_level || 1)) + 1 + height > 6) return null;
+    }
+    const rank = kind => kind === "front_matter" ? 0 : kind === "back_matter" ? 2 : 1;
+    const sourceRank = rank(container ? "part" : sourceSection?.kind || "chapter");
+    const remaining = book.sections.filter(part => binderBookSectionParent(part) === parent && !branch.has(part.id));
+    if (!row || edge === "inside") before = remaining.find(part => rank(part.kind) > sourceRank)?.id || "";
+    const position = before ? remaining.findIndex(part => part.id === before) : remaining.length;
+    if (position < 0 || position && rank(remaining[position - 1].kind) > sourceRank ||
+        position < remaining.length && rank(remaining[position].kind) < sourceRank) return null;
+    if (source.kind === "section" && source.book === book.id && binderBookSectionParent(sourceSection) === parent) {
+      const reordered = [...remaining]; reordered.splice(position, 0, sourceSection);
+      const previous = book.sections.filter(part => binderBookSectionParent(part) === parent);
+      if (reordered.length === previous.length && reordered.every((part, index) => part.id === previous[index].id)) return null;
+    }
+    if (!row && target.classList.contains("binder-book-sections")) {
+      const rendered = [...target.querySelectorAll("[data-binder-book-section]")].filter(node =>
+        binderBookSectionParent(book.sections.find(part => part.id === node.dataset.binderBookSection)) === parent);
+      const boundary = before && rendered.find(node => node.dataset.binderBookSection === before);
+      const last = [...rendered].reverse().find(node => node.dataset.binderBookSection !== source.section &&
+        rank(book.sections.find(part => part.id === node.dataset.binderBookSection)?.kind) <= sourceRank);
+      if (boundary) { target = boundary; edge = "before"; }
+      else if (last) { target = last; edge = "after"; }
+    }
+    let lineNode = null, lineEdge = "";
+    if (!row && edge !== "inside") {
+      const rendered = [...binder.tree.querySelectorAll("[data-binder-book-section]")].filter(node => node.dataset.binderBook === book.id &&
+        binderBookSectionParent(book.sections.find(part => part.id === node.dataset.binderBookSection)) === parent);
+      lineNode = before && rendered.find(node => node.dataset.binderBookSection === before);
+      if (lineNode) lineEdge = "before";
+      else { lineNode = [...rendered].reverse().find(node => node.dataset.binderBookSection !== source.section); lineEdge = "after"; }
+    }
+    const nestedHeading = parentSection && ["chapter", "subheading"].includes(parentSection.kind);
+    const label = source.kind === "shared" ? (nestedHeading ? "Add a private copy as subheading" : "Add a private copy to Book") :
+      container ? "Add as Part" : nestedHeading && edge === "inside" ? "Nest as subheading" : "";
+    return {kind: "book", book: book.id, ...(book.shared ? {scope: JSON.stringify(book._remote_scope)} : {}),
+      parent, before, edge, node: target, lineNode, lineEdge, label, copy: source.kind === "shared"};
+  }
+  if (source?.kind !== "section") return null;
+  if (binder.contents.booksById.get(source.book)?.shared) return null;
+  const folder = node?.closest?.("[data-binder-drop-folder]");
+  return folder && binder.panel.contains(folder) ?
+    {kind: "folder", folder: folder.dataset.binderDropFolder || null, node: folder} : null;
+}
+
+function commitBinderBookDrag(runtime, source, destination) {
+  const binder = runtime.binder;
+  const intent = {source: {...source, node: null}, destination: {...destination, node: null}};
+  const perform = () => {
+    if (binder.locked || binder.bookSaveError) return;
+    const payload = {};
+    const isContainer = ["book", "folder"].includes(intent.source.kind);
+    if (intent.source.kind === "folder") {
+      if (!binder.contents.foldersById.has(intent.source.folder)) return;
+      payload.source_folder_id = intent.source.folder;
+    } else if (intent.source.kind === "book") {
+      const book = binder.contents.booksById.get(intent.source.book);
+      if (!book) return;
+      Object.assign(payload, {source_book_id: book.id, source_book_revision: book.revision});
+    } else if (intent.source.kind === "section") {
+      const book = binder.contents.booksById.get(intent.source.book);
+      const section = book?.sections.find(part => part.id === intent.source.section && part.available);
+      if (!section || section.document_id !== intent.source.document) return;
+      if (book.shared && (intent.source.scope !== JSON.stringify(book._remote_scope) ||
+          intent.destination.kind !== "book" || intent.destination.book !== book.id)) return;
+      Object.assign(payload, {source_book_id: book.id, source_book_revision: book.revision,
+        source_section_id: section.id, target_revision: section.revision});
+    } else {
+      const draft = binder.contents.byId.get(intent.source.document);
+      if (!draft || draft.shared && draft.offline ||
+          (intent.source.kind === "shared") !== Boolean(draft.shared)) return;
+      Object.assign(payload, intent.source.kind === "shared" ? {source_shared_id: draft.id} : {target_document_id: draft.id});
+      payload.target_revision = runtime.docId === draft.id ? runtime.revision : draft.revision;
+    }
+    if (intent.destination.kind === "book") {
+      const book = binder.contents.booksById.get(intent.destination.book);
+      if (!book || intent.destination.before && !book.sections.some(part => part.id === intent.destination.before)) return;
+      if (intent.destination.parent && !book.sections.some(part => part.id === intent.destination.parent)) return;
+      if (book.shared && (intent.destination.scope !== JSON.stringify(book._remote_scope) ||
+          intent.source.kind !== "section" || intent.source.book !== book.id || book.read_only || !["owner", "editor"].includes(book.role))) return;
+      Object.assign(payload, {destination_book_id: book.id, destination_book_revision: book.revision,
+        before_section_id: intent.destination.before, destination_parent_id: intent.destination.parent || null});
+      if (book.shared) payload.remote_scope = book._remote_scope;
+      binder.booksOpen.set(book.id, true);
+      if (intent.destination.parent) binder.partsOpen?.set(`${book.id}:${intent.destination.parent}`, true);
+    } else {
+      if (intent.destination.folder && !binder.contents.foldersById.has(intent.destination.folder)) return;
+      payload.destination_folder_id = intent.destination.folder;
+      if (intent.destination.folder) binder.foldersOpen.set(intent.destination.folder, true);
+    }
+    if (binder.bookOverviewId) Object.assign(payload, {active_book_id: binder.bookOverviewId, book_manuscript: true});
+    binderAction(runtime, isContainer ? "book-container-drop" : "book-drag", payload);
+  };
+  if (binder.bookOverviewId) {
+    if (!flushBinderBook(runtime, perform)) perform();
+  } else if (typeof holdNavigation !== "function" || !holdNavigation(runtime, perform)) perform();
+}
+
+function installBinderBookDrag(runtime) {
+  const binder = runtime.binder;
+  if (!binder || binder.bookDragInstalled) return;
+  binder.bookDragInstalled = true;
+  const panel = binder.panel, signal = runtime.controller.signal;
+  let source = null, token = "", highlighted = null, insertionLine = null, copyHint = null;
+  let scrollFrame = 0, scrollSpeed = 0;
+  const stopScroll = () => { scrollSpeed = 0; if (scrollFrame) cancelAnimationFrame(scrollFrame); scrollFrame = 0; };
+  const scroll = () => {
+    scrollFrame = 0;
+    if (!source || !scrollSpeed || !binder.tree.isConnected) return;
+    binder.tree.scrollTop += scrollSpeed;
+    scrollFrame = requestAnimationFrame(scroll);
+  };
+  const autoscroll = event => {
+    if (typeof requestAnimationFrame !== "function") return;
+    const rect = binder.tree.getBoundingClientRect();
+    scrollSpeed = event.clientY < rect.top + 56 ? -10 : event.clientY > rect.bottom - 56 ? 10 : 0;
+    if (scrollSpeed && !scrollFrame) scrollFrame = requestAnimationFrame(scroll);
+    else if (!scrollSpeed) stopScroll();
+  };
+  const highlight = intent => {
+    highlighted?.removeAttribute("data-book-drop-edge");
+    highlighted?.removeAttribute("data-book-drop-copy");
+    highlighted?.removeAttribute("aria-description");
+    insertionLine?.removeAttribute("data-book-insert-edge"); copyHint?.remove(); copyHint = null;
+    highlighted = intent?.node || null;
+    insertionLine = intent?.lineNode || null;
+    if (insertionLine) insertionLine.dataset.bookInsertEdge = intent.lineEdge;
+    if (highlighted) {
+      highlighted.dataset.bookDropEdge = intent.edge || "folder";
+      if (intent.copy) highlighted.dataset.bookDropCopy = "";
+      if (intent.copy) highlighted.setAttribute("aria-description", "Copy shared draft into Book");
+      if (intent.label) {
+        copyHint = element("span", intent.label, "binder-book-copy-hint");
+        copyHint.setAttribute("aria-hidden", "true"); highlighted.append(copyHint);
+      }
+    }
+  };
+  const clear = () => {
+    source?.node?.removeAttribute("data-book-dragging");
+    source = null; token = ""; highlight(null); stopScroll(); binder.rootDrop.hidden = true;
+  };
+  const bookArea = node => node?.closest?.("[data-binder-book-section], [data-binder-book-drop]");
+  panel.addEventListener("dragstart", event => {
+    clear();
+    if (!event.dataTransfer || binder.locked) return;
+    source = binderBookDragSource(runtime, event.target);
+    if (!source) return;
+    token = id(); event.dataTransfer.setData(binderBookDragMime, token);
+    event.dataTransfer.effectAllowed = source.kind === "shared" ? "copyMove" : "move";
+    if (["section", "book"].includes(source.kind)) {
+      event.stopPropagation(); binder.drag = null; source.node.dataset.bookDragging = "";
+      if (source.kind === "section") { binder.rootDrop.textContent = "Move to Drafts"; binder.rootDrop.hidden = false; }
+    }
+  }, {capture: true, signal});
+  panel.addEventListener("dragstart", event => {
+    // The ordinary Binder listener runs first in the bubble phase. Keep its
+    // folder moves while permitting a shared source's private-copy drop.
+    if (source?.kind === "shared" && event.dataTransfer) event.dataTransfer.effectAllowed = "copyMove";
+  }, {signal});
+  panel.addEventListener("dragover", event => {
+    if (source) autoscroll(event);
+    const intent = !binder.locked && binderBookDropIntent(runtime, event.target, event.clientY, source);
+    highlight(intent);
+    if (intent || bookArea(event.target) || ["section", "book"].includes(source?.kind)) event.stopPropagation();
+    if (!intent || !event.dataTransfer) {
+      if (bookArea(event.target) && event.dataTransfer) event.dataTransfer.dropEffect = "none";
+      return;
+    }
+    event.preventDefault(); event.dataTransfer.dropEffect = intent.copy ? "copy" : "move";
+  }, {capture: true, signal});
+  panel.addEventListener("drop", event => {
+    const intent = !binder.locked && binderBookDropIntent(runtime, event.target, event.clientY, source);
+    const dragged = source;
+    const accepted = Boolean(intent && event.dataTransfer?.getData(binderBookDragMime) === token);
+    if (!intent && !bookArea(event.target) && !["section", "book"].includes(source?.kind)) return;
+    event.preventDefault(); event.stopPropagation(); clear(); binder.drag = null;
+    if (accepted) commitBinderBookDrag(runtime, dragged, intent);
+  }, {capture: true, signal});
+  panel.addEventListener("dragleave", event => {
+    if (highlighted && !highlighted.contains(event.relatedTarget)) highlight(null);
+    if (!panel.contains(event.relatedTarget)) stopScroll();
+  }, {capture: true, signal});
+  panel.addEventListener("dragend", clear, {capture: true, signal});
+  signal.addEventListener("abort", stopScroll, {once: true});
+}
+
 const writingBinderLimit = 50;
 const writingBinderDrag = "application/x-care-binder-item";
 const binderIcons = {
   draft: "M10 4v12M4 10h12",
   folder: "M2.5 5h5l2 2H17v9H2.5zM11 10v4m-2-2h4",
+  book: "M10 5C8 3.5 5.5 3 2.5 4v11.5c3-1 5.5-.5 7.5 1 2-1.5 4.5-2 7.5-1V4C14.5 3 12 3.5 10 5Zm0 0v11.5",
+  part: "M4 3.5h12v13H4zM4 7h12M7 10h6M7 13h4",
   files: "M6 4h10v11H6zM4 7H3v10h10v-1M9 8h4m-4 3h4",
   trash: "M4 6h12m-9 0V4h6v2M6 6l1 11h6l1-11M9 9v5m2-5v5",
   archive: "M3 4h14v4H3zM5 8v8h10V8m-7 3h4",
 };
 
 function binderIcon(name) {
-  const icon = element("span", undefined, "binder-icon");
+  const icon = element("span", undefined, `binder-icon binder-icon-${name}`);
   icon.setAttribute("aria-hidden", "true");
   icon.innerHTML = `<svg viewBox="0 0 20 20"><path d="${binderIcons[name]}"/></svg>`;
   return icon;
@@ -1810,12 +3346,18 @@ function binderIconButton(name, label, handler) {
   return button;
 }
 
-function writingBinderContents(documents, folders) {
+function writingBinderContents(documents, folders, books = []) {
   const byId = new Map(documents.map(document => [document.id, document]));
   const foldersById = new Map(folders.map(folder => [folder.id, folder]));
   const foldersByParent = new Map();
   const documentsByFolder = new Map();
+  const booksById = new Map(books.map(book => [book.id, book]));
+  const booksByFolder = new Map();
+  const bookDocuments = new Set();
+  const bookFolders = new Set();
   const sharedFolders = new Set();
+  const firstDraftFolders = new Set();
+  const firstDrafts = [];
   const group = (groups, key, item) => {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
@@ -1823,16 +3365,31 @@ function writingBinderContents(documents, folders) {
   for (const folder of [...folders].sort((left, right) => left.name.localeCompare(right.name))) {
     group(foldersByParent, foldersById.has(folder.parent_id) ? folder.parent_id : null, folder);
   }
-  for (const document of [...documents].sort((left, right) => left.title.localeCompare(right.title))) {
-    group(documentsByFolder, foldersById.has(document.folder_id) ? document.folder_id : null, document);
-    if (!document.shared) continue;
-    let folder = foldersById.get(document.folder_id);
-    while (folder && !sharedFolders.has(folder.id)) {
-      sharedFolders.add(folder.id);
+  for (const book of [...books].sort((left, right) => left.title.localeCompare(right.title))) {
+    group(booksByFolder, foldersById.has(book.folder_id) ? book.folder_id : null, book);
+    for (const section of book.sections) {
+      if (section.available) bookDocuments.add(section.document_id);
+    }
+    let folder = foldersById.get(book.folder_id);
+    while (folder && !bookFolders.has(folder.id)) {
+      bookFolders.add(folder.id);
       folder = foldersById.get(folder.parent_id);
     }
   }
-  return {byId, foldersById, foldersByParent, documentsByFolder, sharedFolders};
+  for (const draft of documents) {
+    for (const protectedFolders of [draft.shared && sharedFolders, draft.first_draft && firstDraftFolders].filter(Boolean)) {
+      let folder = foldersById.get(draft.folder_id);
+      while (folder && !protectedFolders.has(folder.id)) {
+        protectedFolders.add(folder.id); folder = foldersById.get(folder.parent_id);
+      }
+    }
+  }
+  for (const document of [...documents].sort((left, right) => left.title.localeCompare(right.title))) {
+    if (bookDocuments.has(document.id) || document.hidden_by_container) continue;
+    if (document.first_draft) firstDrafts.push(document);
+    else group(documentsByFolder, foldersById.has(document.folder_id) ? document.folder_id : null, document);
+  }
+  return {byId, foldersById, foldersByParent, documentsByFolder, sharedFolders, booksById, booksByFolder, bookFolders, firstDrafts, firstDraftFolders};
 }
 
 function installWritingBinder(runtime) {
@@ -1851,13 +3408,14 @@ function installWritingBinder(runtime) {
   });
   const files = binderIconButton("files", "Manage drafts and folders", () => send(runtime, "files"));
   const newFolder = binderIconButton("folder", "New folder", () => openBinderFolderForm(runtime, null));
-  head.append(title, create, newFolder, files);
+  const newBook = binderIconButton("book", "New book", () => openBinderBookForm(runtime, null, newBook));
+  head.append(title, create, newFolder, newBook, files);
 
   const search = element("input", undefined, "binder-search");
   search.type = "search";
   search.autocomplete = "off";
-  search.placeholder = "Find a draft or folder";
-  search.setAttribute("aria-label", "Find a draft or folder in the Binder");
+  search.placeholder = "Find in the Binder";
+  search.setAttribute("aria-label", "Find a draft, folder or book in the Binder");
   const folderForm = element("form", undefined, "binder-folder-form");
   folderForm.hidden = true;
   const folderName = element("input");
@@ -1889,6 +3447,15 @@ function installWritingBinder(runtime) {
   menu.id = "care-binder-item-menu";
   menu.hidden = true;
   menu.setAttribute("role", "group");
+  const placementForm = element("form", undefined, "binder-folder-form binder-placement-form");
+  placementForm.hidden = true;
+  const placementLabel = element("small");
+  const placementFolder = element("select");
+  placementFolder.setAttribute("aria-label", "Destination folder");
+  const placementSubmit = element("button", "Move"); placementSubmit.type = "submit";
+  const placementCancel = makeButton("×", () => closeBinderPlacementForm(runtime, true));
+  placementCancel.setAttribute("aria-label", "Cancel move");
+  placementForm.append(placementLabel, placementFolder, placementSubmit, placementCancel);
   const trash = element("details", undefined, "binder-trash");
   const trashSummary = element("summary");
   trashSummary.dataset.binderTrashDrop = "";
@@ -1900,9 +3467,12 @@ function installWritingBinder(runtime) {
   archive.hidden = true;
   const archiveSummary = element("summary");
   const archiveCount = element("span", undefined, "binder-archive-count");
-  archiveSummary.append(binderIcon("archive"), element("span", "Local Archive"), archiveCount);
+  archiveSummary.dataset.binderFirstDraftsDrop = "";
+  archiveSummary.title = "Drop a draft here to keep it in First drafts";
+  archiveSummary.append(binderIcon("archive"), element("span", "First drafts"), archiveCount);
   const archiveList = element("div", undefined, "binder-archive-list");
   archive.append(archiveSummary, archiveList);
+  const firstDrafts = archive, firstDraftsSummary = archiveSummary, firstDraftsCount = archiveCount, firstDraftsList = archiveList;
   const notice = element("p", undefined, "binder-notice");
   notice.hidden = true;
   notice.setAttribute("role", "status");
@@ -1931,7 +3501,7 @@ function installWritingBinder(runtime) {
   groupSelection.className = "binder-group-selection";
   footer.append(read, compile);
   exportArea.append(selectionDetails, groupSelection, footer);
-  panel.append(head, searchArea, folderForm, tree, menu, archive, trash, notice, exportArea);
+  panel.append(head, searchArea, folderForm, placementForm, tree, menu, archive, trash, notice, exportArea);
   runtime.navigator.append(panel);
 
   const reading = element("section", undefined, "binder-reading");
@@ -1940,17 +3510,28 @@ function installWritingBinder(runtime) {
   const readingHead = element("header", undefined, "binder-reading-head");
   const readingTitle = element("span");
   const closeReading = makeButton("Back to draft", () => closeBinderReading(runtime));
+  const backToBook = makeButton("← Back to book", () => {
+    if (runtime.binder.editingBook) send(runtime, "open-book", {target_id: runtime.binder.editingBook});
+  });
+  backToBook.className = "binder-back-to-book";
+  backToBook.hidden = true;
+  const bookNotice = element("p", undefined, "binder-notice binder-book-notice");
+  bookNotice.hidden = true;
+  bookNotice.setAttribute("role", "status");
   const readingText = element("article", undefined, "binder-reading-text");
   readingHead.append(readingTitle, closeReading);
-  reading.append(readingHead, readingText);
+  reading.append(readingHead, bookNotice, readingText);
+  runtime.a4.well.insertBefore(backToBook, runtime.a4.stage);
   runtime.a4.well.append(reading);
   const binder = runtime.binder = {
-    panel, create, files, newFolder, search, tree, rootDrop, menu, folderForm, folderName, folderSubmit, folderLocation,
+    panel, create, files, newFolder, newBook, search, tree, rootDrop, menu, folderForm, folderName, folderSubmit, folderLocation,
     trash, trashCount, trashList, archive, archiveSummary, archiveCount, archiveList,
+    firstDrafts, firstDraftsSummary, firstDraftsCount, firstDraftsList,
+    placementForm, placementLabel, placementFolder, placementSubmit, placementTrigger: null, placementTarget: "",
     notice, exportArea, selection, count, read, compile, groupSelection,
-    reading, readingTitle, readingText, closeReading,
+    reading, readingTitle, readingText, closeReading, backToBook, bookNotice,
     launcher: runtime.root.querySelector("[data-binder-edge]"),
-    order: [], foldersOpen: new Map(), contents: writingBinderContents([], []), locked: false,
+    order: [], foldersOpen: new Map(), booksOpen: new Map(), partsOpen: new Map(), contents: writingBinderContents([], []), locked: false,
   };
   const signal = runtime.controller.signal;
   binder.launcher?.addEventListener("click", () => toggleWritingBinder(runtime), {signal});
@@ -1964,7 +3545,11 @@ function installWritingBinder(runtime) {
     event.preventDefault();
     const name = folderName.value.trim();
     if (binder.locked || !name) return;
-    if (binder.renamingItem) {
+    if (binder.creatingBook) {
+      binderAction(runtime, "create-book", {
+        book_title: name, folder_id: binder.creatingIn, document_ids: binder.creatingSelection || [],
+      });
+    } else if (binder.renamingItem) {
       const {kind, id} = binder.renamingItem;
       binderAction(runtime, "rename", {...binderItemFields(binder, kind, id), name});
     } else if (binder.creatingSelection) {
@@ -1975,11 +3560,17 @@ function installWritingBinder(runtime) {
       });
     } else binderAction(runtime, "create-folder", {folder_name: name, folder_id: binder.creatingIn});
   }, {signal});
+  placementForm.addEventListener("submit", event => {
+    event.preventDefault();
+    if (binder.locked || !binder.placementTarget) return;
+    placeBinderDraft(runtime, binder.placementTarget, placementFolder.value || null, false);
+  }, {signal});
   panel.addEventListener("keydown", event => {
     if (event.key !== "Escape" || event.isComposing) return;
     event.preventDefault();
     event.stopPropagation();
     if (!menu.hidden) closeBinderItemMenu(binder, true);
+    else if (!placementForm.hidden) closeBinderPlacementForm(runtime, true);
     else if (folderForm.hidden) closeWritingBinder(runtime);
     else folderCancel.click();
   }, {signal});
@@ -2017,6 +3608,7 @@ function installWritingBinder(runtime) {
     closeBinderReading(runtime);
   }, {signal});
   installWritingBinderDrag(runtime);
+  if (typeof installBinderBookDrag === "function") installBinderBookDrag(runtime);
 }
 
 function paintWritingBinderLauncher({launcher, panel}) {
@@ -2039,7 +3631,7 @@ function scheduleWritingBinderDismissal(runtime) {
     binder.dismissTimer = null;
     if (binder.panel.hidden || runtime.outlineWide !== false || runtime.composing ||
         binder.locked || binder.drag || binder.order.length || !binder.menu.hidden ||
-        !binder.folderForm.hidden || !binder.reading.hidden ||
+        !binder.folderForm.hidden || binder.placementForm?.hidden === false || !binder.reading.hidden ||
         [runtime.pending, runtime.queued].some(action => ["binder", "compile"].includes(action?.type)) ||
         runtime.navigator.contains(runtime.paper.getRootNode().activeElement) ||
         writingSelectionRange(runtime.paper)?.collapsed === false) return;
@@ -2087,14 +3679,17 @@ function openWritingBinder(runtime, focus = true) {
 }
 
 function binderAction(runtime, operation, fields) {
-  const {notice, locked} = runtime.binder;
+  const {notice, bookNotice, locked} = runtime.binder;
   if (locked) return;
   notice.hidden = true;
+  bookNotice.hidden = true;
   send(runtime, "binder", {operation, ...fields});
 }
 
 function openBinderFolderForm(runtime, folderId, trigger = null) {
   const binder = runtime.binder;
+  if (binder.placementForm) closeBinderPlacementForm(runtime);
+  binder.creatingBook = false;
   binder.creatingIn = folderId;
   binder.creatingSelection = null;
   binder.renamingItem = null;
@@ -2102,10 +3697,22 @@ function openBinderFolderForm(runtime, folderId, trigger = null) {
   binder.folderLocation.textContent = "New folder in " + (binder.contents.foldersById.get(folderId)?.name || "Drafts");
   binder.folderSubmit.textContent = "Create";
   binder.folderName.setAttribute("aria-label", "New folder name");
+  binder.folderName.placeholder = "Folder name";
   binder.folderName.maxLength = 120;
   binder.folderName.value = "";
   binder.folderForm.hidden = false;
   binder.folderName.focus({preventScroll: true});
+}
+
+function openBinderBookForm(runtime, folderId, trigger, selection = []) {
+  const {binder} = runtime;
+  openBinderFolderForm(runtime, folderId, trigger);
+  binder.creatingBook = true;
+  binder.creatingSelection = selection;
+  binder.folderLocation.textContent = "New book in " + (binder.contents.foldersById.get(folderId)?.name || "Drafts");
+  binder.folderName.setAttribute("aria-label", "New book title");
+  binder.folderName.placeholder = "Book title";
+  binder.folderName.maxLength = 300;
 }
 
 function binderDocumentRevisions(binder, identities) {
@@ -2124,6 +3731,7 @@ function openBinderSelectionFolder(runtime, trigger = null) {
 }
 
 function openBinderRenameForm(binder, kind, id, name, trigger) {
+  binder.creatingBook = false;
   binder.creatingSelection = null;
   binder.renamingItem = {kind, id};
   binder.formTrigger = trigger;
@@ -2139,8 +3747,57 @@ function openBinderRenameForm(binder, kind, id, name, trigger) {
 
 function binderItemFields(binder, kind, id) {
   const fields = {item_kind: kind, target_id: id};
-  if (kind === "document") fields.target_revision = binder.contents.byId.get(id)?.revision;
+  const revision = kind === "document" && binder.contents.byId.get(id)?.revision;
+  if (Number.isSafeInteger(revision) && revision > 0) fields.target_revision = revision;
   return fields;
+}
+
+function placeBinderDraft(runtime, id, folderId = null, firstDraft = false) {
+  const binder = runtime.binder, draft = binder.contents.byId.get(id);
+  if (binder.locked || !draft) return;
+  if (firstDraft) binder.firstDrafts.open = true;
+  binderAction(runtime, "place-draft", {
+    ...binderItemFields(binder, "document", id),
+    folder_id: firstDraft ? draft.folder_id || null : folderId,
+    first_draft: firstDraft,
+  });
+}
+
+function binderFolderLocations(binder) {
+  const {foldersById} = binder.contents;
+  return [...foldersById.values()].map(folder => {
+    const names = [folder.name], visited = new Set([folder.id]);
+    let parent = foldersById.get(folder.parent_id);
+    while (parent && !visited.has(parent.id)) {
+      visited.add(parent.id); names.unshift(parent.name); parent = foldersById.get(parent.parent_id);
+    }
+    return {id: folder.id, label: names.join(" / ")};
+  }).sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function closeBinderPlacementForm(runtime, focus = false) {
+  const binder = runtime.binder;
+  binder.placementForm.hidden = true;
+  binder.placementTarget = "";
+  const trigger = binder.placementTrigger;
+  binder.placementTrigger = null;
+  if (focus) (trigger?.isConnected ? trigger : binder.search).focus({preventScroll: true});
+}
+
+function openBinderPlacementForm(runtime, id, trigger = null) {
+  const binder = runtime.binder, draft = binder.contents.byId.get(id);
+  if (binder.locked || !draft) return;
+  binder.folderForm.hidden = true;
+  binder.placementTarget = id;
+  binder.placementTrigger = trigger;
+  binder.placementLabel.textContent = `Move “${draft.title}”`;
+  const destinations = [{id: "", label: "Drafts"}, ...binderFolderLocations(binder)];
+  binder.placementFolder.replaceChildren(...destinations.map(({id, label}) => {
+    const option = element("option", label); option.value = id; return option;
+  }));
+  binder.placementFolder.value = binder.contents.foldersById.has(draft.folder_id) ? draft.folder_id : "";
+  binder.placementForm.hidden = false;
+  binder.placementFolder.focus({preventScroll: true});
 }
 
 function trashBinderItem(runtime, kind, id) {
@@ -2177,10 +3834,17 @@ function binderItemMenuButton(runtime, kind, id, name) {
     });
     const buttons = [];
     const draft = kind === "document" ? binder.contents.byId.get(id) : null;
-    if (draft?.shared) {
-      if (!draft.can_unshare) return;
-      const text = draft.return_pending ? "Finish moving to this Mac…" : "Stop sharing…";
-      buttons.push(action(text, () => send(runtime, "unshare", {target_document_id: id})));
+    if (draft?.first_draft) {
+      buttons.push(action("Move to Drafts", () => placeBinderDraft(runtime, id)));
+      buttons.push(action("Move to folder…", () => openBinderPlacementForm(runtime, id, trigger)));
+    } else if (draft?.shared) {
+      buttons.push(action("Move to folder…", () => openBinderPlacementForm(runtime, id, trigger)));
+      if (draft.folder_id) buttons.push(action("Move to Drafts", () => placeBinderDraft(runtime, id)));
+      buttons.push(action("Send to First drafts", () => placeBinderDraft(runtime, id, null, true)));
+      if (draft.can_unshare) {
+        const text = draft.return_pending ? "Finish moving to this Mac…" : "Stop sharing…";
+        buttons.push(action(text, () => send(runtime, "unshare", {target_document_id: id})));
+      }
     } else {
       if (kind === "folder") buttons.push(
         action("New draft", () => {
@@ -2188,9 +3852,18 @@ function binderItemMenuButton(runtime, kind, id, name) {
           send(runtime, "new", {folder_id: id});
         }),
         action("New folder", () => openBinderFolderForm(runtime, id, trigger)),
+        action("New book", () => openBinderBookForm(runtime, id, trigger)),
+        action("Convert to Book", () => {
+          const convert = () => binderAction(runtime, "convert-folder-to-book", {folder_id: id});
+          if (!flushBinderBook(runtime, convert)) convert();
+        }),
       );
       if (kind === "document" && binder.order.includes(id)) {
         buttons.push(action("New folder from selection…", () => openBinderSelectionFolder(runtime, trigger)));
+        buttons.push(action("New book from selection…", () => {
+          const locations = new Set(binder.order.map(identity => binder.contents.byId.get(identity)?.folder_id || null));
+          openBinderBookForm(runtime, locations.size === 1 ? [...locations][0] : null, trigger, [...binder.order]);
+        }));
         if (binder.order.some(identity => binder.contents.byId.get(identity)?.folder_id)) {
           buttons.push(action("Move selection to Drafts", () => binderAction(runtime, "move-selection", {
             document_ids: [...binder.order], document_revisions: binderDocumentRevisions(binder, binder.order), folder_id: null,
@@ -2198,12 +3871,15 @@ function binderItemMenuButton(runtime, kind, id, name) {
         }
       } else {
         const location = kind === "folder" ? binder.contents.foldersById.get(id)?.parent_id : binder.contents.byId.get(id)?.folder_id;
-        if (location) buttons.push(action("Move to Drafts", () => binderAction(runtime, "move", {
-          ...binderItemFields(binder, kind, id), folder_id: null,
-        })));
+        if (location) buttons.push(action("Move to Drafts", () => kind === "document" ? placeBinderDraft(runtime, id) :
+          binderAction(runtime, "move", {...binderItemFields(binder, kind, id), folder_id: null})));
+      }
+      if (kind === "document") {
+        buttons.push(action("Move to folder…", () => openBinderPlacementForm(runtime, id, trigger)));
+        buttons.push(action("Send to First drafts", () => placeBinderDraft(runtime, id, null, true)));
       }
       buttons.push(action("Rename…", () => openBinderRenameForm(binder, kind, id, name, trigger)));
-      if (kind !== "folder" || !binder.contents.sharedFolders.has(id)) {
+      if (kind !== "folder" || !(binder.contents.sharedFolders.has(id) || binder.contents.bookFolders.has(id) || binder.contents.firstDraftFolders?.has(id))) {
         const trashLabel = kind === "document" && binder.order.includes(id) && binder.order.length > 1
           ? "Move this draft to Trash" : "Move to Trash";
         const trash = action(trashLabel, () => {
@@ -2234,11 +3910,17 @@ function binderItemMenuButton(runtime, kind, id, name) {
 }
 
 function binderDropTarget(binder, node) {
-  const drop = node?.closest?.("[data-binder-drop-folder], [data-binder-trash-drop]");
+  const drop = node?.closest?.("[data-binder-drop-folder], [data-binder-trash-drop], [data-binder-first-drafts-drop]");
   if (!drop || !binder.panel.contains(drop) || binder.locked || !binder.drag) return null;
+  if (drop.hasAttribute("data-binder-first-drafts-drop")) {
+    const {kind, id, documentIds} = binder.drag;
+    return kind === "document" && !binder.contents.byId.get(id)?.first_draft && !(documentIds?.length > 1) ? drop : null;
+  }
   if (drop.hasAttribute("data-binder-trash-drop")) {
     const {kind, id, documentIds} = binder.drag;
-    if (documentIds?.length > 1 || (kind === "folder" && binder.contents.sharedFolders.has(id))) return null;
+    const draft = kind === "document" && binder.contents.byId.get(id);
+    if (draft?.shared || draft?.first_draft || documentIds?.length > 1 || (kind === "folder" &&
+        (binder.contents.sharedFolders.has(id) || binder.contents.bookFolders.has(id) || binder.contents.firstDraftFolders?.has(id)))) return null;
     return drop;
   }
 
@@ -2246,10 +3928,10 @@ function binderDropTarget(binder, node) {
   const {kind, id, documentIds} = binder.drag;
   const folder = drop.dataset.binderDropFolder || null;
   if (kind === "document" && documentIds?.length) {
-    if (documentIds.every(identity => (byId.get(identity)?.folder_id || null) === folder)) return null;
+    if (documentIds.every(identity => !byId.get(identity)?.first_draft && (byId.get(identity)?.folder_id || null) === folder)) return null;
   } else {
     const current = (kind === "folder" ? foldersById.get(id)?.parent_id : byId.get(id)?.folder_id) || null;
-    if (current === folder) return null;
+    if (current === folder && !byId.get(id)?.first_draft) return null;
   }
   let ancestor = folder;
   const visited = new Set();
@@ -2307,13 +3989,17 @@ function installWritingBinderDrag(runtime) {
     event.preventDefault();
     if (target.hasAttribute("data-binder-trash-drop")) {
       trashBinderItem(runtime, dragged.kind, dragged.id);
+    } else if (target.hasAttribute("data-binder-first-drafts-drop")) {
+      placeBinderDraft(runtime, dragged.id, null, true);
     } else {
       const folder_id = target.dataset.binderDropFolder || null;
       if (folder_id) binder.foldersOpen.set(folder_id, true);
       if (dragged.documentIds?.length > 1) binderAction(runtime, "move-selection", {
         document_ids: dragged.documentIds, document_revisions: binderDocumentRevisions(binder, dragged.documentIds), folder_id,
       });
-      else binderAction(runtime, "move", {...binderItemFields(binder, dragged.kind, dragged.id), folder_id});
+      else if (dragged.kind === "document" && (binder.contents.byId.get(dragged.id)?.shared || binder.contents.byId.get(dragged.id)?.first_draft)) {
+        placeBinderDraft(runtime, dragged.id, folder_id);
+      } else binderAction(runtime, "move", {...binderItemFields(binder, dragged.kind, dragged.id), folder_id});
     }
   }, {signal});
   panel.addEventListener("dragend", clear, {signal});
@@ -2322,14 +4008,21 @@ function installWritingBinderDrag(runtime) {
 function showBinderReading(runtime, preview, archived = false) {
   const {binder, a4} = runtime;
   if (binder.reading.hidden) binder.draftScroll = [a4.well.scrollLeft, a4.well.scrollTop];
-  binder.readingTitle.textContent = archived ? `${preview.title} · Local Archive` :
+  binder.bookOverviewId = null;
+  if (binder.bookTools) binder.bookTools.hidden = true;
+  binder.closeReading.hidden = false;
+  binder.backToBook.hidden = true;
+  binder.reading.classList.remove("binder-book-overview");
+  binder.bookNotice.hidden = true;
+  binder.readingTitle.textContent = archived ? `${preview.title} · First draft` :
     `${preview.count} ${preview.count === 1 ? "draft" : "drafts"} · Reading copy`;
-  binder.reading.setAttribute("aria-label", archived ? "Read archived local draft" : "Read selected drafts together");
+  binder.reading.setAttribute("aria-label", archived ? "Read earlier draft" : "Read selected drafts together");
   binder.closeReading.textContent = archived ? "Close preview" : "Back to draft";
   binder.readingArchive = archived;
   // This fragment is produced by the same server-side allowlist as HTML compilation.
   binder.readingText.innerHTML = preview.html;
   a4.stage.hidden = true;
+  runtime.root.classList.remove("binder-book-open-view");
   runtime.root.classList.add("binder-reading-open");
   binder.reading.hidden = false;
   a4.well.scrollTo(0, 0);
@@ -2339,22 +4032,916 @@ function showBinderReading(runtime, preview, archived = false) {
 function closeBinderReading(runtime, focus = true) {
   const {binder, a4} = runtime;
   if (binder.reading.hidden) return;
+  const bookOpen = Boolean(binder.bookOverviewId);
+  if (bookOpen && flushBinderBook(runtime, () => closeBinderReading(runtime, focus))) return;
+  if (binder.bookTools) binder.bookTools.hidden = true;
+  binder.closeReading.hidden = false;
+  binder.bookOverviewId = null;
+  binder.bookViewSignature = null;
+  binder.bookPreviewRequest = null;
+  binder.backToBook.hidden = !binder.editingBook;
   binder.reading.hidden = true;
+  binder.reading.classList.remove("binder-book-overview");
   binder.readingText.replaceChildren();
-  runtime.root.classList.remove("binder-reading-open");
+  runtime.root.classList.remove("binder-reading-open", "binder-book-open-view");
   a4.stage.hidden = false;
   refreshWritingA4(runtime, true);
   a4.well.scrollTo(...binder.draftScroll);
+  if (bookOpen && !binder.panel.hidden) renderWritingBinderTree(runtime);
+  if (runtime.anchor && typeof paintAnchor === "function") paintAnchor(runtime);
   if (!focus) return;
-  if (binder.readingArchive && !binder.panel.hidden) binder.archiveSummary.focus({preventScroll: true});
+  if (bookOpen && !binder.panel.hidden) binder.search.focus({preventScroll: true});
+  else if (binder.readingArchive && !binder.panel.hidden) binder.archiveSummary.focus({preventScroll: true});
   else if (!binder.panel.hidden && !binder.read.disabled) binder.read.focus({preventScroll: true});
   else if (runtime.docId) restoreSelection(runtime);
+}
+
+function openBinderBook(runtime, bookId, page = "title") {
+  const {binder, a4} = runtime;
+  const book = binder.contents.booksById.get(bookId);
+  if (!book || binder.locked) return;
+  if (!binder.bookOverviewId && typeof holdNavigation === "function" &&
+      holdNavigation(runtime, () => openBinderBook(runtime, bookId, page))) return;
+  if (binder.bookOverviewId && binder.bookOverviewId !== bookId &&
+      flushBinderBook(runtime, () => openBinderBook(runtime, bookId, page))) return;
+  if (binder.reading.hidden) binder.draftScroll = [a4.well.scrollLeft, a4.well.scrollTop];
+  if (binder.bookOverviewId !== bookId) {
+    binder.bookPreview = null;
+    binder.bookPreviewRequest = null;
+    binder.bookDetails?.remove?.(); binder.bookDetails = null;
+    binder.bookDirty = new Map();
+    binder.bookMetaDirty = false; binder.bookEditRevision = null; binder.bookSaveError = false;
+    binder.bookCover = null; binder.bookContentsSheet = null;
+    binder.bookPages = new Map(); binder.bookBodies = new Map(); binder.bookTitles = new Map();
+    binder.bookCitations = new Map(); binder.chapterSelection = null; binder.chapterHistory = null;
+    binder.bookFields = {}; binder.bookLayoutDraft = null;
+    binder.activeBookBody = null; binder.bookRange = null;
+  }
+  binder.bookOverviewId = bookId;
+  binder.bookViewSignature = null;
+  binder.booksOpen.set(bookId, true);
+  binder.readingArchive = false;
+  binder.readingTitle.textContent = "";
+  binder.reading.setAttribute("aria-label", "Book manuscript");
+  binder.reading.classList.add("binder-book-overview");
+  binder.closeReading.hidden = true;
+  binder.backToBook.hidden = true;
+  binder.bookNotice.hidden = true;
+  a4.stage.hidden = true;
+  runtime.root.classList.add("binder-reading-open", "binder-book-open-view");
+  binder.reading.hidden = false;
+  paintBinderBook(runtime);
+  if (runtime.anchor && typeof paintAnchor === "function") paintAnchor(runtime);
+  if (!binder.panel.hidden) renderWritingBinderTree(runtime);
+  jumpToBinderBookPage(runtime, binder.bookPages.has(page) ? page : [...binder.bookPages.keys()][0]);
+}
+
+const binderBookPartTypes = {
+  front_matter: "Front matter", part: "Part", chapter: "Chapter", subheading: "Subheading", back_matter: "Back matter",
+};
+const binderBookLastBody = book => [...book.sections].reverse().find(row => ["chapter", "part", "subheading"].includes(row.kind));
+const binderBookLayout = book => ({title_page: true, contents_page: true,
+  title_page_title: "Title page", contents_title: "Contents", ...(book.layout || {})});
+
+function binderBookSectionTree(book) {
+  const rows = new Map(book.sections.map(section => [section.id, section])), parents = new Map(), children = new Map();
+  for (const section of book.sections) {
+    let parent = section.parent_section_id || section.parent_part_id || null;
+    const visited = new Set([section.id]);
+    for (let cursor = parent; cursor;) {
+      if (visited.has(cursor) || !["part", "chapter", "subheading"].includes(rows.get(cursor)?.kind)) { parent = null; break; }
+      visited.add(cursor); cursor = rows.get(cursor).parent_section_id || rows.get(cursor).parent_part_id;
+    }
+    parents.set(section.id, parent);
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(section);
+  }
+  return {rows, parents, children};
+}
+
+function binderBookStructureRows(sections) {
+  return sections.map(section => ({id: section.id, kind: section.kind,
+    ...(section.parent_section_id || section.parent_part_id ? {parent_section_id: section.parent_section_id || section.parent_part_id} :
+      Object.prototype.hasOwnProperty.call(section, "parent_section_id") || Object.prototype.hasOwnProperty.call(section, "parent_part_id") ?
+        {parent_section_id: null} : {})}));
+}
+
+function binderBookMoveSection(book, sectionId, offset) {
+  const tree = binderBookSectionTree(book), parent = tree.parents.get(sectionId);
+  const siblings = tree.children.get(parent) || [], index = siblings.findIndex(row => row.id === sectionId);
+  const neighbor = siblings[index + offset];
+  if (!neighbor) return null;
+  const subtree = identity => {
+    const result = new Set([identity]);
+    for (const child of tree.children.get(identity) || []) for (const nested of subtree(child.id)) result.add(nested);
+    return result;
+  };
+  const movedIds = subtree(sectionId), neighborIds = subtree(neighbor.id);
+  const moved = book.sections.filter(row => movedIds.has(row.id));
+  const remaining = book.sections.filter(row => !movedIds.has(row.id));
+  const target = offset < 0 ? remaining.findIndex(row => row.id === neighbor.id) :
+    remaining.findLastIndex(row => neighborIds.has(row.id)) + 1;
+  remaining.splice(target, 0, ...moved);
+  return binderBookStructureRows(remaining);
+}
+
+function openBinderBookSection(runtime, section, bookId) {
+  if (!section.available || runtime.binder.locked) return;
+  if (runtime.binder.bookOverviewId !== bookId) openBinderBook(runtime, bookId, section.id);
+  else jumpToBinderBookPage(runtime, section.id);
+}
+
+function binderBookAction(runtime, bookId, operation, fields = {}) {
+  const book = runtime.binder.contents.booksById.get(bookId);
+  if (!book) return;
+  if (typeof sharedBinderBookActionAllowed === "function" && !sharedBinderBookActionAllowed(book, operation)) {
+    binderBookStatus(runtime, "This action is available in a private Book.", true); return;
+  }
+  if (!["book-save", "book-preview"].includes(operation) &&
+      flushBinderBook(runtime, () => binderBookAction(runtime, bookId, operation, fields))) return;
+  binderAction(runtime, operation, {book_id: bookId, book_revision: book.revision,
+    ...(book.shared ? {remote_scope: book._remote_scope} : {}),
+    ...(runtime.binder.bookOverviewId === bookId ? {book_manuscript: true} : {}), ...fields});
+}
+
+function binderBookForm(label) {
+  const disclosure = element("details", undefined, "binder-book-form");
+  const form = element("form");
+  disclosure.append(element("summary", label), form);
+  return {disclosure, form};
+}
+function binderBookField(form, name, tag, value, limit = 0) {
+  const label = element("label", name), input = element(tag);
+  if (limit) input.maxLength = limit;
+  label.append(input); form.append(label); input.value = value;
+  return input;
+}
+function binderBookSubmit(form, label, action) {
+  const submit = element("button", label); submit.type = "submit"; form.append(submit);
+  form.addEventListener("submit", event => { event.preventDefault(); action(); });
+  return submit;
+}
+
+function binderBookEditingTarget(runtime) {
+  const binder = runtime.binder;
+  return binder?.bookOverviewId && !binder.reading.hidden && binder.activeBookBody?.isConnected &&
+    binder.activeBookBody.contentEditable === "true" ? binder.activeBookBody : null;
+}
+function binderBookSearchContext(runtime) {
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book || binder.reading.hidden) return null;
+  const body = binderBookEditingTarget(runtime);
+  const section = body && book.sections.find(part => part.id === body.dataset.bookSection);
+  const current = body && typeof writingSelectionRange === "function" && writingSelectionRange(body);
+  const range = body && (rangeInPaper(body, current) ? current :
+    rangeInPaper(body, binder.bookRange) ? binder.bookRange : null);
+  return {book, body, section, range};
+}
+function binderBookScanFields(runtime, scope, context = binderBookSearchContext(runtime)) {
+  if (!context || !["book", "chapter", "passage", "query"].includes(scope)) return null;
+  const {book} = context;
+  let {section} = context;
+  if (["chapter", "passage"].includes(scope) && (!section || !section.available)) return null;
+  let sections = scope === "passage" ? [section] : book.sections;
+  if (scope === "chapter") {
+    const tree = binderBookSectionTree(book);
+    while (section && section.kind !== "chapter") section = tree.rows.get(tree.parents.get(section.id));
+    if (!section) return null;
+    sections = [];
+    const collect = row => { sections.push(row); for (const child of tree.children.get(row.id) || []) collect(child); };
+    collect(section);
+  }
+  if (scope !== "query" && (!sections.length || sections.some(part => !part.available))) return null;
+  return {studio_book_id: book.id, studio_book_revision: book.revision, studio_scan_scope: scope,
+    ...(book.shared ? {studio_book_scope: book._remote_scope} : {}),
+    studio_section_id: ["chapter", "passage"].includes(scope) ? section.id : "",
+    studio_document_revisions: Object.fromEntries(sections.filter(part => part.available)
+      .map(part => [part.document_id, part.revision]))};
+}
+function binderBookScanSelection(runtime, context = binderBookSearchContext(runtime)) {
+  if (!context?.body || !context.range) return null;
+  const editing = Object.assign(Object.create(runtime), {paper: context.body, range: context.range});
+  let range = context.range;
+  if (range.collapsed) {
+    const block = topBlock(context.body, range.startContainer);
+    if (!block) return null;
+    range = context.body.ownerDocument.createRange();
+    range.selectNodeContents(block);
+  }
+  return passageSelection(editing, range, writingSearchTextLimit);
+}
+function matchingBinderBookScan(runtime, progress) {
+  const bookOpen = Boolean(runtime.binder?.bookOverviewId);
+  if (!bookOpen && !progress?.studio_book_id) return true;
+  if (!bookOpen || !progress?.studio_book_id) return false;
+  const context = binderBookSearchContext(runtime);
+  if (!context) return false;
+  const section = context?.book.sections.find(part => part.id === progress.studio_section_id);
+  const fields = binderBookScanFields(runtime, progress.studio_scan_scope, {...context, section});
+  if (!fields) return false;
+  // A passage/chapter result remains tied to its original chapter even after
+  // moving the caret to another chapter; changes to the saved source retire it.
+  if (["chapter", "passage"].includes(progress.studio_scan_scope)) {
+    if (!section?.available) return false;
+    fields.studio_section_id = section.id;
+    if (progress.studio_scan_scope === "passage") fields.studio_document_revisions = {[section.document_id]: section.revision};
+  }
+  return fields.studio_book_id === progress.studio_book_id &&
+    fields.studio_book_revision === progress.studio_book_revision &&
+    Object.keys(fields.studio_document_revisions).length === Object.keys(progress.studio_document_revisions || {}).length &&
+    Object.entries(fields.studio_document_revisions).every(([id, version]) => progress.studio_document_revisions[id] === version);
+}
+function binderBookSearchProgressFields(progress) {
+  return Object.fromEntries(["studio_book_id", "studio_book_revision", "studio_scan_scope", "studio_section_id",
+    "studio_document_revisions"].map(field => [field, progress[field]]));
+}
+function scanBinderBook(runtime, scope, live = false) {
+  const context = binderBookSearchContext(runtime);
+  const fields = binderBookScanFields(runtime, scope, context);
+  const selection = scope === "passage" ? binderBookScanSelection(runtime, context) : null;
+  if (!fields || scope === "passage" && !selection) {
+    status(runtime, scope === "book" ? "Restore unavailable chapters before scanning the whole Book." :
+      "Place the cursor or select text in a chapter to scan it.", true);
+    return;
+  }
+  const query = scope === "query" ? runtime.query.value.trim() : selection?.selection.text || "";
+  if (scope === "query" && !query || live && scope === "passage" && query.length < 48) return;
+  const captured = {...fields, ...(selection ? {block_id: selection.blockId, studio_selection: selection.selection} : {})};
+  const perform = () => {
+    const latest = binderBookSearchContext(runtime);
+    if (!latest || latest.book.id !== captured.studio_book_id) return;
+    const chosen = ["chapter", "passage"].includes(scope) ? latest.book.sections.find(part => part.id === captured.studio_section_id) : latest.section;
+    const current = binderBookScanFields(runtime, scope, {...latest, section: chosen});
+    if (!current) return;
+    // The chosen passage is frozen at the click, never replaced with a later
+    // caret selection. The server validates it against the newly saved chapter.
+    const source = {...current, studio_section_id: captured.studio_section_id,
+      ...(selection ? {block_id: captured.block_id, studio_selection: captured.studio_selection} : {})};
+    const settings = writingSearchOptions(runtime);
+    const signature = JSON.stringify([runtime.searchKind, scope, source, settings, query]);
+    if (live && (signature === runtime.lastScan || runtime.panel.hidden || runtime.suggestionPane.hidden || !runtime.live.checked)) return;
+    runtime.lastScan = signature; runtime.lastSearchScope = scope; runtime.hasSearched = true;
+    selectTab(runtime, "suggestions");
+    if (["scan", "scan-deeper"].includes(runtime.queued?.type)) runtime.queued = null;
+    send(runtime, "scan", {query, scope, search_kind: runtime.searchKind, ...source, ...settings,
+      ...(runtime.asyncSearch ? {background_search: true} : {})});
+    paintResults(runtime);
+  };
+  if (!flushBinderBook(runtime, perform)) perform();
+}
+function binderBookDirty(runtime) {
+  const binder = runtime.binder;
+  return Boolean(binder?.bookOverviewId && (binder.bookMetaDirty || binder.bookDirty?.size || binder.bookSent));
+}
+function binderBookStatus(runtime, text, error = false) {
+  if (!runtime.binder.bookStatus) return;
+  runtime.binder.bookStatus.textContent = text;
+  runtime.binder.bookStatus.toggleAttribute("data-error", error);
+}
+function markBinderBookChanged(runtime, body = null) {
+  const binder = runtime.binder;
+  if (!binder?.bookOverviewId) return;
+  const activeBook = binder.contents.booksById.get(binder.bookOverviewId);
+  if (typeof sharedBinderBookEditable === "function" && !sharedBinderBookEditable(activeBook)) return;
+  if (binder.bookEditRevision == null) binder.bookEditRevision = activeBook?.revision;
+  if (body?.dataset.bookSection) {
+    if (!binder.bookComposing && typeof normalizeBlocks === "function") normalizeBlocks(body);
+    if (typeof preserveWritingParagraphStyles === "function") {
+      preserveWritingParagraphStyles(Object.assign(Object.create(runtime), {paper: body}));
+    }
+    const section = binder.contents.booksById.get(binder.bookOverviewId)?.sections.find(row => row.id === body.dataset.bookSection);
+    if (section && !binder.bookDirty.has(section.id)) binder.bookDirty.set(section.id, {revision: body.bookBodyVersion ?? section.revision});
+  } else binder.bookMetaDirty = true;
+  binderBookStatus(runtime, "Unsaved");
+  if (typeof journalSharedBinderBook === "function") journalSharedBinderBook(runtime);
+  if (typeof resumeSharedBinderBook === "function") resumeSharedBinderBook(runtime);
+  if (runtime.anchor && typeof paintAnchor === "function") paintAnchor(runtime);
+  if (typeof paintOutline === "function") paintOutline(runtime);
+  if (typeof refreshBookPagination === "function") refreshBookPagination(runtime);
+  clearTimeout(binder.bookSaveTimer);
+  binder.bookSaveTimer = setTimeout(() => {
+    binder.bookSaveTimer = 0;
+    if (!binder.bookComposing) flushBinderBook(runtime);
+  }, 650);
+}
+function captureBinderBook(runtime) {
+  const binder = runtime.binder, book = binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book) return null;
+  const title = binder.bookFields?.title?.textContent.trim() || book.title;
+  const author = binder.bookFields?.author?.textContent.trim() || "";
+  const layout = {...binderBookLayout(book), ...binder.bookLayoutDraft};
+  if (binder.bookFields?.contents) layout.contents_title = binder.bookFields.contents.textContent.trim() || "Contents";
+  for (const section of book.sections) {
+    const body = binder.bookBodies.get(section.id);
+    if (body?.bookLoaded && binder.bookDirty?.has(section.id) && typeof preserveWritingParagraphStyles === "function") {
+      preserveWritingParagraphStyles(Object.assign(Object.create(runtime), {paper: body}));
+    }
+  }
+  const edits = book.sections.filter(section => binder.bookDirty?.has(section.id)).map(section => ({
+    id: section.id, revision: binder.bookDirty.get(section.id)?.revision ?? binder.bookBodies.get(section.id)?.bookBodyVersion ?? section.revision,
+    title: binder.bookTitles?.has(section.id) ? binder.bookTitles.get(section.id).textContent.trim() : section.title,
+    ...(binder.bookBodies.get(section.id)?.bookLoaded ?
+      (typeof captureBinderBookCitations === "function" ? captureBinderBookCitations(runtime, section, binder.bookBodies.get(section.id)) :
+        {html: binder.bookBodies.get(section.id).innerHTML}) : {}),
+  }));
+  return {book_id: book.id, book_revision: binder.bookEditRevision ?? book.revision, title, author, layout, edits,
+    ...(book.shared ? {remote_scope: book._remote_scope} : {})};
+}
+function flushBinderBook(runtime, resume = null) {
+  const binder = runtime.binder;
+  if (!binder?.bookOverviewId || (!binderBookDirty(runtime) && !binder.bookComposing)) return false;
+  if (resume) binder.bookResume = resume;
+  const book = binder.contents.booksById.get(binder.bookOverviewId);
+  if (book?.shared && typeof sharedBinderBookScope === "function" &&
+      (!sharedBinderBookEditable(book) || binder.sharedBook?.scope !== sharedBinderBookScope(book))) {
+    if (binder.sharedBook) sharedBinderBookRecovery(runtime, binder.sharedBook, "Connect to this Book’s editing workspace before saving.");
+    return true;
+  }
+  clearTimeout(binder.bookSaveTimer); binder.bookSaveTimer = 0;
+  if (runtime.pending || binder.bookSent || binder.bookComposing || binder.bookSaveError) return true;
+  const snapshot = captureBinderBook(runtime);
+  if (!snapshot) return false;
+  binder.bookSent = snapshot;
+  if (typeof journalSharedBinderBook === "function") journalSharedBinderBook(runtime);
+  binderBookStatus(runtime, "Saving…");
+  send(runtime, "binder", {operation: "book-save", ...snapshot});
+  return true;
+}
+function acknowledgeBinderBook(runtime, ack) {
+  const binder = runtime.binder;
+  if (!binder.bookOverviewId) return;
+  if (typeof acknowledgeSharedBinderBook === "function" && acknowledgeSharedBinderBook(runtime, ack)) {
+    binder.sharedBookHandledAck = ack; return;
+  }
+  const saved = ack?.binder_book_organized || ack?.binder_book_linked || ack?.binder_book_saved || ack?.binder_book_outline;
+  if ((ack?.error || ack?.binder_error) && binder.bookSent) {
+    binder.bookSent = null;
+    binder.bookSaveError = true;
+    binderBookStatus(runtime, "Could not save", true);
+    return;
+  }
+  if (!saved || saved.book?.id !== binder.bookOverviewId) return;
+  const sent = binder.bookSent, current = captureBinderBook(runtime);
+  if (sent && current) {
+    if (current.title === sent.title && current.author === sent.author &&
+        JSON.stringify(current.layout) === JSON.stringify(sent.layout)) binder.bookMetaDirty = false;
+    for (const edit of sent.edits) {
+      const savedSection = saved.book.sections.find(row => row.id === edit.id);
+      const body = binder.bookBodies?.get(edit.id);
+      if (body && savedSection) body.bookBodyVersion = savedSection.revision;
+      const dirty = binder.bookDirty.get(edit.id);
+      if (dirty && savedSection) dirty.revision = savedSection.revision;
+      const now = current.edits.find(row => row.id === edit.id);
+      const authoredEdit = value => value && Object.fromEntries(Object.entries(value).filter(([key]) => key !== "revision"));
+      if (now && JSON.stringify(authoredEdit(now)) === JSON.stringify(authoredEdit(edit))) {
+        binder.bookDirty.delete(edit.id);
+      }
+    }
+  }
+  binder.bookSent = null;
+  binder.bookEditRevision = binder.bookMetaDirty || binder.bookDirty.size ? saved.book.revision : null;
+  binder.bookSaveError = false;
+  if (saved.manuscript) binder.bookPreview = saved.manuscript;
+  if (saved.book) binder.bookPreviewRequest = binderBookVersions(saved.book);
+  if (!binder.bookMetaDirty) binder.bookLayoutDraft = null;
+  if (saved.book) binder.contents.booksById.set(saved.book.id, saved.book);
+  if (ack.binder_book_outline) binder.bookFocusAfterPaint = {
+    section: saved.section_id, block: saved.block_id, contents: binder.bookOutlineInContents,
+  };
+  if (saved.removed_section_id && (!ack.binder_book_organized ||
+      [saved.source_book_id, saved.destination_book_id].includes(binder.bookOverviewId))) binder.bookFocusAfterPaint = {
+    section: saved.focus_section_id || "", contents: true, collapse: true,
+  };
+  binderBookStatus(runtime, binder.bookDirty.size || binder.bookMetaDirty ? "Unsaved" : "Saved");
+  queueMicrotask(() => {
+    if (binder.bookDirty.size || binder.bookMetaDirty) flushBinderBook(runtime);
+    else if (binder.bookResume) { const resume = binder.bookResume; binder.bookResume = null; resume(); }
+  });
+}
+
+function jumpToBinderBookPage(runtime, identity, blockId = "") {
+  const {binder, a4: {well}} = runtime;
+  const page = binder.bookPages?.get(identity);
+  if (!page) return;
+  refreshBinderBookContents(runtime);
+  const source = binder.bookBodies?.get(identity);
+  const target = blockId ? [...(source?.querySelectorAll("[data-block-id]") || [])].find(node => node.dataset.blockId === blockId) :
+    binder.bookTitles?.get(identity) || page.querySelector("[data-book-heading]");
+  const top = well.scrollTop + (target || page).getBoundingClientRect().top - well.getBoundingClientRect().top - 22;
+  well.scrollTo(0, identity === "title" ? 0 : Math.max(0, top));
+  target?.focus({preventScroll: true});
+}
+function binderBookSheet(kind, heading, caption) {
+  const sheet = element("section", undefined, `binder-book-sheet binder-book-${kind}`);
+  const title = element(kind === "cover" ? "h1" : "h2", heading);
+  title.dataset.bookHeading = "";
+  if (caption) sheet.append(element("p", caption, "binder-book-kicker"));
+  sheet.append(title);
+  return {sheet, title};
+}
+function inlineBinderBookField(runtime, field, label, changed, {multiline = false} = {}) {
+  field.contentEditable = multiline ? "true" : "plaintext-only";
+  field.setAttribute("contenteditable", field.contentEditable);
+  field.setAttribute("role", "textbox"); field.setAttribute("aria-label", label);
+  field.setAttribute("aria-multiline", String(multiline)); field.spellcheck = true;
+  field.addEventListener("compositionstart", () => { runtime.binder.bookComposing = true; });
+  field.addEventListener("compositionend", () => { runtime.binder.bookComposing = false; changed(); });
+  field.addEventListener("input", changed);
+  field.addEventListener("focusout", () => { if (!runtime.binder.bookComposing) flushBinderBook(runtime); });
+  if (!multiline) field.addEventListener("keydown", event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === "Enter") { event.preventDefault(); field.blur?.(); flushBinderBook(runtime); }
+  });
+  return field;
+}
+function binderBookCover(runtime, book) {
+  const {sheet, title} = binderBookSheet("cover", book.title);
+  title.className = "binder-book-title";
+  inlineBinderBookField(runtime, title, "Book title", () => markBinderBookChanged(runtime));
+  const author = element("p", book.author || "", "binder-book-author");
+  author.dataset.placeholder = "Author";
+  inlineBinderBookField(runtime, author, "Book author", () => markBinderBookChanged(runtime));
+  sheet.append(author);
+  runtime.binder.bookFields = {title, author};
+  return sheet;
+}
+function binderBookVersions(book) {
+  return JSON.stringify([book.id, book.revision, book.sections.map(({id, revision, available}) => [id, revision, available])]);
+}
+function requestBinderBookPreview(runtime, book) {
+  const {binder} = runtime, version = binderBookVersions(book);
+  if (binder.bookPreviewRequest === version || binder.bookSent) return;
+  binder.bookPreviewRequest = version;
+  queueMicrotask(() => {
+    const current = binder.contents.booksById.get(book.id);
+    if (!current || binder.bookOverviewId !== book.id || binder.bookPreviewRequest !== version) return;
+    if (runtime.pending || binder.locked) { binder.bookPreviewRequest = null; return; }
+    binderBookAction(runtime, book.id, "book-preview");
+  });
+}
+function paintBinderBookBodies(runtime, book) {
+  const binder = runtime.binder;
+  const preview = binder.bookPreview?.book_id === book.id ? binder.bookPreview.sections : null;
+  const available = new Map((preview || []).map(part => [part.id, part]));
+  for (const section of book.sections) {
+    const body = binder.bookBodies?.get(section.id);
+    if (!body) continue;
+    const saved = available.get(section.id);
+    const paintCitations = () => {
+      if (body.bookLoaded && typeof paintBinderBookCitations === "function") {
+        paintBinderBookCitations(runtime, book, section, saved, body, binder.bookPages.get(section.id));
+      }
+    };
+    if (binder.bookDirty?.has(section.id) || binder.bookComposing) { paintCitations(); continue; }
+    const loaded = saved?.revision === section.revision && typeof saved?.html === "string";
+    if (loaded && body.bookBodyVersion === saved?.revision && body.bookLoaded) { paintCitations(); continue; }
+    if (!loaded) {
+      body.contentEditable = "false";
+      body.setAttribute("contenteditable", "false");
+      if (!body.bookHasSource) body.textContent = !section.available ? "This draft is unavailable in Studio." : saved?.html === null
+        ? "This chapter is too large to open in the assembled manuscript." : "Loading…";
+      body.bookLoaded = false;
+      continue;
+    }
+    // The private Studio store sanitises saved markup. Preserve every authored block,
+    // including opening text that happens to match its chapter title.
+    body.innerHTML = saved.html || "<p><br></p>";
+    if (typeof adoptWritingParagraphStyles === "function") {
+      adoptWritingParagraphStyles(Object.assign(Object.create(runtime), {paper: body}));
+    }
+    body.bookBodyVersion = saved.revision; body.bookLoaded = true; body.bookHasSource = true;
+    body.contentEditable = "true"; body.setAttribute("contenteditable", "true");
+    paintCitations();
+  }
+}
+function createBinderBookOutline(runtime, kind, afterSection = "", title = "", inContents = false) {
+  const binder = runtime.binder, bookId = binder.bookOverviewId;
+  if (!bookId) return;
+  if (flushBinderBook(runtime, () => createBinderBookOutline(runtime, kind, afterSection, title, inContents))) return;
+  const book = binder.contents.booksById.get(bookId), section = book.sections.find(row => row.id === afterSection);
+  binder.bookOutlineInContents = inContents;
+  binderBookAction(runtime, bookId, "book-outline", {
+    entry_kind: kind, entry_title: title || (kind === "part" ? "Untitled part" : kind === "heading" ? "Untitled heading" : "Untitled chapter"),
+    after_section_id: afterSection, ...(kind === "heading" && section ? {document_revision: section.revision} : {}),
+  });
+}
+function binderBookContentsRow(runtime, section, title, block = null, outlineRow = null) {
+  const binder = runtime.binder;
+  const row = element("li", undefined, `binder-book-page${block || section.kind === "subheading" ? " binder-book-subheading" : section.kind === "part" ? " binder-book-part-entry" : ""}`);
+  const depth = Math.max(0, Number(outlineRow?.level || 1) - 1);
+  row.dataset.bookContentsDepth = String(depth);
+  row.dataset.bookContentsParent = outlineRow?.parent_section_id || "";
+  row.style.setProperty("--book-contents-depth", String(depth));
+  row.dataset.bookContentsKind = block ? "heading" : section.kind;
+  row.dataset.bookContentsSection = section.id;
+  if (block) {
+    row.dataset.bookContentsBlock = outlineRow?.block || block.dataset.blockId;
+    row.dataset.bookOutlineLevel = String(outlineRow?.heading_level || 2);
+  }
+  const field = element("span", title, "binder-book-contents-title");
+  if (block) field.dataset.placeholder = "Subheading…";
+  const partLabel = section.kind === "part" ? `Part ${binder.contents.booksById.get(binder.bookOverviewId).sections.filter(row => row.kind === "part").findIndex(row => row.id === section.id) + 1}` : "";
+  if (!block && partLabel && !title) field.dataset.placeholder = partLabel;
+  field.dataset.bookOutlineTitle = section.id;
+  if (block) field.dataset.bookOutlineBlock = outlineRow?.block || block.dataset.blockId;
+  if (outlineRow?.heading_index != null) field.dataset.bookOutlineIndex = String(outlineRow.heading_index);
+  field.contentEditable = "plaintext-only";
+  field.setAttribute("contenteditable", "plaintext-only"); field.setAttribute("role", "textbox");
+  field.setAttribute("aria-label", `${block ? "Subheading" : binderBookPartTypes[section.kind]} title`);
+  const update = () => {
+    const text = field.textContent.trim();
+    if (block) block.textContent = text;
+    else if (binder.bookTitles?.get(section.id)) binder.bookTitles.get(section.id).textContent = text;
+    markBinderBookChanged(runtime, binder.bookBodies.get(section.id));
+  };
+  field.addEventListener("input", update);
+  field.addEventListener("compositionstart", () => { binder.bookComposing = true; });
+  field.addEventListener("compositionend", () => { binder.bookComposing = false; update(); });
+  field.addEventListener("focusout", () => { if (!binder.bookComposing) flushBinderBook(runtime); });
+  field.addEventListener("keydown", event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (["Backspace", "Delete"].includes(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey &&
+        typeof binderBookContentsEntrySelected === "function" && binderBookContentsEntrySelected(field)) {
+      event.preventDefault();
+      deleteBinderBookContentsEntry(runtime, outlineRow || {
+        section: section.id, block: block?.dataset.blockId || "", kind: block ? "heading" : section.kind,
+      });
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      createBinderBookOutline(runtime, block ? "heading" : "chapter", section.id, "", true);
+    } else if (event.key === "Tab" && !event.shiftKey && section.kind === "chapter") {
+      event.preventDefault(); createBinderBookOutline(runtime, "heading", section.id, "", true);
+    } else if (event.key === "Tab" && event.shiftKey && block) {
+      event.preventDefault(); binder.bookOutlineFields?.get(section.id)?.focus({preventScroll: true});
+    }
+  });
+  const navigate = () => outlineRow && typeof navigateBinderBookOutline === "function" ?
+    navigateBinderBookOutline(runtime, outlineRow) : jumpToBinderBookPage(runtime, section.id, block?.dataset.blockId);
+  field.addEventListener("dblclick", navigate);
+  const jump = makeButton("—", navigate);
+  jump.title = `Go to ${title || partLabel}`; jump.setAttribute("aria-label", jump.title);
+  jump.className = "binder-book-contents-jump";
+  jump.dataset.bookPageRef = section.id;
+  jump.dataset.bookPageBlock = block?.dataset.blockId || "";
+  if (outlineRow?.heading_index != null) jump.dataset.bookPageHeadingIndex = String(outlineRow.heading_index);
+  row.append(field, jump);
+  if (!block) binder.bookOutlineFields.set(section.id, field);
+  return row;
+}
+function refreshBinderBookContents(runtime, force = false) {
+  const binder = runtime.binder, book = binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book || !binder.bookContentsList) return;
+  const active = binder.reading.getRootNode().activeElement;
+  if (!force && active?.closest?.(".binder-book-contents-title")) return;
+  binder.bookOutlineFields = new Map();
+  const rows = [];
+  const outlineRows = typeof binderBookOutlineRows === "function" ? binderBookOutlineRows(runtime) : null;
+  const tree = binderBookSectionTree(book);
+  const sectionDepth = section => {
+    let depth = 0, parent = tree.parents.get(section.id);
+    while (parent) { depth++; parent = tree.parents.get(parent); }
+    return depth;
+  };
+  for (const section of book.sections) {
+    const title = binder.bookTitles?.get(section.id)?.textContent.trim() || section.title;
+    const depth = sectionDepth(section);
+    rows.push(binderBookContentsRow(runtime, section, title, null, outlineRows?.find(row => row.id === section.id) || {
+      level: depth + 1, parent_section_id: tree.parents.get(section.id), structural_depth: depth,
+    }));
+    const body = binder.bookBodies.get(section.id);
+    if (!body?.bookLoaded) continue;
+    if (outlineRows) {
+      for (const entry of outlineRows.filter(row => row.section === section.id && row.kind === "heading")) {
+        const heading = binderBookOutlineHeading(runtime, entry);
+        if (heading) rows.push(binderBookContentsRow(runtime, section, heading.textContent || "", heading, entry));
+      }
+    } else for (const heading of body.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+        if (!heading.dataset.blockId) heading.dataset.blockId = `book-${id()}`;
+        const level = Number(heading.localName?.slice(1) || heading.tagName?.slice(1) || 1);
+        rows.push(binderBookContentsRow(runtime, section, heading.textContent, heading, {
+          level: depth + level + 1, heading_level: level, parent_section_id: section.id,
+        }));
+    }
+  }
+  const final = element("li", undefined, "binder-book-page binder-book-next-entry");
+  const entry = element("span", "", "binder-book-contents-title");
+  entry.dataset.placeholder = "Next chapter…";
+  entry.contentEditable = "plaintext-only"; entry.setAttribute("contenteditable", "plaintext-only");
+  entry.setAttribute("role", "textbox"); entry.setAttribute("aria-label", "Add a chapter to the contents");
+  const commit = (kind = "chapter") => {
+    if (entry.dataset.pending === "true") return;
+    const text = entry.textContent.trim();
+    entry.dataset.pending = "true";
+    createBinderBookOutline(runtime, kind, binderBookLastBody(book)?.id || "", text, true);
+  };
+  entry.addEventListener("keydown", event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === "Enter") { event.preventDefault(); commit(); }
+    else if (event.key === "Tab" && !event.shiftKey && binderBookLastBody(book)?.kind === "chapter") {
+      event.preventDefault(); commit("heading");
+    }
+  });
+  entry.addEventListener("focusout", () => { if (entry.textContent.trim()) commit(); });
+  final.append(entry); rows.push(final);
+  binder.bookContentsList.replaceChildren(...rows);
+  if (typeof refreshBookPagination === "function") refreshBookPagination(runtime);
+}
+function withBinderBook(runtime, bookId, action) {
+  const binder = runtime.binder;
+  if (binder.bookOverviewId !== bookId) {
+    if (flushBinderBook(runtime, () => withBinderBook(runtime, bookId, action))) return;
+    if (!binder.bookOverviewId && typeof holdNavigation === "function" &&
+        holdNavigation(runtime, () => withBinderBook(runtime, bookId, action))) return;
+    openBinderBook(runtime, bookId);
+  }
+  if (binder.bookOverviewId === bookId) action();
+}
+function openBinderBookDetails(runtime, bookId) {
+  const binder = runtime.binder, book = binder.contents.booksById.get(bookId);
+  if (!book) return;
+  binder.bookDetails?.remove?.();
+  const details = binderBookForm("Book details"); details.disclosure.classList.add("binder-book-details");
+  details.disclosure.open = true;
+  const language = binderBookField(details.form, "Language", "input", book.language || "en", 40);
+  const location = binderBookField(details.form, "Binder location", "select", "");
+  const root = element("option", "Drafts"); root.value = ""; location.append(root);
+  const appendLocations = (parent, prefix = []) => {
+    for (const folder of binder.contents.foldersByParent.get(parent) || []) {
+      const labels = [...prefix, folder.name], option = element("option", labels.join(" / "));
+      option.value = folder.id; location.append(option); appendLocations(folder.id, labels);
+    }
+  };
+  appendLocations(null); location.value = book.folder_id || "";
+  const intent = binderBookField(details.form, "What are you trying to do?", "textarea", book.intent || "", 20000); intent.rows = 4;
+  binderBookSubmit(details.form, "Save details", () => {
+    binderBookAction(runtime, book.id, "book-update", {language: language.value.trim(), folder_id: location.value || null, intent: intent.value});
+    details.disclosure.open = false;
+  });
+  details.form.append(makeButton("Close", () => { details.disclosure.open = false; }));
+  binder.panel.insertBefore(details.disclosure, binder.notice); binder.bookDetails = details.disclosure;
+  openWritingBinder(runtime, false); language.focus({preventScroll: true});
+}
+function binderBookMenu(runtime, book, section = null) {
+  const binder = runtime.binder;
+  const sectionName = section?.title || (section?.kind === "part" ? `Part ${book.sections.filter(row => row.kind === "part").findIndex(row => row.id === section.id) + 1}` : "Untitled");
+  const label = section ? `Manage ${sectionName}` : `Manage book ${book.title}`;
+  const trigger = makeButton("…", () => {
+    if (binder.locked) return;
+    if (binder.menuTrigger === trigger) return closeBinderItemMenu(binder, true);
+    closeBinderItemMenu(binder);
+    const choices = [];
+    const action = (label, callback) => choices.push(makeButton(label, () => { closeBinderItemMenu(binder); withBinderBook(runtime, book.id, callback); }));
+    if (section) {
+      const move = offset => {
+        const sections = binderBookMoveSection(book, section.id, offset);
+        if (sections) binderBookAction(runtime, book.id, "book-update", {sections});
+      };
+      if (binderBookMoveSection(book, section.id, -1)) action("Move earlier", () => move(-1));
+      if (binderBookMoveSection(book, section.id, 1)) action("Move later", () => move(1));
+      if (["chapter", "part", "subheading"].includes(section.kind)) action("Add chapter after", () => createBinderBookOutline(runtime, "chapter", section.id));
+      action("Remove from book", () => binderBookAction(runtime, book.id, "book-remove-section", {section_id: section.id}));
+    } else {
+      action("Add chapter", () => createBinderBookOutline(runtime, "chapter", binderBookLastBody(book)?.id || ""));
+      action("Add part", () => createBinderBookOutline(runtime, "part", binderBookLastBody(book)?.id || ""));
+      if (!book.shared) {
+      action("Save edition", () => prepareBinderBook(runtime, "book-freeze"));
+      action("Export…", () => prepareBinderBook(runtime, "book-export"));
+      action("Book details…", () => openBinderBookDetails(runtime, book.id));
+      action("Convert to Folder", () => binderBookAction(runtime, book.id, "convert-book-to-folder"));
+      action("Open in Library", () => binderBookAction(runtime, book.id, "book-library"));
+      }
+    }
+    binder.menuTrigger = trigger; trigger.setAttribute("aria-expanded", "true");
+    binder.menu.replaceChildren(...choices); binder.menu.hidden = false;
+    positionBinderItemMenu(binder, trigger.getBoundingClientRect()); choices[0]?.focus({preventScroll: true});
+  });
+  trigger.className = "binder-item-actions"; trigger.dataset.binderFileAction = "";
+  trigger.title = label; trigger.setAttribute("aria-label", label); trigger.disabled = binder.locked;
+  trigger.setAttribute("aria-controls", binder.menu.id); trigger.setAttribute("aria-expanded", "false");
+  return trigger;
+}
+function prepareBinderBook(runtime, operation) {
+  const binder = runtime.binder, bookId = binder.bookOverviewId;
+  if (flushBinderBook(runtime, () => prepareBinderBook(runtime, operation))) return;
+  const book = binder.contents.booksById.get(bookId);
+  if (book) binderBookAction(runtime, bookId, operation, {
+    document_revisions: Object.fromEntries(book.sections.map(row => [row.document_id, row.revision])),
+  });
+}
+function paintBinderBookTools(runtime, book) {
+  const binder = runtime.binder;
+  if (binder.bookTools) binder.bookTools.remove?.();
+  const tools = element("nav", undefined, "binder-book-tools"); tools.setAttribute("aria-label", "Book tools");
+  const add = element("details", undefined, "binder-book-add-menu");
+  const summary = element("summary", "+"); summary.setAttribute("aria-label", "Add to book"); summary.title = "Add to book";
+  const options = element("div", undefined, "binder-book-add-options");
+  const addPage = (label, kind, title = "") => options.append(makeButton(label, () => {
+    add.open = false;
+    if (["chapter", "part"].includes(kind)) createBinderBookOutline(runtime, kind, binderBookLastBody(book)?.id || "", title);
+    else binderBookAction(runtime, book.id, "book-add-section", {section_kind: kind, section_title: title || label});
+  }));
+  addPage("Chapter", "chapter"); addPage("Part", "part");
+  for (const label of ["Dedication", "Foreword", "Introduction"]) addPage(label, "front_matter");
+  for (const label of ["Acknowledgements", "Bibliography"]) addPage(label, "back_matter");
+  add.append(summary, options);
+  const pages = element("details", undefined, "binder-book-add-menu");
+  pages.append(element("summary", "Pages"));
+  const pageOptions = element("div", undefined, "binder-book-add-options");
+  const layout = binderBookLayout(book);
+  for (const [field, label] of [["title_page", "title page"], ["contents_page", "contents page"]]) {
+    pageOptions.append(makeButton(`${layout[field] ? "Remove" : "Restore"} ${label}`, () => {
+      binder.bookLayoutDraft = {...layout, [field]: !layout[field]};
+      markBinderBookChanged(runtime); pages.open = false; flushBinderBook(runtime);
+    }));
+  }
+  const candidates = book.shared ? [] : [...binder.contents.byId.values()].filter(draft => !draft.shared && !draft.hidden_by_container && !book.sections.some(row => row.document_id === draft.id));
+  for (const draft of candidates) pageOptions.append(makeButton(`Add “${draft.title}”`, () => {
+    pages.open = false; binderBookAction(runtime, book.id, "book-add-section", {section_kind: "chapter", target_document_id: draft.id});
+  }));
+  pages.append(pageOptions);
+  const contents = binderIconButton("book", "Go to contents", () => jumpToBinderBookPage(runtime, "contents"));
+  contents.disabled = !layout.contents_page;
+  const exportBook = makeButton("Export…", () => prepareBinderBook(runtime, "book-export"));
+  exportBook.dataset.bookExport = "";
+  if (book.shared) exportBook.dataset.sharedBookUnsupported = "";
+  const state = element("span", binderBookDirty(runtime) ? "Saving…" : "Saved", "binder-book-save-status"); state.setAttribute("role", "status");
+  binder.bookStatus = state;
+  tools.append(contents, add, pages, exportBook, state);
+  binder.bookTools = tools;
+  binder.panel.insertBefore(tools, binder.tree);
+}
+function paintBinderBook(runtime) {
+  const binder = runtime.binder;
+  if (!binder.bookOverviewId) return;
+  const book = binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book) return closeBinderReading(runtime, false);
+  if (typeof prepareSharedBinderBook === "function") prepareSharedBinderBook(runtime, book);
+  binder.bookDirty ||= new Map();
+  requestBinderBookPreview(runtime, book);
+  const layout = {...binderBookLayout(book), ...binder.bookLayoutDraft};
+  const signature = JSON.stringify([book.id, layout.title_page, layout.contents_page,
+    book.sections.map(({id, kind, parent_section_id, parent_part_id, heading_level}) => [id, kind, parent_section_id || parent_part_id, heading_level])]);
+  if (signature === binder.bookViewSignature) {
+    if (!binder.bookMetaDirty) {
+      if (binder.bookFields?.title && binder.bookFields.title.textContent.trim() !== book.title) binder.bookFields.title.textContent = book.title;
+      if (binder.bookFields?.author && binder.bookFields.author.textContent.trim() !== book.author) binder.bookFields.author.textContent = book.author;
+      if (binder.bookFields?.contents && binder.bookFields.contents.textContent.trim() !== layout.contents_title) binder.bookFields.contents.textContent = layout.contents_title;
+    }
+    for (const section of book.sections) if (!binder.bookDirty.has(section.id) && binder.bookTitles.get(section.id)) {
+      if (binder.bookTitles.get(section.id).textContent.trim() !== section.title) binder.bookTitles.get(section.id).textContent = section.title;
+    }
+    paintBinderBookBodies(runtime, book);
+    if (typeof finishBinderBookQuotePaste === "function") finishBinderBookQuotePaste(runtime);
+    refreshBinderBookContents(runtime, Boolean(binder.bookFocusAfterPaint));
+    focusBinderBookOutline(runtime);
+    runtime.documentZoom?.refreshSurface();
+    if (typeof refreshBookPagination === "function") refreshBookPagination(runtime);
+    if (typeof paintOutline === "function") paintOutline(runtime);
+    if (typeof applySharedBinderBookAccess === "function") applySharedBinderBookAccess(runtime, book);
+    return;
+  }
+  const scroll = runtime.a4.well.scrollTop;
+  const active = binder.reading.getRootNode().activeElement;
+  const range = active && typeof writingSelectionRange === "function" ? writingSelectionRange(active) : null;
+  const caret = range ? {start: range.startContainer, startOffset: range.startOffset,
+    end: range.endContainer, endOffset: range.endOffset} : null;
+  const cover = binder.bookCover || (binder.bookCover = binderBookCover(runtime, book));
+  let contents = binder.bookContentsSheet;
+  if (!contents) {
+    const created = binderBookSheet("contents", layout.contents_title); contents = created.sheet;
+    inlineBinderBookField(runtime, created.title, "Contents page title", () => markBinderBookChanged(runtime));
+    binder.bookFields.contents = created.title;
+    const list = element("ol", undefined, "binder-book-pages"); list.setAttribute("aria-label", "Book contents");
+    contents.append(list); binder.bookContentsList = list; binder.bookContentsSheet = contents;
+  }
+  const contentsList = binder.bookContentsList;
+  const priorPages = binder.bookPages;
+  const sheets = new Map(), bodies = new Map(), titles = new Map();
+  if (layout.title_page) sheets.set("title", cover);
+  if (layout.contents_page) sheets.set("contents", contents);
+  let chapterNumber = 0, partNumber = 0;
+  for (const section of book.sections) {
+    const caption = section.kind === "chapter" ? `Chapter ${++chapterNumber}` : section.kind === "part" ? `Part ${++partNumber}` : "";
+    const existingSheet = binder.bookPages?.get(section.id), existingBody = binder.bookBodies?.get(section.id);
+    const level = Math.max(1, Math.min(6, Number(section.heading_level) || 1));
+    const nested = section.kind === "subheading";
+    const created = existingSheet ? {sheet: existingSheet, title: binder.bookTitles.get(section.id)} :
+      nested ? {sheet: element("section"), title: element(`h${level}`, section.title)} :
+        binderBookSheet(section.kind === "part" ? "part" : "chapter", section.title, caption);
+    const sheet = created.sheet;
+    let title = created.title, changedTitle = false;
+    const tag = nested ? `h${level}` : "h2";
+    if ((title.localName || title.tagName?.toLowerCase()) !== tag) {
+      const replacement = element(tag, title.textContent);
+      title.replaceWith(replacement); title = replacement; changedTitle = true;
+    }
+    if (!existingSheet && nested) sheet.append(title);
+    sheet.className = nested ? "binder-book-nested-section" : `binder-book-sheet binder-book-${section.kind === "part" ? "part" : "chapter"}`;
+    sheet.dataset.bookSectionHost = section.id;
+    title.dataset.bookHeading = "";
+    title.classList.toggle("binder-book-nested-title", nested);
+    if (nested) title.dataset.headingLevel = String(level); else delete title.dataset.headingLevel;
+    const kicker = sheet.querySelector(".binder-book-kicker");
+    if (kicker && !caption) kicker.remove?.();
+    else if (kicker && kicker.textContent !== caption) kicker.textContent = caption;
+    else if (!kicker && caption) {
+      const label = element("p", caption, "binder-book-kicker"); sheet.insertBefore(label, title);
+    }
+    title.dataset.bookSectionTitle = section.id;
+    if (section.kind === "part") title.dataset.placeholder = "Part title (optional)"; else delete title.dataset.placeholder;
+    const body = existingBody || element("div", undefined, "binder-book-chapter-text"); body.dataset.bookSection = section.id;
+    if (!existingBody || changedTitle) inlineBinderBookField(runtime, title, `${binderBookPartTypes[section.kind]} title`, () => markBinderBookChanged(runtime, body));
+    if (!existingBody) {
+    inlineBinderBookField(runtime, body, `Text of ${section.title}`, () => markBinderBookChanged(runtime, body), {multiline: true});
+    const rememberBookPassage = () => {
+      binder.activeBookBody = body;
+      const range = typeof writingSelectionRange === "function" && writingSelectionRange(body);
+      if (range && body.contains(range.commonAncestorContainer)) binder.bookRange = range.cloneRange();
+      if (runtime.anchor && typeof paintAnchor === "function") paintAnchor(runtime);
+    };
+    body.addEventListener("focusin", rememberBookPassage);
+    body.addEventListener("paste", event => {
+      if (typeof pasteBinderBookSourceQuote === "function" && pasteBinderBookSourceQuote(runtime, body, event)) return;
+      const clipboard = event.clipboardData;
+      if (!clipboard || typeof safeFragment !== "function" || !body.ownerDocument.execCommand) return;
+      const html = clipboard.getData("text/html"), text = clipboard.getData("text/plain");
+      if (!html && !text) return;
+      event.preventDefault();
+      if (html) {
+        const holder = element("div"); holder.append(safeFragment(html));
+        body.ownerDocument.execCommand("insertHTML", false, holder.innerHTML);
+      } else body.ownerDocument.execCommand("insertText", false, text);
+      markBinderBookChanged(runtime, body);
+    });
+    body.addEventListener("focusout", () => { refreshBinderBookContents(runtime); });
+    body.addEventListener("keyup", rememberBookPassage);
+    body.addEventListener("mouseup", rememberBookPassage);
+    sheet.append(body);
+    }
+    sheets.set(section.id, sheet); bodies.set(section.id, body); titles.set(section.id, title);
+  }
+  binder.bookPages = sheets; binder.bookBodies = bodies; binder.bookTitles = titles;
+  binder.bookViewSignature = signature;
+  for (const [identity, sheet] of priorPages || []) if (!sheets.has(identity)) sheet.remove?.();
+  const tree = binderBookSectionTree(book), pages = [];
+  for (const [identity, sheet] of sheets) {
+    if (tree.rows.get(identity)?.kind === "subheading") sheet.remove?.();
+    else pages.push(sheet);
+  }
+  for (const section of book.sections) {
+    if (section.kind !== "subheading") continue;
+    const host = sheets.get(tree.parents.get(section.id));
+    if (host) host.append(sheets.get(section.id));
+    else pages.push(sheets.get(section.id));
+  }
+  binder.readingText.replaceChildren(...pages);
+  paintBinderBookTools(runtime, book);
+  paintBinderBookBodies(runtime, book);
+  if (typeof finishBinderBookQuotePaste === "function") finishBinderBookQuotePaste(runtime);
+  refreshBinderBookContents(runtime, Boolean(binder.bookFocusAfterPaint));
+  if (typeof refreshBookPagination === "function") refreshBookPagination(runtime);
+  if (scroll) runtime.a4.well.scrollTo(0, scroll);
+  if (active?.isConnected && binder.reading.contains(active)) {
+    active.focus({preventScroll: true});
+    if (caret?.start.isConnected && caret.end.isConnected && active.ownerDocument.createRange) {
+      const restored = active.ownerDocument.createRange();
+      restored.setStart(caret.start, caret.startOffset); restored.setEnd(caret.end, caret.endOffset);
+      const selection = active.getRootNode().getSelection?.() || active.ownerDocument.getSelection?.();
+      selection?.removeAllRanges(); selection?.addRange(restored);
+    }
+  }
+  focusBinderBookOutline(runtime);
+  runtime.documentZoom?.refreshSurface();
+  if (typeof paintOutline === "function") paintOutline(runtime);
+  if (typeof applySharedBinderBookAccess === "function") applySharedBinderBookAccess(runtime, book);
+}
+
+
+function focusBinderBookOutline(runtime) {
+  const binder = runtime.binder, focus = binder.bookFocusAfterPaint;
+  if (!focus) return;
+  binder.bookFocusAfterPaint = null;
+  const field = focus.contents ? (focus.block ? [...binder.bookContentsList.querySelectorAll("[data-book-outline-block]")].find(node =>
+    node.dataset.bookOutlineBlock === focus.block && (focus.headingIndex == null || Number(node.dataset.bookOutlineIndex) === focus.headingIndex)) :
+    binder.bookOutlineFields.get(focus.section) || (focus.collapse ? binder.bookContentsList.querySelector('[aria-label="Add a chapter to the contents"]') : null)) :
+    (focus.block ? [...(binder.bookBodies.get(focus.section)?.querySelectorAll("[data-block-id]") || [])].find(node => node.dataset.blockId === focus.block) : binder.bookTitles.get(focus.section));
+  if (focus.block && !focus.contents) field?.closest?.(".binder-book-chapter-text")?.focus({preventScroll: true});
+  field?.focus({preventScroll: true});
+  if (field && field.ownerDocument.createRange) {
+    const range = field.ownerDocument.createRange();
+    range.selectNodeContents(field);
+    if (focus.collapse) range.collapse(false);
+    const selection = field.getRootNode().getSelection?.() || field.ownerDocument.getSelection?.();
+    selection?.removeAllRanges(); selection?.addRange(range);
+  }
+  if (!focus.contents) jumpToBinderBookPage(runtime, focus.section, focus.block);
 }
 
 function setWritingBinderDraft(runtime, id, included) {
   const binder = runtime.binder;
   const draft = binder?.contents.byId.get(id);
-  if (!draft || binder.locked || draft.shared) return;
+  if (!draft || binder.locked || draft.shared || draft.first_draft) return;
   binder.selectionAnchor = id;
   if (included && binder.order.length < writingBinderLimit && !binder.order.includes(id)) binder.order.push(id);
   if (!included) binder.order = binder.order.filter(selected => selected !== id);
@@ -2364,7 +4951,7 @@ function setWritingBinderDraft(runtime, id, included) {
 function selectWritingBinderRange(runtime, toId) {
   const binder = runtime.binder;
   const visible = [...binder.tree.querySelectorAll("[data-binder-draft]")]
-    .filter(button => !binder.contents.byId.get(button.dataset.binderDraft)?.shared && !button.closest("details:not([open])"))
+    .filter(button => !binder.contents.byId.get(button.dataset.binderDraft)?.shared && !binder.contents.byId.get(button.dataset.binderDraft)?.first_draft && !button.closest("details:not([open])"))
     .map(button => button.dataset.binderDraft);
   const from = visible.indexOf(binder.selectionAnchor);
   const to = visible.indexOf(toId);
@@ -2389,9 +4976,23 @@ function lockWritingBinder(runtime, locked) {
   binder.create.disabled = locked;
   binder.files.disabled = locked;
   binder.newFolder.disabled = locked;
+  binder.newBook.disabled = locked;
+  binder.backToBook.disabled = locked;
+  binder.readingText.setAttribute("aria-busy", String(locked));
+  for (const field of binder.readingText.querySelectorAll("[contenteditable]")) {
+    if (locked) {
+      if (field.bookPriorEditable === undefined) field.bookPriorEditable = field.contentEditable;
+      field.contentEditable = "false"; field.setAttribute("contenteditable", "false");
+    } else if (field.bookPriorEditable !== undefined) {
+      field.contentEditable = field.bookPriorEditable; field.setAttribute("contenteditable", field.contentEditable);
+      delete field.bookPriorEditable;
+    }
+  }
   binder.groupSelection.disabled = locked || !binder.order.length;
   binder.folderName.disabled = locked;
   binder.folderSubmit.disabled = locked;
+  if (binder.placementFolder) binder.placementFolder.disabled = locked;
+  if (binder.placementSubmit) binder.placementSubmit.disabled = locked;
   binder.read.disabled = binder.compile.disabled = locked || !binder.order.length;
   for (const button of binder.panel.querySelectorAll("[data-binder-draft], [data-binder-file-action]")) {
     button.disabled = locked;
@@ -2399,12 +5000,17 @@ function lockWritingBinder(runtime, locked) {
   for (const checkbox of binder.tree.querySelectorAll("[data-binder-include]")) {
     checkbox.disabled = locked || (!checkbox.checked && binder.order.length >= writingBinderLimit);
   }
+  const book = binder.contents.booksById.get(binder.bookOverviewId);
+  if (typeof applySharedBinderBookAccess === "function") applySharedBinderBookAccess(runtime, book);
 }
 
-function paintWritingBinder(runtime, documents, folders, trashed = [], acknowledgement, archived = []) {
+function paintWritingBinder(runtime, documents, folders, trashed = [], acknowledgement, archived = [], books = [], initialBook = "", editingBook = null) {
   const binder = runtime.binder;
   if (!binder) return;
-  const ack = runtime.acknowledgedType === "binder" ? acknowledgement : null;
+  const ack = runtime.acknowledgedType === "binder" ||
+    runtime.acknowledgedType === "link" && acknowledgement?.binder_book_linked ||
+    runtime.acknowledgedType === "paste-cited" && acknowledgement?.binder_book_saved ? acknowledgement : null;
+  if (ack?.binder_placed && binder.placementForm) closeBinderPlacementForm(runtime);
   if (ack?.binder_folder) {
     if (binder.creatingIn) binder.foldersOpen.set(binder.creatingIn, true);
     binder.foldersOpen.set(ack.binder_folder, true);
@@ -2417,24 +5023,109 @@ function paintWritingBinder(runtime, documents, folders, trashed = [], acknowled
     binder.renamingItem = null;
     binder.search.focus({preventScroll: true});
   }
+  binder.contents = writingBinderContents(documents, folders, books);
+  const organizedBook = ack?.binder_book_organized?.open_book_id;
+  if (organizedBook && binder.contents.booksById.has(organizedBook)) {
+    openWritingBinder(runtime, false); openBinderBook(runtime, organizedBook);
+    const manuscript = ack.binder_book_organized.manuscript;
+    if (manuscript?.book_id === organizedBook) binder.bookPreview = manuscript;
+  }
+  acknowledgeBinderBook(runtime, ack);
+  const editingId = typeof editingBook === "string" ? editingBook : editingBook?.id;
+  binder.editingBook = binder.contents.booksById.has(editingId) ? editingId : "";
+  binder.backToBook.hidden = !binder.editingBook || !binder.reading.hidden;
+  if (binder.editingBook) binder.backToBook.title = `Back to ${binder.contents.booksById.get(binder.editingBook).title}`;
+  if (initialBook !== binder.routeBook) {
+    binder.routeBook = initialBook;
+    if (initialBook && binder.contents.booksById.has(initialBook)) {
+      openWritingBinder(runtime, false);
+      openBinderBook(runtime, initialBook);
+    }
+  }
+  if (ack?.binder_book_created) {
+    if (binder.creatingIn) binder.foldersOpen.set(binder.creatingIn, true);
+    binder.folderForm.hidden = true;
+    binder.creatingBook = false;
+    binder.search.value = "";
+    binder.order = binder.order.filter(identity => !binder.creatingSelection?.includes(identity));
+    binder.creatingSelection = null;
+    openBinderBook(runtime, ack.binder_book_created);
+  }
+  if (ack?.binder_book_converted) {
+    const converted = ack.binder_book_converted;
+    binder.search.value = "";
+    if (converted.mode === "book" && converted.book?.id && binder.contents.booksById.has(converted.book.id)) {
+      openWritingBinder(runtime, false); openBinderBook(runtime, converted.book.id);
+      if (converted.manuscript) { binder.bookPreview = converted.manuscript; paintBinderBook(runtime); }
+    } else if (converted.mode === "folder") {
+      if (binder.bookOverviewId === converted.book?.id) closeBinderReading(runtime, false);
+      if (converted.folder?.id) binder.foldersOpen.set(converted.folder.id, true);
+      openWritingBinder(runtime, false);
+    }
+    binder.signature = null;
+  }
+  if (ack?.binder_book_preview && ack.binder_book_preview.book_id === binder.bookOverviewId && binder.sharedBookHandledAck !== ack) {
+    binder.bookPreview = ack.binder_book_preview;
+    const current = binder.contents.booksById.get(binder.bookOverviewId);
+    const received = new Map(binder.bookPreview.sections.map(section => [section.id, section.revision]));
+    if (current?.sections.every(section => !section.available || received.get(section.id) === section.revision)) {
+      binder.bookPreviewRequest = binderBookVersions(current);
+    }
+  }
+  paintBinderBook(runtime);
+  if (!runtime.pending && !binder.bookSent && (binder.bookDirty?.size || binder.bookMetaDirty)) {
+    queueMicrotask(() => { if (!runtime.pending) flushBinderBook(runtime); });
+  }
   if (ack?.binder_preview) showBinderReading(runtime, ack.binder_preview);
   if (runtime.acknowledgedType === "open-archive" && acknowledgement?.binder_archive_preview) {
     showBinderReading(runtime, acknowledgement.binder_archive_preview, true);
   }
-  if (ack?.binder_error || ack?.error) {
-    binder.notice.textContent = ack.binder_error || ack.error;
-    binder.notice.hidden = false;
+  if ((ack?.binder_error || ack?.error) && binder.sharedBookHandledAck !== ack) {
+    const notice = binder.bookOverviewId ? binder.bookNotice : binder.notice;
+    notice.textContent = ack.binder_error || ack.error;
+    notice.removeAttribute("data-success");
+    notice.hidden = false;
+    if (binder.bookOverviewId && binder.bookSaveError) {
+      const recover = element("span", "Your changes are kept here. ", "binder-book-recovery");
+      const copy = makeButton("Copy unsaved text", () => {
+        const text = [binder.bookFields.title?.textContent, binder.bookFields.author?.textContent,
+          ...[...binder.bookPages.entries()].filter(([key]) => !["title", "contents"].includes(key)).map(([, sheet]) => sheet.textContent)].filter(Boolean).join("\n\n");
+        globalThis.navigator?.clipboard?.writeText(text).then(() => { copy.textContent = "Copied"; }).catch(() => { copy.textContent = "Select the text to copy"; });
+      });
+      const reload = makeButton("Reload saved book", () => {
+        if (typeof window.confirm === "function" && !window.confirm("Reload the saved Book and discard the unsaved changes shown here?")) return;
+        binder.bookDirty.clear(); binder.bookMetaDirty = false; binder.bookSent = null;
+        binder.bookSaveError = false; binder.bookEditRevision = null; binder.bookResume = null;
+        binder.bookPreview = null; binder.bookPreviewRequest = null;
+        binder.bookCover = null; binder.bookContentsSheet = null; binder.bookViewSignature = null;
+        binder.bookPages = new Map(); binder.bookBodies = new Map(); binder.bookTitles = new Map(); binder.bookFields = {};
+        binder.bookCitations = new Map(); binder.chapterSelection = null; binder.chapterHistory = null;
+        binder.bookLayoutDraft = null; notice.hidden = true; paintBinderBook(runtime);
+      });
+      recover.append(copy, reload); notice.append(recover);
+    }
+  } else if (ack?.binder_book_organized?.copied_shared) {
+    const notice = binder.bookOverviewId ? binder.bookNotice : binder.notice;
+    notice.textContent = "Private copy added to Book";
+    notice.setAttribute("data-success", "");
+    notice.hidden = false;
+  } else if (ack?.binder_book_edition && binder.bookOverviewId) {
+    binder.bookNotice.textContent = `${ack.binder_book_edition.label || `Edition ${ack.binder_book_edition.number}`} saved.`;
+    binder.bookNotice.setAttribute("data-success", "");
+    binder.bookNotice.hidden = false;
   }
-  binder.contents = writingBinderContents(documents, folders);
-  const fileShape = documents.map(({id, title, folder_id, shared, offline, can_unshare, return_pending}) =>
-    [id, title, folder_id, shared, offline, can_unshare, return_pending])
+  const fileShape = documents.map(({id, title, folder_id, first_draft, shared, offline, can_unshare, return_pending, hidden_by_container}) =>
+    [id, title, folder_id, first_draft, shared, offline, can_unshare, return_pending, hidden_by_container])
     .sort(([left], [right]) => left.localeCompare(right));
-  const signature = JSON.stringify([fileShape, folders, trashed, archived, runtime.selectedDraftId || runtime.docId]);
+  const bookShape = books.map(({id, title, folder_id, sections, layout}) => [id, title, folder_id, layout,
+    sections.map(({id, title, kind, available, parent_section_id, parent_part_id, heading_level}) =>
+      [id, title, kind, available, parent_section_id || parent_part_id, heading_level])]);
+  const signature = JSON.stringify([fileShape, bookShape, folders, trashed, archived, runtime.selectedDraftId || runtime.docId]);
   if (signature === binder.signature && !ack?.binder_folder) return;
   binder.signature = signature;
   binder.trashed = trashed;
   binder.archived = archived;
-  binder.order = binder.order.filter(id => binder.contents.byId.has(id) && !binder.contents.byId.get(id).shared);
+  binder.order = binder.order.filter(id => binder.contents.byId.has(id) && !binder.contents.byId.get(id).shared && !binder.contents.byId.get(id).first_draft && !binder.contents.byId.get(id).hidden_by_container);
   if (binder.panel.hidden) {
     reportWritingBinderSelection(runtime);
     return;
@@ -2442,20 +5133,75 @@ function paintWritingBinder(runtime, documents, folders, trashed = [], acknowled
   renderWritingBinderTree(runtime);
   renderWritingBinderTrash(runtime);
   renderWritingBinderArchive(runtime);
+  renderWritingBinderFirstDrafts(runtime);
   renderWritingBinderSelection(runtime);
+}
+
+function binderDraftRow(runtime, draft, {sharedTitles = new Set(), selected = new Set(), currentDraft = ""} = {}) {
+  const binder = runtime.binder;
+  const row = element("div", undefined, "binder-draft");
+  if (draft.first_draft) row.dataset.binderFirstDraftsDrop = "";
+  else row.dataset.binderDropFolder = binder.contents.foldersById.has(draft.folder_id) ? draft.folder_id : "";
+  row.dataset.binderDragDraft = draft.id;
+  row.draggable = !binder.locked;
+  if (draft.shared) row.setAttribute("data-binder-shared", "");
+  if (draft.first_draft) row.setAttribute("data-binder-first-draft", "");
+  if (!draft.shared && !draft.first_draft) {
+    const checkbox = element("input");
+    checkbox.type = "checkbox"; checkbox.dataset.binderInclude = draft.id;
+    checkbox.checked = selected.has(draft.id);
+    row.toggleAttribute("data-binder-selected", checkbox.checked);
+    checkbox.disabled = binder.locked || (!checkbox.checked && binder.order.length >= writingBinderLimit);
+    checkbox.setAttribute("aria-label", "Select " + draft.title); row.append(checkbox);
+  }
+  const open = makeButton(draft.title, event => {
+    if (!draft.shared && !draft.first_draft) {
+      if (event?.shiftKey) return selectWritingBinderRange(runtime, draft.id);
+      if (event?.metaKey || event?.ctrlKey) return setWritingBinderDraft(runtime, draft.id, !binder.order.includes(draft.id));
+      binder.selectionAnchor = draft.id;
+    }
+    closeBinderReading(runtime, false);
+    if (draft.id === runtime.docId) restoreSelection(runtime);
+    else send(runtime, "open", {target_id: draft.id});
+  });
+  open.className = "binder-draft-open"; open.dataset.binderDraft = draft.id;
+  const badge = draft.shared ? "Shared" : (sharedTitles.has(draft.title) ? "Local" : "");
+  const badgeText = draft.offline ? "Shared · offline" : draft.return_pending ? "Return pending" : badge;
+  open.title = badgeText ? `${draft.title} · ${badgeText}` : draft.title;
+  if (badge) {
+    open.classList.add("binder-draft-labeled");
+    open.replaceChildren(element("span", draft.title, "binder-draft-name"),
+      element("span", badgeText, `binder-draft-badge binder-draft-badge-${badge.toLowerCase()}`));
+  }
+  open.disabled = binder.locked;
+  if (draft.id === currentDraft) open.setAttribute("aria-current", "true");
+  row.append(open, binderItemMenuButton(runtime, "document", draft.id, draft.title));
+  return row;
+}
+
+function renderWritingBinderFirstDrafts(runtime) {
+  renderWritingBinderArchive(runtime);
 }
 
 function renderWritingBinderArchive(runtime) {
   const {binder} = runtime;
   const archived = binder.archived || [];
-  const unavailable = !archived.length && runtime.showUnavailableArchive;
-  binder.archive.hidden = !archived.length && !unavailable;
-  binder.archiveCount.textContent = unavailable ? "Full version" : String(archived.length);
+  const protectedIds = new Set(archived.map(draft => draft.id));
+  const drafts = (binder.contents.firstDrafts || []).filter(draft => !protectedIds.has(draft.id));
+  const total = archived.length + drafts.length;
+  const unavailable = !total && runtime.showUnavailableArchive;
+  const query = binder.search.value.trim().toLocaleLowerCase();
+  const originals = archived.filter(draft => !query || draft.title.toLocaleLowerCase().includes(query));
+  const visible = drafts.filter(draft => !query || draft.title.toLocaleLowerCase().includes(query));
+  binder.archive.hidden = false;
+  binder.archiveCount.textContent = unavailable ? "Full version" : total ? String(total) : "";
   if (unavailable) {
-    binder.archiveList.replaceChildren(element("p", "Local Archive is available in the desktop app.", "binder-empty"));
+    binder.archiveList.replaceChildren(element("p", "First drafts is available in the desktop app.", "binder-empty"));
     return;
   }
-  binder.archiveList.replaceChildren(...archived.map(item => {
+  const sharedTitles = new Set([...binder.contents.byId.values()].filter(draft => draft.shared).map(draft => draft.title));
+  const notes = visible.map(draft => binderDraftRow(runtime, draft, {sharedTitles, currentDraft: runtime.selectedDraftId || runtime.docId}));
+  binder.archiveList.replaceChildren(...notes, ...originals.map(item => {
     const row = element("div", undefined, "binder-archive-item");
     const title = element("span", item.title);
     title.title = `${item.title} · Revision ${item.revision}`;
@@ -2466,6 +5212,8 @@ function renderWritingBinderArchive(runtime) {
     row.append(title, preview);
     return row;
   }));
+  if (!visible.length && !originals.length) binder.archiveList.append(element("p", query ? "No first drafts match." : "Keep early drafts here.", "binder-empty"));
+  if (query && (visible.length || originals.length)) binder.archive.open = true;
 }
 
 function renderWritingBinderTrash(runtime) {
@@ -2491,7 +5239,7 @@ function renderWritingBinderTrash(runtime) {
 function renderWritingBinderTree(runtime) {
   const binder = runtime.binder;
   closeBinderItemMenu(binder);
-  const {foldersById, foldersByParent, documentsByFolder} = binder.contents;
+  const {foldersById, foldersByParent, documentsByFolder, booksById, booksByFolder} = binder.contents;
   const sharedTitles = new Set([...binder.contents.byId.values()]
     .filter(document => document.shared).map(document => document.title));
   const query = binder.search.value.trim().toLocaleLowerCase();
@@ -2503,6 +5251,14 @@ function renderWritingBinderTree(runtime) {
   while (current && !containsCurrent.has(current)) {
     containsCurrent.add(current);
     current = foldersById.get(current)?.parent_id;
+  }
+  for (const book of booksById.values()) {
+    if (book.id !== binder.bookOverviewId && !book.sections.some(part => part.document_id === currentDraft && part.available)) continue;
+    let folder = foldersById.get(book.folder_id);
+    while (folder && !containsCurrent.has(folder.id)) {
+      containsCurrent.add(folder.id);
+      folder = foldersById.get(folder.parent_id);
+    }
   }
   const appendChildren = (container, parentId, reveal) => {
     for (const folder of foldersByParent.get(parentId) || []) {
@@ -2528,60 +5284,133 @@ function renderWritingBinderTree(runtime) {
       row.append(details, binderItemMenuButton(runtime, "folder", folder.id, folder.name));
       container.append(row);
     }
+    for (const book of booksByFolder.get(parentId) || []) {
+      const showAll = reveal || book.title.toLocaleLowerCase().includes(query);
+      const visible = book.sections.filter(part => showAll || part.title.toLocaleLowerCase().includes(query));
+      const structure = binderBookSectionTree(book);
+      let chapterNumber = 0;
+      const chapterNumbers = new Map(book.sections.filter(part => part.kind === "chapter")
+        .map(part => [part.id, ++chapterNumber]));
+      if (!showAll && !visible.length) continue;
+      const row = element("div", undefined, "binder-book-row");
+      const head = element("div", undefined, "binder-book-row-head");
+      const children = element("div", undefined, "binder-book-sections");
+      row.dataset.binderBook = head.dataset.binderBook = children.dataset.binderBook = book.id;
+      head.dataset.binderBookDrop = children.dataset.binderBookDrop = book.id;
+      children.id = `binder-book-${book.id}`;
+      const toggle = makeButton("", () => {
+        const expanded = children.hidden;
+        binder.booksOpen.set(book.id, expanded);
+        setExpanded(expanded);
+      });
+      toggle.className = "binder-book-toggle";
+      toggle.setAttribute("aria-controls", children.id);
+      const setExpanded = expanded => {
+        children.hidden = !expanded;
+        toggle.textContent = "";
+        toggle.dataset.expanded = String(expanded);
+        toggle.title = `${expanded ? "Collapse" : "Expand"} ${book.title}`;
+        toggle.setAttribute("aria-label", toggle.title);
+        toggle.setAttribute("aria-expanded", String(expanded));
+      };
+      setExpanded(Boolean(query) || (binder.booksOpen.get(book.id) ??
+        (book.id === binder.bookOverviewId || book.sections.some(part => part.document_id === currentDraft && part.available))));
+      const open = makeButton("", () => openBinderBook(runtime, book.id));
+      open.className = "binder-book-open";
+      open.append(binderIcon("book"), element("span", book.title, "binder-book-name"));
+      if (book.shared || book.shared_baseline) open.append(element("span", book.shared ? "Shared" : "Original",
+        `binder-draft-badge binder-draft-badge-${book.shared ? "shared" : "local"}`));
+      open.title = `Open book: ${book.title}`;
+      open.dataset.binderDragBook = book.id; open.draggable = true;
+      open.setAttribute("aria-label", open.title);
+      open.dataset.binderFileAction = "";
+      open.disabled = binder.locked;
+      if (book.id === binder.bookOverviewId) open.setAttribute("aria-current", "true");
+      head.append(toggle, open, binderBookMenu(runtime, book));
+      const layout = binderBookLayout(book);
+      for (const [identity, title] of [["title", layout.title_page_title], ["contents", layout.contents_title]]) {
+        if (identity === "title" ? !layout.title_page : !layout.contents_page) continue;
+        const sheet = makeButton(title, () => openBinderBook(runtime, book.id, identity));
+        sheet.className = "binder-draft-open binder-book-generated";
+        sheet.dataset.binderFileAction = "";
+        sheet.disabled = binder.locked;
+        children.append(sheet);
+      }
+      binder.partsOpen ||= new Map();
+      const matchesSection = (part, reveal) => reveal || part.title.toLocaleLowerCase().includes(query) ||
+        (structure.children.get(part.id) || []).some(child => matchesSection(child, false));
+      const appendSections = (parent, container, reveal) => {
+      for (const part of structure.children.get(parent) || []) {
+        if (!matchesSection(part, reveal)) continue;
+        const partLabel = part.title || (part.kind === "part" ? `Part ${book.sections.filter(row => row.kind === "part").findIndex(row => row.id === part.id) + 1}` : "Untitled");
+        const label = chapterNumbers.has(part.id) ? `${chapterNumbers.get(part.id)} · ${part.title}` : partLabel;
+        const section = makeButton(label, () => openBinderBookSection(runtime, part, book.id));
+        section.className = "binder-draft-open";
+        section.title = partLabel;
+        section.disabled = !part.available || binder.locked;
+        if (part.available) section.dataset.binderFileAction = "";
+        if (part.document_id === currentDraft && !binder.bookOverviewId) section.setAttribute("aria-current", "true");
+        const sectionRow = element("div", undefined, "binder-book-section-row");
+        sectionRow.dataset.binderBookSection = part.id;
+        sectionRow.dataset.binderBook = book.id;
+        sectionRow.draggable = Boolean(part.available);
+        if (part.kind === "subheading") sectionRow.classList.add("binder-book-subheading-row");
+        if (part.kind === "part" || structure.children.has(part.id)) {
+          sectionRow.classList.add("binder-book-branch-row");
+          if (part.kind === "part") sectionRow.classList.add("binder-book-part-row");
+          const head = element("div", undefined, "binder-part-head binder-section-head");
+          const nested = element("div", undefined, "binder-part-children binder-section-children");
+          nested.id = `binder-part-${book.id}-${part.id}`;
+          nested.dataset.binderBook = nested.dataset.binderBookDrop = book.id;
+          nested.dataset.binderBookDropParent = nested.dataset.binderBookParent = part.id;
+          if (part.kind === "part") nested.dataset.binderBookDropPart = part.id;
+          head.dataset.binderBook = head.dataset.binderBookDrop = book.id;
+          head.dataset.binderBookDropParent = head.dataset.binderBookParent = part.id;
+          if (part.kind === "part") head.dataset.binderBookDropPart = part.id;
+          const key = `${book.id}:${part.id}`;
+          const toggle = makeButton("", () => { binder.partsOpen.set(key, nested.hidden); setExpanded(nested.hidden); });
+          toggle.className = "binder-book-toggle binder-part-toggle";
+          toggle.setAttribute("aria-controls", nested.id);
+          const setExpanded = expanded => {
+            nested.hidden = !expanded;
+            toggle.dataset.expanded = String(expanded);
+            toggle.title = `${expanded ? "Collapse" : "Expand"} ${part.kind === "part" ? "part " : ""}${partLabel}`;
+            toggle.setAttribute("aria-label", toggle.title); toggle.setAttribute("aria-expanded", String(expanded));
+          };
+          setExpanded(Boolean(query) || (binder.partsOpen.get(key) ?? true));
+          if (part.kind === "part") {
+            section.classList.add("binder-part-open");
+            section.replaceChildren(binderIcon("part"), element("span", partLabel, "binder-book-section-name"));
+          }
+          head.append(toggle, section, binderBookMenu(runtime, book, part));
+          sectionRow.append(head, nested);
+          appendSections(part.id, nested, reveal || part.title.toLocaleLowerCase().includes(query));
+        } else {
+          const head = element("div", undefined, "binder-part-head binder-section-head");
+          const spacer = element("span", undefined, "binder-section-disclosure-space"); spacer.setAttribute("aria-hidden", "true");
+          head.append(spacer, section, binderBookMenu(runtime, book, part));
+          sectionRow.append(head);
+        }
+        container.append(sectionRow);
+      }
+      };
+      appendSections(null, children, showAll);
+      row.append(head, children);
+      container.append(row);
+    }
     for (const document of documentsByFolder.get(parentId) || []) {
       if (!reveal && !document.title.toLocaleLowerCase().includes(query)) continue;
-      const row = element("div", undefined, "binder-draft");
-      row.dataset.binderDropFolder = parentId || "";
-      if (document.shared) row.setAttribute("data-binder-shared", "");
-      else {
-        row.dataset.binderDragDraft = document.id;
-        row.draggable = true;
-        const checkbox = element("input");
-        checkbox.type = "checkbox";
-        checkbox.dataset.binderInclude = document.id;
-        checkbox.checked = selected.has(document.id);
-        row.toggleAttribute("data-binder-selected", checkbox.checked);
-        checkbox.disabled = binder.locked || (!checkbox.checked && binder.order.length >= writingBinderLimit);
-        checkbox.setAttribute("aria-label", "Select " + document.title);
-        row.append(checkbox);
-      }
-      const open = makeButton(document.title, event => {
-        if (!document.shared) {
-          if (event?.shiftKey) return selectWritingBinderRange(runtime, document.id);
-          if (event?.metaKey || event?.ctrlKey) {
-            return setWritingBinderDraft(runtime, document.id, !binder.order.includes(document.id));
-          }
-          binder.selectionAnchor = document.id;
-        }
-        closeBinderReading(runtime, false);
-        if (document.id === runtime.docId) restoreSelection(runtime);
-        else send(runtime, "open", {target_id: document.id});
-      });
-      open.className = "binder-draft-open";
-      open.dataset.binderDraft = document.id;
-      const badge = document.shared ? "Shared" : (sharedTitles.has(document.title) ? "Local" : "");
-      const badgeText = document.offline ? "Shared · offline" : document.return_pending ? "Return pending" : badge;
-      open.title = badgeText ? `${document.title} · ${badgeText}` : document.title;
-      if (badge) {
-        open.classList.add("binder-draft-labeled");
-        open.replaceChildren(element("span", document.title, "binder-draft-name"),
-          element("span", badgeText, `binder-draft-badge binder-draft-badge-${badge.toLowerCase()}`));
-      }
-      open.disabled = binder.locked;
-      if (document.id === currentDraft) open.setAttribute("aria-current", "true");
-      row.append(open);
-      if (!document.shared || document.can_unshare) {
-        row.append(binderItemMenuButton(runtime, "document", document.id, document.title));
-      }
-      container.append(row);
+      container.append(binderDraftRow(runtime, document, {sharedTitles, selected, currentDraft}));
     }
   };
   const fragment = document.createDocumentFragment();
   appendChildren(fragment, null, !query);
   if (!fragment.childElementCount) {
-    fragment.append(element("p", query ? "No drafts or folders match." : "Create a draft or folder to begin.", "binder-empty"));
+    fragment.append(element("p", query ? "No drafts, folders or books match." : "Create a draft, folder or book to begin.", "binder-empty"));
   }
   binder.tree.replaceChildren(fragment);
+  renderWritingBinderFirstDrafts(runtime);
+  if (typeof paintBinderBookDrag === "function") paintBinderBookDrag(runtime);
 }
 
 function renderWritingBinderSelection(runtime) {
@@ -2632,6 +5461,85 @@ function renderWritingBinderSelection(runtime) {
   binder.read.disabled = binder.compile.disabled = binder.locked || !rows.length;
   binder.groupSelection.disabled = binder.locked || !rows.length;
   reportWritingBinderSelection(runtime);
+}
+
+// Book tabs carry only server-authorized Book/section identities. The main tab
+// follows numbered chapters; a second chapter tab retains its own fixed label.
+function writingBookTabChapter(book, sectionId) {
+  const sections = new Map((book?.sections || []).map(section => [section.id,section]));
+  let section = sections.get(sectionId), visited = new Set();
+  while (section && !visited.has(section.id)) {
+    if (section.kind === 'chapter') return section;
+    visited.add(section.id);
+    section = sections.get(section.parent_section_id || section.parent_part_id);
+  }
+  return null;
+}
+
+function installWritingBookTabs(runtime) {
+  if (runtime.compact || runtime.bookTabs) return;
+  const doc = runtime.root.ownerDocument, view = doc.defaultView, {signal} = runtime.controller;
+  const state = runtime.bookTabs = {data:{},route:'',published:'',pending:false};
+  function publish(focused = false) {
+    const binder = runtime.binder, book = binder?.contents?.booksById.get(binder.bookOverviewId);
+    if (!book || binder.reading.hidden) return;
+    let sectionId = '';
+    if (focused) {
+      const active = runtime.root.getRootNode().activeElement || doc.activeElement;
+      for (const [id,body] of binder.bookBodies || []) if (body === active || body.contains(active)) sectionId = id;
+      for (const [id,title] of binder.bookTitles || []) if (title === active || title.contains(active)) sectionId = id;
+    }
+    if (!sectionId) {
+      const well = runtime.a4.well, frame = well.getBoundingClientRect(), top = frame.top+Math.min(64,(frame.height || well.clientHeight || 500)/4);
+      let best = null;
+      for (const [id,page] of binder.bookPages || []) {
+        const rect = page.getBoundingClientRect();
+        if (rect.bottom <= frame.top || rect.top >= frame.bottom) continue;
+        if (!best || rect.top <= top && (best.top > top || rect.top >= best.top)) best = {id,top:rect.top};
+      }
+      sectionId = best?.id || '';
+    }
+    const chapter = writingBookTabChapter(book,sectionId);
+    const tab = state.data.initial_book === book.id && state.data.initial_book_tab ? state.data.initial_book_tab : 'studio-book:'+book.id;
+    const detail = {book_id:book.id,tab_id:tab,section_id:chapter?.id || ''};
+    const signature = JSON.stringify(detail);
+    if (signature === state.published) return;
+    state.published = signature;
+    doc.dispatchEvent(new view.CustomEvent('care-writing-book-position',{detail}));
+  }
+  state.publish = publish;
+  const schedule = () => {
+    if (state.pending) return;
+    state.pending = true;
+    view.requestAnimationFrame(() => { state.pending = false;if (!signal.aborted) publish(false); });
+  };
+  runtime.a4.well.addEventListener('scroll',schedule,{signal,passive:true});
+  runtime.root.addEventListener('focusin',()=>publish(true),{signal});
+  runtime.root.addEventListener('input',()=>publish(true),{signal});
+  view.addEventListener('resize',schedule,{signal});
+  const observer = typeof view.MutationObserver === 'function' ? new view.MutationObserver(schedule) : null;
+  if (runtime.binder?.reading) observer?.observe(runtime.binder.reading,{childList:true,subtree:true});
+  signal.addEventListener('abort',()=>observer?.disconnect(),{once:true});
+}
+
+function updateWritingBookTabs(runtime, data) {
+  const state = runtime.bookTabs;
+  if (!state) return;
+  const previousBook = state.data.initial_book;
+  if (state.data !== data) state.published = '';
+  state.data = data;
+  if (previousBook && !data.initial_book && runtime.binder?.bookOverviewId && typeof closeBinderReading === 'function') {
+    closeBinderReading(runtime,false);
+  }
+  const route = JSON.stringify([data.initial_book || '',data.initial_book_tab || '',data.initial_book_section || '']);
+  if (route !== state.route && data.initial_book === runtime.binder?.bookOverviewId) {
+    const section = data.initial_book_section || (runtime.binder.bookPages?.has('title') ? 'title' : runtime.binder.bookPages?.keys().next().value);
+    if (section && runtime.binder.bookPages?.has(section)) {
+      state.route = route; state.published = '';
+      jumpToBinderBookPage(runtime,section);
+    }
+  } else if (!data.initial_book) state.route = route;
+  state.publish(false);
 }
 
 const writingFontFamilies = new Set([
@@ -2925,6 +5833,261 @@ function writingHeadingLabel(node) {
   label = label.replace(/\s+/g, " ").trim();
   return label.length > 110 ? label.slice(0, 107).trimEnd() + "…" : label;
 }
+// Paragraph and heading definitions travel with the draft's ordinary HTML.
+// Only the first anchored block carries the typed registry; normal paste never
+// imports it. Inline formatting makes the saved appearance readable everywhere.
+const writingNamedStyles = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6"]);
+const writingStyleMemory = new WeakMap();
+
+function validatedWritingParagraphStyles(value) {
+  let definitions;
+  try { definitions = typeof value === "string" && value.length <= 4096 ? JSON.parse(value) : value; }
+  catch { return {}; }
+  if (!definitions || typeof definitions !== "object" || Array.isArray(definitions) ||
+      Object.keys(definitions).length > 7) return {};
+  const result = {};
+  const fields = ["font", "size", "bold", "italic", "underline", "align"];
+  for (const [tag, style] of Object.entries(definitions)) {
+    if (!writingNamedStyles.has(tag) || !style || typeof style !== "object" || Array.isArray(style) ||
+        Object.keys(style).some(key => !fields.includes(key) && key !== "weight") || fields.some(key => !Object.hasOwn(style, key)) ||
+        !(style.font === "default" || writingFontFamilies.has(style.font)) ||
+        !(style.size === "default" || typeof style.size === "string" && /^(?:[89]|[1-6][0-9]|7[0-2])$/.test(style.size)) ||
+        ["bold", "italic", "underline"].some(key => typeof style[key] !== "boolean") ||
+        Object.hasOwn(style, "weight") && !["400", "500", "600", "700", "800", "900"].includes(style.weight) ||
+        !["left", "center", "right", "justify"].includes(style.align)) return {};
+    result[tag] = Object.fromEntries(fields.map(key => [key, style[key]]));
+    if (Object.hasOwn(style, "weight")) result[tag].weight = style.weight;
+  }
+  return result;
+}
+
+function encodedWritingParagraphStyles(value) {
+  const definitions = validatedWritingParagraphStyles(value);
+  const ordered = Object.fromEntries(Object.keys(definitions).sort().map(tag => [tag,
+    Object.fromEntries(Object.entries(definitions[tag]).sort(([left], [right]) => left.localeCompare(right))),
+  ]));
+  return Object.keys(ordered).length ? JSON.stringify(ordered) : "";
+}
+
+function adoptWritingParagraphStyles(runtime) {
+  const definitions = validatedWritingParagraphStyles(runtime.paper.firstElementChild?.dataset.writingStyles || "{}");
+  writingStyleMemory.set(runtime.paper, definitions);
+  return definitions;
+}
+
+function writingParagraphDefinitions(runtime) {
+  const saved = runtime.paper.firstElementChild?.dataset.writingStyles;
+  if (saved) {
+    const definitions = validatedWritingParagraphStyles(saved);
+    writingStyleMemory.set(runtime.paper, definitions);
+    return definitions;
+  }
+  return writingStyleMemory.get(runtime.paper) || {};
+}
+
+function preserveWritingParagraphStyles(runtime) {
+  const definitions = writingParagraphDefinitions(runtime);
+  const encoded = encodedWritingParagraphStyles(definitions);
+  const first = runtime.paper.firstElementChild;
+  for (const block of runtime.paper.children) {
+    if (block === first && encoded) block.dataset.writingStyles = encoded;
+    else delete block.dataset.writingStyles;
+  }
+}
+
+function writeWritingParagraphDefinitions(runtime, definitions) {
+  writingStyleMemory.set(runtime.paper, definitions);
+  const first = runtime.paper.firstElementChild;
+  if (first) first.dataset.writingStyles = encodedWritingParagraphStyles(definitions);
+  preserveWritingParagraphStyles(runtime);
+}
+
+function clearWritingParagraphFontOverrides(unit) {
+  for (const node of unit.querySelectorAll("[style]")) {
+    if (node.closest("[data-writing-footnote], [data-a4-break], [contenteditable=false]")) continue;
+    node.style.removeProperty("font-family");
+    node.style.removeProperty("font-size");
+    if (!node.style.length) node.removeAttribute("style");
+  }
+}
+
+function applyWritingNamedStyle(unit, style) {
+  clearWritingParagraphFontOverrides(unit);
+  // A heading's whole label takes its named style. Imported/direct marks must
+  // not silently keep it bold or italic after that state was turned off.
+  // Body paragraphs retain intentional emphasis within their prose.
+  if (/^h[1-6]$/.test(unit.localName || "")) {
+    for (const node of unit.querySelectorAll("b, strong, i, em, u")) {
+      if (node.closest("[data-writing-footnote], [data-a4-break], [contenteditable=false]")) continue;
+      node.replaceWith(...node.childNodes);
+    }
+    for (const node of unit.querySelectorAll("[style]")) {
+      if (node.closest("[data-writing-footnote], [data-a4-break], [contenteditable=false]")) continue;
+      for (const property of ["font-weight", "font-style", "text-decoration-line"]) node.style.removeProperty(property);
+      if (!node.style.length) node.removeAttribute("style");
+    }
+  }
+  unit.style.textAlign = style.align;
+  unit.style.fontFamily = style.font === "default" ? writingDefaultFont : style.font;
+  unit.style.fontSize = style.size === "default" ? writingDefaultSize : style.size + "pt";
+  unit.style.fontWeight = style.weight || (style.bold ? "700" : "400");
+  unit.style.fontStyle = style.italic ? "italic" : "normal";
+  unit.style.textDecorationLine = style.underline ? "underline" : "none";
+}
+
+function applyWritingParagraphPreset(runtime, tag, range = writingSelectionRange(runtime.paper) || runtime.range) {
+  const style = writingParagraphDefinitions(runtime)[tag];
+  if (!style || !rangeInPaper(runtime.paper, range)) return false;
+  const units = writingParagraphUnits(runtime.paper, range).filter(unit => unit.localName === tag);
+  for (const unit of units) applyWritingNamedStyle(unit, style);
+  return Boolean(units.length);
+}
+
+function resetWritingParagraphTypography(runtime, range) {
+  const defaults = writingParagraphDefinitions(runtime).p;
+  const units = writingParagraphUnits(runtime.paper, range);
+  for (const unit of units) {
+    clearWritingParagraphFontOverrides(unit);
+    unit.style.fontFamily = defaults && defaults.font !== "default" ? defaults.font : writingDefaultFont;
+    unit.style.fontSize = defaults && defaults.size !== "default" ? defaults.size + "pt" : writingDefaultSize;
+  }
+  return Boolean(units.length);
+}
+
+function selectedWritingParagraphStyle(runtime, range) {
+  const unit = writingParagraphUnits(runtime.paper, range)[0];
+  const tag = unit?.localName;
+  if (!writingNamedStyles.has(tag)) return null;
+  const selectedNode = writingElement(range.startContainer);
+  const node = selectedNode && unit.contains(selectedNode) ? selectedNode : unit;
+  const view = unit.ownerDocument.defaultView;
+  const computed = view.getComputedStyle(node);
+  const paragraph = view.getComputedStyle(unit);
+  const explicit = writingTypographyAt(runtime.paper, node);
+  const size = explicit.size || String(Math.max(8, Math.min(72, Math.round(parseFloat(computed.fontSize) * .75) || 12)));
+  const weight = ["400", "500", "600", "700", "800", "900"].includes(computed.fontWeight) ? computed.fontWeight :
+    computed.fontWeight === "bold" ? "700" : "400";
+  return {tag, style: {
+    font: explicit.font || "default", size, weight,
+    bold: computed.fontWeight === "bold" || Number(computed.fontWeight) >= 600,
+    italic: computed.fontStyle === "italic",
+    underline: Boolean(node.closest("u")) || [computed, paragraph].some(value =>
+      (value.textDecorationLine || value.textDecoration || "").split(/\s+/).includes("underline")),
+    align: ["left", "center", "right", "justify"].includes(paragraph.textAlign) ? paragraph.textAlign : "left",
+  }};
+}
+
+function updateWritingParagraphStyle(runtime, range) {
+  const selected = selectedWritingParagraphStyle(runtime, range);
+  if (!selected) return false;
+  const bookmark = typeof writingHistoryBookmark === "function" ? writingHistoryBookmark(runtime, range) : null;
+  const changed = setWritingParagraphStyle(runtime, selected.tag, selected.style);
+  if (bookmark) restoreWritingHistoryBookmark(runtime, bookmark);
+  return changed;
+}
+
+function setWritingParagraphStyle(runtime, tag, style) {
+  const valid = validatedWritingParagraphStyles({[tag]: style});
+  if (!valid[tag]) return false;
+  const definitions = {...writingParagraphDefinitions(runtime), [tag]: style};
+  const units = [...runtime.paper.querySelectorAll(tag)];
+  for (const unit of units) {
+    if (unit.closest("[data-writing-footnote], [data-a4-break], [contenteditable=false]")) continue;
+    applyWritingNamedStyle(unit, style);
+  }
+  writeWritingParagraphDefinitions(runtime, definitions);
+  return Boolean(runtime.paper.firstElementChild);
+}
+
+function writingParagraphStylesAvailable(runtime) {
+  if (runtime.binder?.bookOverviewId || typeof writingSharedDocument !== "function" || !writingSharedDocument(runtime.docId)) return true;
+  const state = runtime.collaboration;
+  return (state?.base?.paragraph_styles ?? state?.config?.paragraph_styles) === 1;
+}
+
+function paintWritingParagraphStyleMenu(runtime) {
+  const update = runtime.root?.querySelector?.('[data-command="updateParagraphStyle"]');
+  if (!update) return;
+  const tag = runtime.format?.value;
+  const named = writingNamedStyles.has(tag);
+  const label = tag === "p" ? "Paragraph" : /^h[1-6]$/.test(tag || "") ? "Heading " + tag.slice(1) : "style";
+  update.textContent = `Update ${label} to match selection`;
+  const available = writingParagraphStylesAvailable(runtime);
+  update.disabled = !named || runtime.paper.contentEditable !== "true" || !available;
+  update.title = available ? "Apply the selected formatting to this style throughout the document" :
+    "Save shared edits, then restart CARE Remote on the host Mac to enable shared paragraph styles.";
+  const reset = runtime.root.querySelector('[data-command="resetParagraphFont"]');
+  if (reset) reset.disabled = runtime.paper.contentEditable !== "true";
+}
+
+// Explicit plain-text paste keeps the destination's typography and never
+// interprets copied Library tokens or shared-footnote metadata.
+function insertWritingMatchStyle(runtime, target, text) {
+  if (typeof text !== "string" || !text || !currentClipboardTarget(runtime, target)) return;
+  const normalized = text.replace(/\r\n?/g, "\n");
+  if (target.range && selectedFootnotes(runtime.paper, target.range).length) {
+    // Replacing an existing citation must use the ordinary citation transaction
+    // so Undo and the other collaborator retain the correct footnote identities.
+    return clipboardFootnoteAction(runtime, target, {
+      document_id: runtime.docId, text: normalized,
+      html: writingClipboardEscape(normalized).replaceAll("\n", "<br>"), slots: [],
+    });
+  }
+  return insertClipboard(runtime, target, normalized);
+}
+
+async function pasteWritingAndMatchStyle(runtime, providedText = null) {
+  if (runtime.binder?.bookOverviewId) return pasteBinderBookFromMenu(runtime, providedText);
+  const target = clipboardTarget(runtime);
+  if (!currentClipboardTarget(runtime, target) || runtime.paper.contentEditable !== "true") return;
+  let text = providedText;
+  if (text == null) {
+    try { text = await navigator.clipboard.readText(); }
+    catch { /* The explicit paste dialog also works without clipboard access. */ }
+  }
+  if (typeof text === "string") return insertWritingMatchStyle(runtime, target, text);
+  showClipboardDialog(runtime, target, "paste-match");
+}
+
+function writingPasteMatchAtFocus(runtime, event, target) {
+  if (event.defaultPrevented || (!runtime.docId && !runtime.binder?.bookOverviewId) || !runtime.root.isConnected ||
+      runtime.composing || runtime.composingFootnote || !target ||
+      target.closest?.("input, textarea, select, [data-footnote-note]")) return false;
+  const bookBody = runtime.binder?.bookOverviewId &&
+    typeof binderBookEditingTarget === "function" && binderBookEditingTarget(runtime);
+  const paper = bookBody || runtime.paper;
+  if (!paper?.contains(target) || paper.contentEditable !== "true") return false;
+  event.preventDefault();
+  void pasteWritingAndMatchStyle(runtime,
+    typeof event.detail?.text === "string" ? event.detail.text : null);
+  return true;
+}
+
+function installWritingPasteMatch(runtime) {
+  const {signal} = runtime.controller;
+  const doc = runtime.paper.ownerDocument;
+  const options = runtime.formatting?.querySelector("[data-format-more-options]");
+  if (options) {
+    const paste = doc.createElement("button");
+    paste.type = "button";
+    paste.textContent = "Paste and Match Style";
+    paste.title = "Paste and Match Style (⌥⇧⌘V)";
+    paste.addEventListener("pointerdown", () => rememberSelection(runtime), {signal});
+    paste.addEventListener("click", () => void pasteWritingAndMatchStyle(runtime), {signal});
+    options.append(paste);
+  }
+  doc.addEventListener("care-native-edit-command", event => {
+    if (event.detail?.command !== "paste-match-style") return;
+    writingPasteMatchAtFocus(runtime, event,
+      runtime.root.getRootNode().activeElement || doc.activeElement);
+  }, {signal});
+  doc.addEventListener("keydown", event => {
+    const key = event.code === "KeyV" || String(event.key || "").toLowerCase() === "v";
+    if (!key || !event.metaKey || event.ctrlKey || !event.altKey || !event.shiftKey ||
+        event.isComposing || event.getModifierState?.("AltGraph")) return;
+    writingPasteMatchAtFocus(runtime, event, writingShortcutTarget(runtime, event));
+  }, {capture: true, signal});
+}
 
 const writeBesidePanelOwners = new WeakMap();
 
@@ -3061,6 +6224,11 @@ const writingZoomMin = 70;
 const writingZoomMax = 160;
 const writingZoomStep = 10;
 
+function writingZoomReading(runtime) {
+  const reading = runtime.binder?.reading;
+  return reading && reading.hidden === false ? reading : null;
+}
+
 function writingZoomPercent(value) {
   const percent = Number(value || 100);
   return Number.isFinite(percent)
@@ -3070,18 +6238,29 @@ function writingZoomPercent(value) {
 
 function writingFitPercent(runtime) {
   const {well, pages, scale = 1} = runtime.a4;
-  const sheet = runtime.continuous ? runtime.paper.closest(".page") : pages;
+  const reading = writingZoomReading(runtime);
+  const sheet = reading ? reading.querySelector?.(".binder-book-sheet") || reading :
+    runtime.continuous ? runtime.paper.closest(".page") : pages;
   const sheetWidth = sheet.getBoundingClientRect().width / scale;
   const padding = getComputedStyle(well);
   const width = well.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
   const height = well.clientHeight - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom) - 8;
   if (!sheetWidth || width <= 0 || height <= 0) return 100;
-  const fit = runtime.continuous ? width / sheetWidth : Math.min(width / sheetWidth, height / (sheetWidth * 297 / 210));
+  const fit = runtime.continuous && !reading ? width / sheetWidth : Math.min(width / sheetWidth, height / (sheetWidth * 297 / 210));
   return Math.max(1, Math.min(100, Math.floor(fit * 100)));
 }
 
 function writingZoomFocusRect(runtime) {
   const {paper, a4} = runtime;
+  const reading = writingZoomReading(runtime);
+  if (reading) {
+    const active = reading.getRootNode().activeElement;
+    if (!active || !reading.contains(active)) return null;
+    const range = writingSelectionRange(active)?.cloneRange();
+    if (!range) return null;
+    range.collapse(false);
+    return range.getClientRects()[0] || active.getBoundingClientRect();
+  }
   const active = paper.getRootNode().activeElement;
   if (active?.dataset?.footnoteNote && a4.stage.contains(active)) return active.getBoundingClientRect();
   const range = writingSelectionRange(paper)?.cloneRange();
@@ -3093,9 +6272,13 @@ function writingZoomFocusRect(runtime) {
 function applyWritingZoom(runtime, percent, preserveScroll) {
   const {paper, a4} = runtime;
   const {well, stage} = a4;
-  const source = paper.closest(".page");
+  const reading = writingZoomReading(runtime);
+  const source = reading || paper.closest(".page");
   const scale = percent / 100;
   const previousScale = a4.scale || 1;
+  // The assembled Book and read-together preview are siblings of the native
+  // draft stage. Keep the same zoom ready on them even while they are hidden.
+  if (runtime.binder?.reading?.style) runtime.binder.reading.style.zoom = String(scale);
   if (scale === previousScale) return;
 
   const viewport = preserveScroll && well.getBoundingClientRect();
@@ -3109,7 +6292,7 @@ function applyWritingZoom(runtime, percent, preserveScroll) {
   stage.classList.toggle("writing-zoomed", scale !== 1);
   if (!preserveScroll) return;
 
-  refreshWritingA4(runtime, true);
+  if (!reading) refreshWritingA4(runtime, true);
   const updatedFocus = visibleFocus && writingZoomFocusRect(runtime);
   if (updatedFocus) {
     well.scrollTop += updatedFocus.top - focus.top;
@@ -3119,7 +6302,7 @@ function applyWritingZoom(runtime, percent, preserveScroll) {
   } else {
     well.scrollTop = scrollTop ? well.scrollTop + source.getBoundingClientRect().top - viewport.top + relativeTop * scale : 0;
   }
-  if (runtime.find?.mode) paintWritingFindMatch(runtime);
+  if (runtime.find?.mode && !reading) paintWritingFindMatch(runtime);
   runtime.peerReview?.refresh();
 }
 
@@ -3143,7 +6326,7 @@ function installWritingZoom(runtime) {
     // Zoom can still change when browser storage is unavailable.
   }
   let percent = preference === "fit" ? 100 : Number(preference);
-  const fitGeometry = () => `${well.clientWidth}:${well.clientHeight}:${Boolean(runtime.continuous)}`;
+  const fitGeometry = () => `${well.clientWidth}:${well.clientHeight}:${Boolean(runtime.continuous)}:${writingZoomReading(runtime) ? runtime.binder.bookOverviewId || "preview" : "draft"}`;
 
   function paintControls() {
     readout.textContent = `${percent}%`;
@@ -3190,6 +6373,11 @@ function installWritingZoom(runtime) {
       transferredFit = preference === "fit" ? fitGeometry() : undefined;
       paintControls();
     },
+    refreshSurface() {
+      if (preference === "fit") percent = writingFitPercent(runtime);
+      applyWritingZoom(runtime, percent, false);
+      paintControls();
+    },
   };
   runtime.refreshWritingFit = () => {
     if (preference !== "fit" || runtime.composing || runtime.composingFootnote || transferredFit === fitGeometry()) return;
@@ -3203,6 +6391,18 @@ function installWritingZoom(runtime) {
   if (typeof ResizeObserver === "function") {
     const observer = new ResizeObserver(runtime.refreshWritingFit);
     observer.observe(runtime.a4.well);
+    signal.addEventListener("abort", () => observer.disconnect(), {once: true});
+  }
+  if (typeof MutationObserver === "function" && runtime.binder?.reading) {
+    let surface = fitGeometry();
+    const observer = new MutationObserver(() => {
+      const next = fitGeometry();
+      if (next === surface) return;
+      surface = next;
+      runtime.documentZoom.refreshSurface();
+    });
+    observer.observe(runtime.root, {attributes: true, attributeFilter: ["class"]});
+    observer.observe(runtime.binder.reading, {attributes: true, attributeFilter: ["class", "hidden"]});
     signal.addEventListener("abort", () => observer.disconnect(), {once: true});
   }
 
@@ -4048,6 +7248,30 @@ function writingSharedPositions(positions, before, after) {
   return result;
 }
 
+function rebaseWritingSharedLink(extra, before, after) {
+  const selection = extra.selection;
+  const first = extra.block_id, last = selection?.end_block_id || first;
+  if (!selection || typeof selection.text !== "string" || !selection.text.trim() ||
+      !Number.isSafeInteger(selection.start) || !Number.isSafeInteger(selection.end) ||
+      selection.start < 0 || selection.end < 0 || !before.has(first) || !before.has(last) ||
+      !after.has(first) || !after.has(last)) return null;
+  const quote = (texts, start, end) => {
+    const keys = [...texts.keys()], from = keys.indexOf(first), to = keys.indexOf(last);
+    if (from < 0 || to < from || start > texts.get(first).length || end > texts.get(last).length ||
+        first === last && start > end) return null;
+    return first === last ? texts.get(first).slice(start, end) :
+      texts.get(first).slice(start) + keys.slice(from + 1, to).map(key => texts.get(key)).join("") + texts.get(last).slice(0, end);
+  };
+  if (quote(before, selection.start, selection.end) !== selection.text) return null;
+  const start = writingSharedPosition({blockId: first, position: selection.start}, before, after)?.position;
+  // Anchor the end to its last selected character, excluding a new insertion
+  // exactly after that character. We never adopt a user's newly moved range.
+  const endPoint = writingSharedPosition({blockId: last, position: Math.max(0, selection.end - 1)}, before, after);
+  const end = endPoint && endPoint.position + Number(selection.end > 0);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || quote(after, start, end) !== selection.text) return null;
+  return {...extra, selection: {...selection, start, end}};
+}
+
 function rebaseWritingSharedHistory(runtime, before, latest) {
   const history = runtime.editHistory;
   if (!history || before === latest) return;
@@ -4214,6 +7438,7 @@ function patchWritingSharedDraft(runtime, draft, snapshot, options = {}) {
     while (previous?.nextSibling) previous.nextSibling.remove();
     if (!previous) paper.replaceChildren();
     normalizeBlocks(paper);
+    if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(runtime);
     runtime.blocks = new Map([...paper.children].map(block => [block.dataset.blockId, blockText(block)]));
   }
 
@@ -4258,9 +7483,11 @@ function patchWritingSharedDraft(runtime, draft, snapshot, options = {}) {
   if (options.resetHistory) resetWritingHistory(runtime);
 }
 
-function setWritingSharedStatus(state, message) {
+function setWritingSharedStatus(state, message, error = false) {
   if (state.runtime.collaboration !== state) return;
-  if (state.runtime.status.textContent !== message) status(state.runtime, message);
+  if (state.runtime.status.textContent !== message || Boolean(state.runtime.status.hasAttribute?.("data-error")) !== error) {
+    status(state.runtime, message, error);
+  }
 }
 
 function writingSharedURL(config) {
@@ -4289,7 +7516,8 @@ function normalizeWritingShared(state, draft) {
   const container = writingSharedFragment(state.runtime.paper.ownerDocument, draft.html);
   normalizeBlocks(container);
   return {id: draft.id, title: draft.title, html: container.innerHTML, revision: draft.revision,
-    role: draft.role, references: Array.isArray(draft.references) ? draft.references : []};
+    role: draft.role, references: Array.isArray(draft.references) ? draft.references : [],
+    paragraph_styles: draft.paragraph_styles === 1 ? 1 : 0};
 }
 
 function writingSharedDirty(state, local = writingSharedSnapshot(state.runtime)) {
@@ -4418,6 +7646,7 @@ async function syncWritingSharedOnce(state) {
       if (pending.operation) finishWritingSharedOperation(state, latest);
       adoptWritingShared(state, latest, prior, writingSharedSnapshot(runtime));
     } else if (latest.revision !== state.base.revision || latest.role !== state.base.role ||
+        latest.paragraph_styles !== state.base.paragraph_styles ||
         !writingSharedBodyEqual(state.base, latest) || JSON.stringify(latest.references) !== JSON.stringify(state.base.references)) {
       if (state.operation) throw new writingMerge.DraftMergeConflict();
       adoptWritingShared(state, latest, state.base, writingSharedSnapshot(runtime));
@@ -4471,11 +7700,11 @@ async function syncWritingSharedOnce(state) {
         runtime.collaborationRetry.hidden = false;
       }
       setNavigationLock(runtime, Boolean(state.operation));
-      setWritingSharedStatus(state, "Shared draft unavailable · check your CARE Remote connection");
+      setWritingSharedStatus(state, "Shared draft unavailable · check your CARE Remote connection", true);
     } else {
       journalWritingShared(state);
       setWritingSharedStatus(state, state.storageFailed && writingSharedDirty(state)
-        ? "Could not sync · copy your edits before closing" : "Could not sync shared draft · retrying");
+        ? "Could not sync · copy your edits before closing" : "Could not sync shared draft · retrying", true);
     }
   }
 }
@@ -4564,7 +7793,8 @@ function startWritingCollaboration(runtime, config, document) {
     journal: "care-studio-shared-v1:" + (config.account_id || "") + ":" + config.id};
   runtime.collaboration = state;
   try {
-    state.base = normalizeWritingShared(state, {...document, id: config.id, role: config.role, references: config.references});
+    state.base = normalizeWritingShared(state, {...document, id: config.id, role: config.role,
+      references: config.references, paragraph_styles: config.paragraph_styles});
   } catch {
     runtime.collaboration = null;
     writingSharedNotice(runtime, "This shared draft could not open");
@@ -4639,6 +7869,20 @@ function handleWritingSharedAction(runtime, type, extra, authoredSnapshot, run) 
     }
     return true;
   }
+  if (type === "link") {
+    if (!state || !writingCollaborationEditable(runtime)) {
+      writingSharedNotice(runtime, "Connect to the shared draft with edit access before adding a link.");
+      return true;
+    }
+    const before = writingSharedBlockTexts(runtime.paper.ownerDocument,
+      (authoredSnapshot || writingSharedSnapshot(runtime)).html, false);
+    return deferWritingShared(state, () => {
+      const after = writingSharedBlockTexts(runtime.paper.ownerDocument, writingSharedSnapshot(runtime).html, false);
+      const rebased = rebaseWritingSharedLink(extra, before, after);
+      if (rebased) run(rebased);
+      else writingSharedNotice(runtime, "The selected passage changed while edits were syncing. Select it again to add this link.");
+    }, true);
+  }
   if (writingSharedAction.has(type)) {
     if (!state || !writingCollaborationEditable(runtime) || state.operation || state.conflict) return true;
     const snapshot = authoredSnapshot || writingSharedSnapshot(runtime);
@@ -4687,7 +7931,7 @@ async function loadWritingSharedVersion(state) {
     journalWritingShared(state);
     setWritingSharedStatus(state, "Loaded shared version");
   } catch {
-    setWritingSharedStatus(state, "Could not load the shared version · your edits are still here");
+    setWritingSharedStatus(state, "Could not load the shared version · your edits are still here", true);
   } finally { state.resetting = false; }
 }
 
@@ -4709,6 +7953,369 @@ function installWritingCollaboration(runtime) {
     }
   }, options);
   controller.signal.addEventListener("abort", () => stopWritingCollaboration(runtime), {once: true});
+}
+
+// A shared Book has one remote manifest and separately anchored source drafts.
+// Binder never turns those sources into private documents while opening them.
+function sharedBinderBookScope(book) {
+  return book?.shared && Array.isArray(book._remote_scope) && book._remote_scope.length === 3 &&
+    book._remote_scope.every(value => typeof value === "string" && value) ? JSON.stringify(book._remote_scope) : null;
+}
+
+function sharedBinderBookEditable(book) {
+  return !book?.shared || !book.read_only && ["owner", "editor"].includes(book.role);
+}
+
+function sharedBinderBookActionAllowed(book, operation) {
+  return !book?.shared || operation === "book-preview" || sharedBinderBookEditable(book) &&
+    ["book-save", "book-update", "book-drag", "book-outline", "book-add-section", "book-remove-section"].includes(operation);
+}
+
+function sharedBinderBookValue(base, latest, local) {
+  const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  if (same(base, local) || same(latest, local)) return latest;
+  if (same(base, latest)) return local;
+  throw new writingMerge.DraftMergeConflict();
+}
+
+function sharedBinderBookMetadata(base, latest, local) {
+  const merged = writingMerge.mergeDraft(document, {title: base.title, html: ""},
+    {title: latest.title, html: ""}, {title: local.title, html: ""});
+  const layout = {};
+  for (const key of new Set([...Object.keys(base.layout || {}), ...Object.keys(latest.layout || {}), ...Object.keys(local.layout || {})])) {
+    layout[key] = sharedBinderBookValue(base.layout?.[key], latest.layout?.[key], local.layout?.[key]);
+  }
+  return {title: merged.title, author: sharedBinderBookValue(base.author || "", latest.author || "", local.author || ""), layout};
+}
+
+function sharedBinderBookReferenceLocation(reference) {
+  return reference?.block_id && Number.isSafeInteger(reference.marker_offset) ?
+    [reference.block_id, reference.marker_offset, reference.marker_order ?? 0] : null;
+}
+
+function sharedBinderBookReferenceContent(reference) {
+  if (!reference) return null;
+  const {block_id, marker_offset, marker_order, ...content} = reference;
+  return JSON.stringify(content);
+}
+
+function mergeSharedBinderBookChapter(doc, base, latest, local, localReferences) {
+  const merged = writingMerge.mergeDraft(doc, base, latest, local);
+  const texts = html => writingSharedBlockTexts(doc, html);
+  const baseText = texts(base.html), latestText = texts(latest.html), localText = texts(local.html), mergedText = texts(merged.html);
+  const map = (position, before, after) => {
+    if (!position) return null;
+    const point = writingSharedPosition({blockId: position[0], position: position[1]}, before, after);
+    return point ? [point.blockId, point.position, position[2] ?? 0] : null;
+  };
+  const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  const prior = new Map((base.references || []).map(reference => [reference.id, reference]));
+  const current = new Map((localReferences || []).map(reference => [reference.id, reference]));
+  const remote = new Map((latest.references || []).map(reference => [reference.id, reference]));
+  const removed = new Set(local.removed_footnotes || []), restored = new Set(local.restored_footnotes || []);
+  const references = [], positions = {}, notes = {};
+  for (const identity of new Set([...remote.keys(), ...restored])) {
+    const before = prior.get(identity), after = remote.get(identity), yours = current.get(identity);
+    const localPosition = local.footnote_positions?.[identity] || sharedBinderBookReferenceLocation(yours);
+    const expectedLocal = map(sharedBinderBookReferenceLocation(before), baseText, localText);
+    const moved = before && !same(localPosition, expectedLocal);
+    if (removed.has(identity)) {
+      if (after && (sharedBinderBookReferenceContent(after) !== sharedBinderBookReferenceContent(before) ||
+          !same(sharedBinderBookReferenceLocation(after), map(sharedBinderBookReferenceLocation(before), baseText, latestText)))) throw new writingMerge.DraftMergeConflict();
+      continue;
+    }
+    if (!after && !restored.has(identity)) {
+      if (moved) throw new writingMerge.DraftMergeConflict();
+      continue;
+    }
+    const reference = after || yours;
+    if (!reference) throw new writingMerge.DraftMergeConflict();
+    const localNote = Object.hasOwn(local.footnote_notes || {}, identity) ? local.footnote_notes[identity] :
+      yours?.note ?? before?.note ?? after?.note ?? "";
+    const note = before && after ? sharedBinderBookValue(before.note || "", after.note || "", localNote) :
+      after ? after.note || "" : localNote;
+    if (after && note !== (after.note || "")) notes[identity] = note;
+    const remotePosition = sharedBinderBookReferenceLocation(after);
+    const expectedRemote = map(sharedBinderBookReferenceLocation(before), baseText, latestText);
+    const yoursMerged = map(localPosition, localText, mergedText), remoteMerged = map(remotePosition, latestText, mergedText);
+    if (moved && after && !same(remotePosition, expectedRemote) && !same(yoursMerged, remoteMerged)) throw new writingMerge.DraftMergeConflict();
+    const position = moved || restored.has(identity) ? yoursMerged : remoteMerged;
+    references.push({...reference, note, block_id: position?.[0] || null, marker_offset: position?.[1] ?? null,
+      marker_order: position?.[2] ?? null});
+    if (position) positions[identity] = position;
+  }
+  // A remotely removed citation that was moved locally must not disappear.
+  for (const [identity, reference] of prior) {
+    if (remote.has(identity) || removed.has(identity)) continue;
+    const position = local.footnote_positions?.[identity] || sharedBinderBookReferenceLocation(current.get(identity));
+    const note = local.footnote_notes?.[identity] ?? current.get(identity)?.note ?? reference.note ?? "";
+    if (!same(position, map(sharedBinderBookReferenceLocation(reference), baseText, localText)) || note !== (reference.note || "")) throw new writingMerge.DraftMergeConflict();
+  }
+  return {...merged, references, footnote_positions: positions,
+    ...(Object.keys(notes).length ? {footnote_notes: notes} : {}),
+    ...(removed.size ? {removed_footnotes: [...removed].filter(identity => remote.has(identity))} : {}),
+    ...(restored.size ? {restored_footnotes: [...restored].filter(identity => !remote.has(identity))} : {})};
+}
+
+function replaceSharedBinderBookMetadata(binder, book) {
+  binder.contents.booksById.set(book.id, book);
+  for (const rows of binder.contents.booksByFolder?.values() || []) {
+    const index = rows.findIndex(row => row.id === book.id); if (index >= 0) rows[index] = book;
+  }
+}
+
+function patchSharedBinderBookChapter(runtime, section, merged) {
+  const binder = runtime.binder, body = binder.bookBodies.get(section.id), title = binder.bookTitles.get(section.id);
+  if (!body || !title) return;
+  const proxy = Object.assign(Object.create(runtime), {paper: body});
+  const before = captureBinderBookCitations(runtime, section, body).html;
+  const active = body.getRootNode().activeElement, range = writingSelectionRange(body);
+  const bookmark = active === body && range && writingHistoryBookmark(proxy, range);
+  if (before !== merged.html) {
+    const target = writingSharedFragment(body.ownerDocument, merged.html);
+    const old = writingSharedFragment(body.ownerDocument, before);
+    const originals = new Map([...old.children].map(block => [block.dataset.blockId, block.outerHTML]));
+    const existing = new Map([...body.children].map(block => [block.dataset.blockId, block]));
+    let previous = null;
+    for (const block of [...target.children]) {
+      const key = block.dataset.blockId, current = existing.get(key);
+      const next = current && originals.get(key) === block.outerHTML ? current : block;
+      const position = previous ? previous.nextSibling : body.firstChild;
+      if (next !== position) body.insertBefore(next, position);
+      previous = next;
+    }
+    while (previous?.nextSibling) previous.nextSibling.remove();
+    if (!previous) body.replaceChildren();
+    normalizeBlocks(body);
+    if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(proxy);
+    binder.chapterHistory = null; binder.chapterQuoteHistory = null;
+    binder.chapterSelection = null; binder.bookRange = null;
+  }
+  if (title.textContent !== merged.title) title.textContent = merged.title;
+  const state = binder.bookCitations?.get(section.id);
+  if (state) {
+    const positions = new Map(merged.references.map(reference => [reference.id, sharedBinderBookReferenceLocation(reference)]));
+    for (const marker of body.querySelectorAll(inlineFootnote)) {
+      const current = footnoteLocation(body, footnoteBoundary(marker));
+      const expected = positions.get(marker.dataset.writingFootnote);
+      if (!expected || current?.[0] !== expected[0] || current?.[1] !== expected[1]) marker.remove();
+    }
+    state.references = merged.references; state.removed = new Set(merged.removed_footnotes || []);
+    state.restored = new Set(merged.restored_footnotes || []); state.sourceRevision = section.revision;
+    state.savedIds = new Set((merged.savedReferences || []).map(reference => reference.id));
+    state.editor.footnoteSignature = null;
+    state.editor.footnoteNotes = new Map(Object.entries(merged.footnote_notes || {}));
+    const editor = binderBookCitationEditor(runtime, section.id); if (editor) paintFootnotes(editor);
+  }
+  body.bookBodyVersion = section.revision; body.bookLoaded = true; body.bookHasSource = true;
+  if (bookmark) {
+    const mapped = writingSharedBookmark(bookmark, writingSharedBlockTexts(body.ownerDocument, before), writingSharedBlockTexts(body.ownerDocument, merged.html));
+    restoreWritingHistoryBookmark(proxy, mapped);
+  }
+}
+
+function journalSharedBinderBook(runtime) {
+  const binder = runtime.binder, state = binder?.sharedBook;
+  if (!state?.journal || binder.bookOverviewId !== state.id) return;
+  try {
+    if (state.recovery && state.conflict) {
+      localStorage.setItem(state.journal, JSON.stringify(state.recovery)); return;
+    }
+    if (binderBookDirty(runtime) || state.conflict) localStorage.setItem(state.journal,
+      JSON.stringify({writer: state.session, base: state.base, manuscript: state.manuscript, local: captureBinderBook(runtime),
+        outgoing: binder.bookSent || state.failedSent || null,
+        references: Object.fromEntries([...(binder.bookCitations || [])].map(([identity, row]) => [identity, row.references]))}));
+    else if (JSON.parse(localStorage.getItem(state.journal) || "null")?.writer === state.session) localStorage.removeItem(state.journal);
+  } catch { state.storageFailed = true; }
+}
+
+function sharedBinderBookRecovery(runtime, state, message) {
+  const binder = runtime.binder;
+  if (binder.bookSent) state.failedSent = binder.bookSent;
+  state.conflict = true; binder.bookSaveError = true; binder.bookSent = null; binder.bookResume = null;
+  const notice = binder.bookNotice; notice.textContent = message + " Your unsaved text is still here. "; notice.hidden = false;
+  notice.removeAttribute("data-success");
+  const copy = makeButton("Copy unsaved text", () => {
+    const recovered = state.recovery?.local;
+    const text = recovered ? [recovered.title, recovered.author, ...(recovered.edits || []).flatMap(edit =>
+      [edit.title, writingProseText(writingSharedFragment(binder.reading.ownerDocument, edit.html || ""))])].filter(Boolean).join("\n\n") :
+      [binder.bookFields?.title?.textContent, binder.bookFields?.author?.textContent,
+        ...[...binder.bookBodies].flatMap(([identity, body]) => [binder.bookTitles.get(identity)?.textContent, writingProseText(body)])].filter(Boolean).join("\n\n");
+    globalThis.navigator?.clipboard?.writeText(text).then(() => { copy.textContent = "Copied"; }).catch(() => { copy.textContent = "Select the text to copy"; });
+  });
+  const retry = makeButton("Try again", () => {
+    state.conflict = false; binder.bookSaveError = false;
+    binderBookAction(runtime, state.id, "book-preview");
+  });
+  const reload = makeButton("Load shared version", () => {
+    if (typeof window.confirm === "function" && !window.confirm("Load the saved shared Book and discard the unsaved changes shown here? Copy them first if you want to keep them.")) return;
+    binder.bookDirty.clear(); binder.bookMetaDirty = false; binder.bookSent = null; binder.bookSaveError = false;
+    binder.bookEditRevision = null; binder.bookPreviewRequest = null; binder.bookViewSignature = null;
+    binder.bookPreview = null; binder.bookCover = null; binder.bookContentsSheet = null;
+    binder.bookPages = new Map(); binder.bookBodies = new Map(); binder.bookTitles = new Map(); binder.bookFields = {};
+    binder.bookCitations = new Map(); binder.bookLayoutDraft = null;
+    state.conflict = false; state.manuscript = null; state.recovery = null;
+    try { if (state.journal) localStorage.removeItem(state.journal); } catch {}
+    notice.hidden = true; paintBinderBook(runtime);
+  });
+  notice.append(copy, retry, reload); binderBookStatus(runtime, "Shared edits need attention", true);
+  journalSharedBinderBook(runtime);
+}
+
+function prepareSharedBinderBook(runtime, book) {
+  const binder = runtime.binder;
+  if (!book.shared) return;
+  const scope = sharedBinderBookScope(book);
+  let state = binder.sharedBook;
+  if (state && (state.id !== book.id || state.scope !== scope)) {
+    clearTimeout(state.timer);
+    if (state.id === book.id && binderBookDirty(runtime)) {
+      sharedBinderBookRecovery(runtime, state, "Connect to the original workspace before saving this Book."); return;
+    }
+    state = null;
+  }
+  if (!state) {
+    state = binder.sharedBook = {id: book.id, scope, base: structuredClone(book), manuscript: null, timer: 0,
+      session: id(), journal: scope ? "care-studio-book:" + scope : null};
+    try { state.recovery = state.journal && JSON.parse(localStorage.getItem(state.journal) || "null"); } catch {}
+    state.failedSent = state.recovery?.outgoing || null;
+    runtime.controller?.signal.addEventListener("abort", () => clearTimeout(state.timer), {once: true});
+  }
+  if (!state.timer) state.timer = setTimeout(() => {
+    state.timer = 0;
+    if (binder.sharedBook !== state || binder.bookOverviewId !== state.id || binder.reading.hidden || runtime.controller?.signal.aborted) return;
+    if (!state.conflict && !runtime.pending && !binder.bookSent && !binder.bookComposing && !binder.locked && !binder.bookDirty?.size && !binder.bookMetaDirty) {
+      binderBookAction(runtime, state.id, "book-preview");
+    }
+    prepareSharedBinderBook(runtime, binder.contents.booksById.get(state.id) || state.base);
+  }, 2000);
+}
+
+function acknowledgeSharedBinderBook(runtime, ack) {
+  const binder = runtime.binder, book = binder.contents.booksById.get(binder.bookOverviewId);
+  if (!book?.shared) return false;
+  prepareSharedBinderBook(runtime, book);
+  const state = binder.sharedBook;
+  const saved = ack?.binder_book_saved || ack?.binder_book_linked || ack?.binder_book_organized || ack?.binder_book_outline || ack?.binder_book_conflict;
+  const manuscript = saved?.manuscript || ack?.binder_book_preview;
+  const latest = saved?.book || manuscript?.book || book;
+  if (state.scope !== sharedBinderBookScope(latest)) {
+    replaceSharedBinderBookMetadata(binder, state.base);
+    sharedBinderBookRecovery(runtime, state, "This Book belongs to another workspace."); return true;
+  }
+  if (!manuscript || manuscript.book_id !== book.id) {
+    if (ack?.binder_error || ack?.error) {
+      sharedBinderBookRecovery(runtime, state, ack.binder_error || ack.error); return true;
+    }
+    return false;
+  }
+  const acceptedSave = Boolean(ack?.binder_book_saved || ack?.binder_book_linked || ack?.binder_book_organized || ack?.binder_book_outline);
+  if (binder.bookSent && !acceptedSave && !ack?.binder_book_conflict) {
+    replaceSharedBinderBookMetadata(binder, state.base); return true;
+  }
+  if (binder.bookComposing) {
+    state.deferred = {book: latest, manuscript, ack}; replaceSharedBinderBookMetadata(binder, state.base); return true;
+  }
+  const previous = state.manuscript;
+  const recovery = !previous && state.recovery;
+  const local = recovery?.local || captureBinderBook(runtime);
+  let sent = acceptedSave ? binder.bookSent : null;
+  if (ack?.binder_book_conflict) { binder.bookSent = null; state.failedSent = null; }
+  if (!sent && state.failedSent) {
+    const candidate = state.failedSent;
+    const committed = candidate.edits.every(edit => {
+      const saved = manuscript.sections.find(row => row.id === edit.id);
+      return saved?.html === edit.html && saved?.title === edit.title;
+    }) && latest.title === candidate.title && (latest.author || "") === candidate.author &&
+      JSON.stringify(latest.layout || {}) === JSON.stringify(candidate.layout || {});
+    if (committed) sent = candidate;
+    else if (latest.revision !== candidate.book_revision) {
+      replaceSharedBinderBookMetadata(binder, state.base);
+      sharedBinderBookRecovery(runtime, state, "CARE could not confirm whether the interrupted save reached the workspace. Copy your text before loading the shared version.");
+      return true;
+    }
+  }
+  const originalBook = recovery?.base || state.base;
+  const baseBook = sent ? {...originalBook, title: sent.title, author: sent.author, layout: sent.layout} : originalBook;
+  const baseManuscript = recovery?.manuscript || previous;
+  try {
+    const metadata = binder.bookMetaDirty || recovery ? sharedBinderBookMetadata(baseBook, latest, local) :
+      {title: latest.title, author: latest.author || "", layout: latest.layout || {}};
+    const patches = [];
+    for (const edit of local?.edits || []) {
+      const section = latest.sections.find(row => row.id === edit.id);
+      const before = baseManuscript?.sections.find(row => row.id === edit.id);
+      const after = manuscript.sections.find(row => row.id === edit.id);
+      if (!section || !before || !after || section.document_id !== before.document_id) throw new writingMerge.DraftMergeConflict();
+      const submitted = sent?.edits.find(row => row.id === edit.id);
+      const submittedReferences = acceptedSave ? after.references : before.references;
+      const base = submitted ? {...before, ...submitted, references: (submittedReferences || []).filter(reference =>
+        !submitted.removed_footnotes?.includes(reference.id)).map(reference => {
+        const position = submitted.footnote_positions?.[reference.id];
+        const mapped = position ? {...reference, block_id: position[0], marker_offset: position[1], marker_order: position[2]} : reference;
+        return Object.hasOwn(submitted.footnote_notes || {}, reference.id) ? {...mapped, note: submitted.footnote_notes[reference.id]} : mapped;
+      })} : before;
+      const references = recovery?.references?.[edit.id] || binder.bookCitations?.get(edit.id)?.references || before.references;
+      const merged = mergeSharedBinderBookChapter(binder.reading.ownerDocument, base, after, edit, references);
+      patches.push({section, merged: {...merged, savedReferences: after.references || []}, latest: after});
+    }
+    // Compute every source first. A conflict never leaves half the Book patched.
+    replaceSharedBinderBookMetadata(binder, latest);
+    binder.bookSent = null; binder.bookSaveError = false; state.conflict = false;
+    binder.bookPreview = manuscript; binder.bookPreviewRequest = binderBookVersions(latest);
+    binder.bookMetaDirty = metadata.title !== latest.title || metadata.author !== (latest.author || "") || JSON.stringify(metadata.layout) !== JSON.stringify(latest.layout || {});
+    if (binder.bookMetaDirty) {
+      if (binder.bookFields.title) binder.bookFields.title.textContent = metadata.title;
+      if (binder.bookFields.author) binder.bookFields.author.textContent = metadata.author;
+      binder.bookLayoutDraft = metadata.layout;
+    } else binder.bookLayoutDraft = null;
+    for (const {section, merged, latest: after} of patches) {
+      patchSharedBinderBookChapter(runtime, section, merged);
+      const ordered = value => Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+      const changed = merged.title !== after.title || merged.html !== after.html || Object.keys(merged.footnote_notes || {}).length || merged.removed_footnotes?.length || merged.restored_footnotes?.length ||
+        JSON.stringify(ordered(merged.footnote_positions)) !== JSON.stringify(ordered(Object.fromEntries((after.references || []).map(reference => [reference.id, sharedBinderBookReferenceLocation(reference)]).filter(([, position]) => position))));
+      if (changed) binder.bookDirty.set(section.id, {revision: section.revision}); else binder.bookDirty.delete(section.id);
+    }
+    state.base = structuredClone(latest); state.manuscript = structuredClone(manuscript); state.recovery = null; state.deferred = null; state.failedSent = null;
+    binder.bookEditRevision = binder.bookMetaDirty || binder.bookDirty.size ? latest.revision : null;
+    binder.bookNotice.hidden = true;
+    binderBookStatus(runtime, binder.bookDirty.size || binder.bookMetaDirty ? "Saving shared edits…" : "Saved to shared Book");
+    journalSharedBinderBook(runtime);
+    if (!binder.bookDirty.size && !binder.bookMetaDirty && binder.bookResume) {
+      const resume = binder.bookResume; binder.bookResume = null; queueMicrotask(resume);
+    }
+  } catch (error) {
+    replaceSharedBinderBookMetadata(binder, state.base);
+    state.latest = {book: latest, manuscript};
+    sharedBinderBookRecovery(runtime, state, "Both versions changed the same part of this Book. Copy your version before loading the shared one.");
+  }
+  return true;
+}
+
+function resumeSharedBinderBook(runtime) {
+  const state = runtime.binder?.sharedBook;
+  if (!state?.deferred || runtime.binder.bookComposing) return;
+  queueMicrotask(() => {
+    if (!state.deferred || runtime.binder.sharedBook !== state || runtime.binder.bookOverviewId !== state.id || runtime.binder.bookComposing) return;
+    const {book, manuscript, ack} = state.deferred; state.deferred = null;
+    acknowledgeSharedBinderBook(runtime, ack || {binder_book_preview: {...manuscript, book}});
+    paintBinderBook(runtime);
+    if (!runtime.pending && !state.conflict && binderBookDirty(runtime)) flushBinderBook(runtime);
+  });
+}
+
+function applySharedBinderBookAccess(runtime, book) {
+  if (!book?.shared) return;
+  const binder = runtime.binder, editable = sharedBinderBookEditable(book);
+  if (!editable || binder.sharedBook?.scope !== sharedBinderBookScope(book)) {
+    for (const field of binder.readingText.querySelectorAll("[contenteditable]")) {
+      field.contentEditable = "false"; field.setAttribute("contenteditable", "false"); field.bookPriorEditable = "false";
+    }
+  }
+  for (const field of binder.readingText.querySelectorAll(".binder-book-next-entry")) field.hidden = !editable;
+  for (const button of binder.bookTools?.querySelectorAll("[data-shared-book-unsupported]") || []) {
+    button.disabled = true; button.title = "This action is available in a private Book.";
+  }
 }
 
 // Match the visible prose across the editable and read-only renderers by block ID.
@@ -4736,6 +8343,472 @@ function restoreWritingModePosition(position, scroller, block, top = 0) {
   scroller.scrollTop = rect ? scroller.scrollTop + rect.top + rect.height * position.ratio - top : 0;
 }
 
+/* Keep document controls with the full Studio format bar. The original nodes
+ * retain their Binder/zoom handlers, state, keyboard controls and focus rules. */
+function installWritingToolbarControls(runtime) {
+  if (runtime.compact || runtime.writingToolbarControls) return;
+  const tools = runtime.formatting?.querySelector(".format-tools");
+  const binder = runtime.root.querySelector("[data-binder-edge]");
+  const zoom = runtime.root.querySelector("[data-writing-zoom]");
+  if (!tools || !binder) return;
+
+  const group = tools.ownerDocument.createElement("div");
+  group.className = "format-group format-navigation-tools";
+  group.dataset.formatNavigation = "";
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", "Document controls");
+  group.append(binder);
+  if (zoom) group.append(zoom);
+  tools.prepend(group);
+
+  const refresh = () => {
+    // The old edge launcher disappears when the Binder opens. In the format
+    // bar it remains a toggle, including while no draft is open.
+    if (binder.hidden) binder.hidden = false;
+    const open = binder.getAttribute("aria-expanded") === "true";
+    const label = `${open ? "Close" : "Open"} Project Binder`;
+    binder.title = label;
+    binder.setAttribute("aria-label", label);
+  };
+  refresh();
+  if (typeof MutationObserver === "function") {
+    const observer = new MutationObserver(refresh);
+    observer.observe(binder, {attributes: true, attributeFilter: ["hidden", "aria-expanded"]});
+    runtime.controller.signal.addEventListener("abort", () => observer.disconnect(), {once: true});
+  }
+  runtime.writingToolbarControls = {group, binder, zoom, refresh};
+}
+
+// Presentation state for the opening Find view. Search, references and reading
+// actions keep their existing handlers and saved state.
+function paintLibrarianFind(runtime) {
+  const pane = runtime.suggestionPane;
+  if (!pane?.dataset) return;
+  const progress = runtime.searchProgress;
+  const busy = [runtime.pending, runtime.queued].some(action =>
+    ["scan", "scan-deeper", "scan-poll"].includes(action?.type));
+  const ready = typeof writingSearchReady !== "function" || writingSearchReady(runtime);
+  const idle = ready && !runtime.hasSearched && !progress && !busy &&
+    !(runtime.suggestions?.length);
+  pane.dataset.findIdle = String(idle);
+  const anchor = String(runtime.anchor?.textContent || "");
+  pane.dataset.findSelection = String(Boolean(anchor && !anchor.startsWith("Highlight ")));
+}
+
+function installLibrarianFind(runtime) {
+  const pane = runtime.suggestionPane;
+  if (!pane) return;
+  pane.classList.add("librarian-find");
+  paintLibrarianFind(runtime);
+}
+
+const writingResumeLibraryIcon = '<svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 5C8 3.7 5.4 3.4 2.5 4.2v11c2.9-.8 5.5-.5 7.5.8m0-11c2-1.3 4.6-1.6 7.5-.8v11c-2.9-.8-5.5-.5-7.5.8m0-11v11"/></svg>';
+// The ten canonical zones and five primary currents of the Numogram, reduced
+// from the native map. This is the diagram glyph, not the old concentric icon.
+const writingResumeNumogramIcon = '<svg class="icon resume-numogram-glyph" aria-hidden="true" viewBox="65 35 500 820"><g fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M250 95H355M425 235L485 345M160 310L120 412M295 480L305 595M290 700V805" opacity=".55"/><path d="M301 97C299 133 271 133 257 122M450 290C350 325 260 332 190 315M139 363C194 373 242 416 277 454M301 546C408 535 491 455 488 375M290 755C347 768 352 720 319 707"/><circle data-numogram-zone="3" cx="250" cy="95" r="24"/><circle data-numogram-zone="6" cx="355" cy="95" r="24"/><circle data-numogram-zone="2" cx="425" cy="235" r="24"/><circle data-numogram-zone="7" cx="485" cy="345" r="24"/><circle data-numogram-zone="5" cx="160" cy="310" r="24"/><circle data-numogram-zone="4" cx="120" cy="412" r="24"/><circle data-numogram-zone="1" cx="295" cy="480" r="24"/><circle data-numogram-zone="8" cx="305" cy="595" r="24"/><circle data-numogram-zone="9" cx="290" cy="700" r="24"/><circle data-numogram-zone="0" cx="290" cy="805" r="24"/></g></svg>';
+
+function installWritingResumeStack(runtime) {
+  if (runtime.compact || runtime.resumeStack) return;
+  const {root, controller} = runtime;
+  const doc = root.ownerDocument, view = doc.defaultView;
+  const launchers = root.querySelector('.writing-launchers');
+  const library = root.querySelector('[data-action="resume-library"]');
+  const librarian = root.querySelector('[data-action="peek-research"]');
+  if (!launchers || !librarian || !view) return;
+
+  const group = doc.createElement('div'); group.className = 'writing-resume-tools';
+  const column = doc.createElement('div'); column.className = 'writing-resume-stack';
+  const chooser = doc.createElement('button'); chooser.type = 'button'; chooser.className = 'writing-resume-chooser';
+  chooser.title = 'Library, NUMO and Librarian'; chooser.setAttribute('aria-label', 'Open reading tools');
+  chooser.setAttribute('aria-expanded', 'false'); chooser.setAttribute('aria-controls', 'care-writing-resume-choices');
+  chooser.innerHTML = writingResumeLibraryIcon;
+  const popup = doc.createElement('div'); popup.className = 'writing-resume-popup';
+  popup.id = 'care-writing-resume-choices'; popup.hidden = true;
+  popup.setAttribute('role', 'group'); popup.setAttribute('aria-label', 'Available reading tools');
+  group.append(column, chooser, popup); launchers.append(group);
+  const homes = new Map();
+  let numo = null, numoOwner = null, numoFocus = null, narrow = false, opened = false, keyboard = false, visibleCount = 0;
+  let viewportBaseline = Math.max(doc.documentElement?.clientHeight || 0, view.innerHeight || 0, view.visualViewport?.height || 0);
+  const {signal} = controller;
+
+  function retain(node) {
+    if (!node || homes.has(node)) return;
+    const anchor = doc.createComment('care-reading-tool');
+    node.before(anchor); homes.set(node, anchor);
+  }
+  function returnHome(node) {
+    const anchor = homes.get(node);
+    if (!anchor) return;
+    if (anchor.isConnected) anchor.replaceWith(node);
+    else node.remove();
+    homes.delete(node);
+  }
+  function iconButton(node, icon, label) {
+    if (!node) return;
+    node.innerHTML = icon + '<span data-resume-label>' + label + '</span>';
+    node.title = label;
+    node.setAttribute('aria-label', label);
+  }
+  retain(library); retain(librarian);
+  iconButton(library, writingResumeLibraryIcon, 'Resume Library');
+  librarian.title = 'CARE the Librarian'; librarian.setAttribute('aria-label', 'CARE the Librarian');
+
+  function close(restore = false) {
+    opened = false; popup.hidden = true; chooser.setAttribute('aria-expanded', 'false');
+    if (restore && narrow && !chooser.hidden) chooser.focus({preventScroll:true});
+  }
+  function activeElement() {
+    let active = root.getRootNode().activeElement || doc.activeElement;
+    for (let depth = 0; active && depth < 10; depth++) {
+      let next = active.shadowRoot?.activeElement;
+      if (!next && active.tagName === 'IFRAME') {
+        try { next = active.contentDocument?.activeElement; } catch {}
+      }
+      if (!next || next === active) break;
+      active = next;
+    }
+    return active;
+  }
+  function viewport() {
+    const visual = view.visualViewport;
+    const layoutHeight = Math.max(doc.documentElement?.clientHeight || 0, view.innerHeight || 0);
+    const active = activeElement();
+    const editable = Boolean(active?.isContentEditable || active?.closest?.('textarea, input:not([type="button"]):not([type="submit"]), [contenteditable="true"], [contenteditable="plaintext-only"]'));
+    const mobile = Boolean(view.matchMedia?.('(hover: none) and (pointer: coarse)')?.matches ||
+      view.navigator?.maxTouchPoints || /Android|iPhone|iPad|iPod|Mobile/i.test(view.navigator?.userAgent || ''));
+    if (!editable && !keyboard) viewportBaseline = layoutHeight;
+    // A mobile viewport can also pan to the caret; offsetTop must not cancel
+    // the height lost to an onscreen keyboard.
+    const available = visual ? visual.height : layoutHeight;
+    const reduced = Math.max(layoutHeight, mobile ? viewportBaseline : 0) - available > 80;
+    keyboard = Boolean(narrow && mobile && visual && (visual.scale || 1) <= 1.05 && reduced && (editable || keyboard));
+    if (keyboard && opened) close();
+    group.hidden = !visibleCount || keyboard;
+    root.style.setProperty('--writing-tools-visible-height', (visual?.height || layoutHeight) + 'px');
+    root.style.setProperty('--writing-resume-stack-height', (keyboard || !visibleCount ? 0 : narrow ? 2.25 : visibleCount * 2.25 + Math.max(0, visibleCount - 1) * .35) + 'rem');
+    root.toggleAttribute('data-writing-tools-keyboard', keyboard);
+  }
+  function paint() {
+    const width = root.getBoundingClientRect().width || root.clientWidth || view.innerWidth;
+    const next = width <= 640;
+    if (next !== narrow) close();
+    narrow = next;
+    root.toggleAttribute('data-resume-compact', narrow);
+    root.style.setProperty('--writing-resume-popup-max', Math.max(120, width - 32) + 'px');
+    const target = narrow ? popup : column;
+    for (const [index, node] of [library, numo, librarian].filter(Boolean).entries()) {
+      retain(node);
+      if (target.children[index] !== node) target.insertBefore(node, target.children[index] || null);
+    }
+    const visible = [library, numo, librarian].filter(node => node && !node.hidden).length;
+    visibleCount = visible;
+    group.hidden = visible === 0; chooser.hidden = !narrow || !visible; column.hidden = narrow;
+    popup.hidden = !narrow || !opened || !visible;
+    chooser.setAttribute('aria-expanded', String(!popup.hidden));
+    viewport();
+  }
+  const controlsWatch = typeof view.MutationObserver === 'function' ? new view.MutationObserver(paint) : null;
+  function watchControls() {
+    controlsWatch?.disconnect();
+    for (const node of [library, numo, librarian].filter(Boolean)) {
+      controlsWatch?.observe(node, {attributes:true, attributeFilter:['hidden']});
+    }
+  }
+  function findNumo() {
+    const owner = doc.querySelector('.care-numo-companion');
+    const candidate = owner?.careNumoResume || owner?.querySelector('[data-numo-resume]');
+    if (candidate === numo && owner === numoOwner) return;
+    if (numoOwner?.careNumoFocusResume === numoFocus) delete numoOwner.careNumoFocusResume;
+    if (numo) returnHome(numo);
+    numoOwner = owner; numo = candidate || null;
+    if (numo) {
+      owner.careNumoResume = numo;
+      owner.careNumoFocusResume = numoFocus = () => focusResume(candidate);
+      retain(numo); iconButton(numo, writingResumeNumogramIcon, 'Resume NUMO');
+    }
+    watchControls(); paint();
+  }
+  function focusResume(node) {
+    paint();
+    const target = narrow && popup.hidden ? chooser : node;
+    if (!group.hidden && target && !target.hidden) target.focus({preventScroll:true});
+  }
+  chooser.addEventListener('pointerdown', event => { if (event.button === 0) event.preventDefault(); }, {signal});
+  chooser.addEventListener('click', () => { opened = !opened; paint(); }, {signal});
+  popup.addEventListener('click', event => {
+    if (!event.target.closest('button:not(:disabled)')) return;
+    close();
+    queueMicrotask(() => {
+      // Keep the destination focus chosen by Library/NUMO. If a tool only
+      // toggles its panel, do not strand keyboard focus in the hidden menu.
+      if (!signal.aborted && narrow && !group.hidden && popup.contains(activeElement())) chooser.focus({preventScroll:true});
+    });
+  }, {signal});
+  doc.addEventListener('pointerdown', event => { if (!event.composedPath().includes(group)) close(); }, {signal});
+  root.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && opened) { event.preventDefault(); event.stopPropagation(); close(true); }
+  }, {signal, capture:true});
+  view.addEventListener('resize', paint, {signal});
+  view.visualViewport?.addEventListener('resize', viewport, {signal});
+  view.visualViewport?.addEventListener('scroll', viewport, {signal});
+  root.addEventListener('focusin', viewport, {signal});
+  root.addEventListener('focusout', () => queueMicrotask(viewport), {signal});
+  const resize = typeof view.ResizeObserver === 'function' ? new view.ResizeObserver(paint) : null;
+  resize?.observe(root);
+  const pageWatch = typeof view.MutationObserver === 'function' ? new view.MutationObserver(findNumo) : null;
+  pageWatch?.observe(doc.querySelector('[data-testid="stMain"]') || doc.body, {childList:true,subtree:true});
+  runtime.resumeStack = {group, column, chooser, popup, paint, findNumo, close, viewport, focusResume,
+    get narrow(){return narrow;}, get numo(){return numo;}, get keyboard(){return keyboard;}};
+  watchControls(); findNumo(); paint();
+  signal.addEventListener('abort', () => {
+    controlsWatch?.disconnect(); pageWatch?.disconnect(); resize?.disconnect();
+    if (numoOwner?.careNumoFocusResume === numoFocus) delete numoOwner.careNumoFocusResume;
+    for (const node of [...homes.keys()]) returnHome(node);
+    group.remove();
+    for (const key of ['--writing-resume-stack-height','--writing-tools-visible-height','--writing-resume-popup-max']) root.style.removeProperty(key);
+    root.removeAttribute('data-resume-compact'); root.removeAttribute('data-writing-tools-keyboard');
+  }, {once:true});
+}
+
+// A companion keeps its route and scroll position when another takes its place.
+function installWritingCompanionVisibility(runtime) {
+  if (runtime.compact || runtime.companionVisibility) return;
+  const doc = runtime.root.ownerDocument, {signal} = runtime.controller;
+  let switching = false;
+  const select = which => {
+    if (switching || signal.aborted) return;
+    switching = true;
+    try {
+      if (which !== 'library' && runtime.libraryRequest && !runtime.libraryMinimized) {
+        // Automatic switching must not focus the button that has just closed.
+        runtime.libraryMinimized = true;
+        updateLibraryDockVisibility(runtime);
+      }
+      if (which !== 'librarian' && !runtime.panel.hidden) {
+        runtime.activePane = '';
+        renderPanel(runtime);
+      }
+      if (which !== 'numo') {
+        doc.dispatchEvent(new doc.defaultView.CustomEvent('care:numogram-companion-minimize'));
+      }
+    } finally { switching = false; }
+  };
+  for (const [name, which] of [
+    ['care:library-companion-visibility', 'library'],
+    ['care:librarian-visibility', 'librarian'],
+    ['care:numogram-companion-visibility', 'numo'],
+  ]) doc.addEventListener(name, event => {
+    if (event.detail?.open === true) select(which);
+  }, {signal});
+  runtime.companionVisibility = {select};
+  // Reconcile a restored NUMO with the newly mounted Studio surface.
+  if (!runtime.panel.hidden) select('librarian');
+  else if (runtime.libraryRequest && !runtime.libraryMinimized) select('library');
+  else if (doc.querySelector('.care-numo-companion')?.careNumoDockState?.mode === 'open') select('numo');
+}
+
+// The Outline follows actual heading levels. Book page titles remain separate
+// structural entries; a chapter's number never depends on filtering or folding.
+function writingOutlineTreeNodes(rows, book = false) {
+  const roots = [], nodes = [], sections = new Map(), stacks = new Map();
+  let chapter = 0;
+  for (const [index, row] of rows.entries()) {
+    const heading = !book || row.kind === 'heading';
+    const level = heading || book && row.kind === 'subheading' ? Math.min(6, Math.max(1, Number(row.heading_level || row.level) || 1)) : 0;
+    if (book && row.kind === 'chapter') chapter++;
+    const node = {id:String(row.id ?? index), row, children:[], parent:null, level, heading,
+      label:String(row.label ?? row.text ?? row.title ?? '').trim() || 'Untitled heading',
+      number:book && row.kind === 'chapter' ? String(row.chapter_number || chapter) : ''};
+    nodes.push(node);
+    if (!heading) sections.set(String(row.section || row.id), node);
+  }
+  for (const node of nodes) {
+    const {row,level,heading} = node;
+    if (heading) {
+      const section = book ? String(row.section || '') : '';
+      const stack = stacks.get(section) || [];
+      while (stack.length && stack.at(-1).level >= level) stack.pop();
+      node.parent = stack.at(-1) || (book ? sections.get(section) : null) || null;
+      stack.push(node); stacks.set(section, stack);
+    } else {
+      const parent = row.parent_section_id || row.parent_part_id;
+      node.parent = parent ? sections.get(String(parent)) || null : null;
+      stacks.set(String(row.section || row.id), []);
+    }
+  }
+  for (const node of nodes) {
+    const seen = new Set([node]);
+    for (let parent = node.parent; parent; parent = parent.parent) {
+      if (seen.has(parent)) { node.parent = null; break; }
+      seen.add(parent);
+    }
+  }
+  const treeLevel = node => node.treeLevel ||= node.parent ? treeLevel(node.parent) + 1 : 1;
+  for (const node of nodes) {
+    node.treeLevel = treeLevel(node);
+    const owner = book && node.heading ? sections.get(String(node.row.section || '')) : null;
+    node.indent = node.heading ? (owner ? treeLevel(owner) : 0) + node.level - 1 : node.treeLevel - 1;
+    (node.parent?.children || roots).push(node);
+  }
+  return {roots,nodes};
+}
+
+function paintWritingOutlineTree(runtime, rows, {book = false, onNavigate = () => {}} = {}) {
+  const list = runtime.outlineList;
+  if (!list) return;
+  const doc = list.ownerDocument;
+  const scope = book ? `book:${runtime.binder?.bookOverviewId || ''}` : `document:${runtime.docId || ''}`;
+  const scopes = runtime.outlineTreeScopes ||= new Map();
+  let state = scopes.get(scope);
+  if (!state) {
+    state = {collapsed:new Set(),depth:6,focusId:'',activeId:''}; scopes.set(scope,state);
+    if (scopes.size > 24) scopes.delete(scopes.keys().next().value);
+  }
+  let tree = runtime.outlineTree;
+  if (!tree) {
+    const controls = doc.createElement('label'); controls.className = 'outline-tree-controls';
+    const caption = doc.createElement('span'); caption.textContent = 'Headings';
+    const depth = doc.createElement('select'); depth.setAttribute('aria-label','Outline heading depth');
+    depth.title = 'Show headings through this style level';
+    controls.append(caption,depth); list.before(controls);
+    list.classList.add('outline-tree'); list.setAttribute('role','tree');
+    list.setAttribute('aria-label','Document outline');
+    tree = runtime.outlineTree = {controls,depth,list,visible:[],items:new Map(),state,scope,book,rows,onNavigate};
+    const {signal} = runtime.controller;
+    depth.addEventListener('change', () => {
+      tree.state.depth = Number(depth.value); renderWritingOutlineTree(runtime);
+    }, {signal});
+    list.addEventListener('focusin', event => {
+      const item = event.target.closest('[data-outline-tree-id]');
+      if (item) setWritingOutlineTreeFocus(tree,item.dataset.outlineTreeId,false);
+    }, {signal});
+    list.addEventListener('click', event => {
+      const item = event.target.closest('[data-outline-tree-id]');
+      if (!item || !tree.items.has(item.dataset.outlineTreeId)) return;
+      const node = tree.items.get(item.dataset.outlineTreeId).node;
+      if (event.target.closest('[data-outline-tree-toggle]') && node.visibleChildren.length) {
+        toggleWritingOutlineTree(runtime,node);
+        setWritingOutlineTreeFocus(tree,node.id,true);
+      } else {
+        setWritingOutlineTreeFocus(tree,node.id,false);
+        tree.state.activeId = node.id; tree.onNavigate(node.row);
+        paintWritingOutlineTreeActive(tree);
+      }
+      event.stopPropagation();
+    }, {signal});
+    list.addEventListener('keydown', event => {
+      const item = event.target.closest('[data-outline-tree-id]');
+      const current = item && tree.items.get(item.dataset.outlineTreeId)?.node;
+      if (!current || !['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','Enter',' '].includes(event.key)) return;
+      event.preventDefault(); event.stopPropagation();
+      const index = tree.visible.indexOf(current);
+      if (event.key === 'ArrowDown') setWritingOutlineTreeFocus(tree,tree.visible[Math.min(tree.visible.length-1,index+1)]?.id,true);
+      else if (event.key === 'ArrowUp') setWritingOutlineTreeFocus(tree,tree.visible[Math.max(0,index-1)]?.id,true);
+      else if (event.key === 'Home') setWritingOutlineTreeFocus(tree,tree.visible[0]?.id,true);
+      else if (event.key === 'End') setWritingOutlineTreeFocus(tree,tree.visible.at(-1)?.id,true);
+      else if (event.key === 'ArrowRight') {
+        if (current.visibleChildren.length && tree.state.collapsed.has(current.id)) toggleWritingOutlineTree(runtime,current);
+        else if (current.visibleChildren.length) setWritingOutlineTreeFocus(tree,current.visibleChildren[0].id,true);
+      } else if (event.key === 'ArrowLeft') {
+        if (current.visibleChildren.length && !tree.state.collapsed.has(current.id)) toggleWritingOutlineTree(runtime,current);
+        else if (current.parent) setWritingOutlineTreeFocus(tree,current.parent.id,true);
+      } else {
+        tree.state.activeId = current.id; tree.onNavigate(current.row); paintWritingOutlineTreeActive(tree);
+      }
+    }, {signal});
+    signal.addEventListener('abort', () => controls.remove(), {once:true});
+  }
+  Object.assign(tree,{state,scope,book,rows,onNavigate});
+  list.dataset.outlineTreeBook = String(book);
+  list.setAttribute('aria-label',book ? 'Book outline' : 'Document outline');
+  const options = [];
+  if (book) {
+    const option = doc.createElement('option'); option.value = '0'; option.textContent = 'None'; options.push(option);
+  }
+  for (let level = 1; level <= 6; level++) {
+    const option = doc.createElement('option'); option.value = String(level); option.textContent = `H${level}`; options.push(option);
+  }
+  tree.depth.replaceChildren(...options); tree.depth.value = String(state.depth);
+  renderWritingOutlineTree(runtime);
+}
+
+function setWritingOutlineTreeFocus(tree, id, focus) {
+  if (!id || !tree.items.has(id)) return;
+  tree.state.focusId = id;
+  for (const [key,{item}] of tree.items) item.tabIndex = key === id ? 0 : -1;
+  if (focus) {
+    const item = tree.items.get(id).item;
+    item.focus({preventScroll:true});
+    // The treeitem includes its entire branch. Scroll its own row rather than
+    // dragging a long expanded branch to the top of the navigation pane.
+    item.querySelector('.outline-tree-line')?.scrollIntoView?.({block:'nearest',inline:'nearest'});
+  }
+}
+
+function paintWritingOutlineTreeActive(tree) {
+  for (const [id,{item}] of tree.items) item.setAttribute('aria-selected',String(id === tree.state.activeId));
+}
+
+function toggleWritingOutlineTree(runtime,node) {
+  const state = runtime.outlineTree.state;
+  state.collapsed.has(node.id) ? state.collapsed.delete(node.id) : state.collapsed.add(node.id);
+  state.focusId = node.id;
+  renderWritingOutlineTree(runtime);
+  setWritingOutlineTreeFocus(runtime.outlineTree,node.id,true);
+}
+
+function renderWritingOutlineTree(runtime) {
+  const tree = runtime.outlineTree, {list,state} = tree, doc = list.ownerDocument;
+  const active = list.getRootNode().activeElement || doc.activeElement;
+  const restoreFocus = list.contains(active);
+  const {roots,nodes} = writingOutlineTreeNodes(tree.rows,tree.book);
+  const allowed = node => !node.level || node.level <= state.depth;
+  for (const node of nodes) node.visibleChildren = node.children.filter(allowed);
+  tree.visible = []; tree.items = new Map();
+  const make = (node,index,size) => {
+    const item = doc.createElement('div'); item.className = 'outline-tree-item';
+    item.dataset.outlineTreeId = node.id; item.dataset.headingLevel = String(node.level);
+    item.dataset.outlineTreeKind = node.row.kind || 'heading';
+    item.setAttribute('role','treeitem'); item.setAttribute('aria-level',String(node.treeLevel));
+    item.setAttribute('aria-posinset',String(index+1)); item.setAttribute('aria-setsize',String(size));
+    item.setAttribute('aria-label',(node.number ? `Chapter ${node.number}: ` : '')+node.label);
+    item.tabIndex = -1;
+    const line = doc.createElement('div'); line.className = 'outline-tree-line';
+    line.style.setProperty('--outline-tree-indent',String(node.indent));
+    const toggle = doc.createElement('span'); toggle.className = 'outline-tree-toggle';
+    toggle.dataset.outlineTreeToggle = ''; toggle.setAttribute('aria-hidden','true');
+    toggle.innerHTML = '<svg viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></svg>';
+    const number = doc.createElement('span'); number.className = 'outline-tree-number';
+    number.textContent = node.number; number.setAttribute('aria-hidden','true');
+    const label = doc.createElement('span'); label.className = 'outline-tree-label'; label.textContent = node.label;
+    line.append(toggle,number,label); item.append(line);
+    tree.items.set(node.id,{item,node}); tree.visible.push(node);
+    if (node.visibleChildren.length) {
+      const expanded = !state.collapsed.has(node.id); item.setAttribute('aria-expanded',String(expanded));
+      if (expanded) {
+        const group = doc.createElement('div'); group.className = 'outline-tree-group'; group.setAttribute('role','group');
+        group.append(...node.visibleChildren.map((child,index) => make(child,index,node.visibleChildren.length))); item.append(group);
+      }
+    } else item.dataset.outlineTreeLeaf = '';
+    return item;
+  };
+  const shown = roots.filter(allowed);
+  if (shown.length) list.replaceChildren(...shown.map((node,index) => make(node,index,shown.length)));
+  else {
+    const empty = doc.createElement('p'); empty.className = 'empty-results outline-tree-empty';
+    empty.textContent = tree.rows.length ? 'No headings at this depth.' : tree.book ? 'Add a chapter to build this Book’s outline.' : 'Add a heading to make a place you can jump back to.';
+    list.replaceChildren(empty);
+  }
+  // A deleted or filtered heading returns the roving tab stop to the nearest
+  // visible ancestor, then to the first entry. Collapsed state is kept by ID.
+  const byId = new Map(nodes.map(node => [node.id,node]));
+  let focused = byId.get(state.focusId);
+  while (focused && !tree.items.has(focused.id)) focused = focused.parent;
+  const target = focused?.id || tree.visible[0]?.id;
+  if (target) setWritingOutlineTreeFocus(tree,target,restoreFocus);
+  paintWritingOutlineTreeActive(tree);
+}
+
 const instances = new WeakMap();
 const recovery = new Map();
 const blockTags = new Set(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "ul", "ol", "hr", "table"]);
@@ -4757,8 +8830,8 @@ const blockText = node => writingProseText(node).replace(/\s+/g, " ").trim();
 const id = () => globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
 const writingSharedDocument = id => typeof id === "string" && /^shared-[a-f0-9]{32}$/.test(id);
 const navigationActions = new Set([
-  "new", "open", "close", "reload", "studio", "reading-open", "files", "import", "export", "compile",
-  "peer-review-import", "open-care-reader", "remote-share", "remote-review-request", "remote-connect", "open-archive", "unshare",
+  "new", "open", "open-book", "close", "reload", "studio", "reading-open", "files", "import", "export", "compile",
+  "peer-review-import", "open-care-reader", "remote-share", "remote-review-request", "remote-connect", "remote-send", "open-archive", "unshare",
   "history-open", "axiom-notes", "axiom-footnote", "library-full", "library-draft", "binder",
   "open-use", "compact-axiom", "studio-axiom-return", "paste-cited", "manual-footnote", "delete-footnotes", "move-footnote", "history-footnotes", "clipboard-footnotes",
 ]);
@@ -4819,12 +8892,27 @@ function safeFragment(html, preserveIds = false) {
     if (!tag || ignoredTags.has(tag) || source.hasAttribute("data-writing-footnote")) return;
     const family = safeWritingFont(source.style?.fontFamily);
     const size = safeWritingSize(source.style?.fontSize);
-    const allowed = blockTags.has(tag) || inlineTags.has(tag) || (tag === "span" && (family || size));
+    const weight = {normal: "400", bold: "700", "400": "400", "500": "500", "600": "600", "700": "700", "800": "800", "900": "900"}[source.style?.fontWeight] || "";
+    const slant = ["normal", "italic"].includes(source.style?.fontStyle) ? source.style.fontStyle : "";
+    const decoration = ["none", "underline"].includes(source.style?.textDecorationLine) ? source.style.textDecorationLine : "";
+    const allowed = blockTags.has(tag) || inlineTags.has(tag) || (tag === "span" && (family || size || weight || slant || decoration));
     const node = allowed ? element(tag) : document.createDocumentFragment();
+    if (allowed && blockTags.has(tag) && ["left", "center", "right", "justify"].includes(source.style?.textAlign)) {
+      node.style.textAlign = source.style.textAlign;
+    }
     if (family && (blockTags.has(tag) || tag === "span")) node.style.fontFamily = family;
     if (size && (blockTags.has(tag) || tag === "span")) node.style.fontSize = size;
+    if (blockTags.has(tag) || tag === "span") {
+      if (weight) node.style.fontWeight = weight;
+      if (slant) node.style.fontStyle = slant;
+      if (decoration) node.style.textDecorationLine = decoration;
+    }
     if (preserveIds && top && blockTags.has(tag) && /^[\w-]{1,100}$/.test(source.dataset.blockId || "")) {
       node.dataset.blockId = source.dataset.blockId;
+    }
+    if (preserveIds && top && blockTags.has(tag) && typeof encodedWritingParagraphStyles === "function") {
+      const definitions = encodedWritingParagraphStyles(source.dataset.writingStyles);
+      if (definitions) node.dataset.writingStyles = definitions;
     }
     if (tag === "a") {
       const href = safeHref(source.getAttribute("href"));
@@ -4846,9 +8934,9 @@ function safeFragment(html, preserveIds = false) {
     let container = node;
     if (tag === "span" || tag === "font") {
       const marks = [];
-      if (style?.fontWeight === "bold" || Number(style?.fontWeight) >= 600) marks.push("strong");
-      if (style?.fontStyle === "italic") marks.push("em");
-      if ((style?.textDecorationLine || style?.textDecoration || "").includes("underline")) marks.push("u");
+      if (!(tag === "span" && weight) && (style?.fontWeight === "bold" || Number(style?.fontWeight) >= 600)) marks.push("strong");
+      if (!(tag === "span" && slant) && style?.fontStyle === "italic") marks.push("em");
+      if (!(tag === "span" && decoration) && (style?.textDecorationLine || style?.textDecoration || "").includes("underline")) marks.push("u");
       if ((style?.textDecorationLine || style?.textDecoration || "").includes("line-through")) marks.push("s");
       for (const mark of marks) {
         const wrapper = element(mark);
@@ -4983,6 +9071,7 @@ function normalizeBlocks(paper, prior = new Map()) {
 
 function capture(runtime) {
   if (runtime.snapshot) return runtime.snapshot;
+  if (typeof preserveWritingParagraphStyles === "function") preserveWritingParagraphStyles(runtime);
   const clone = runtime.paper.cloneNode(true);
   stripWritingA4Layout(clone);
   for (const marker of clone.querySelectorAll("[data-writing-footnote]")) marker.remove();
@@ -5021,11 +9110,12 @@ function status(runtime, message, error = false) {
   runtime.status.textContent = message;
   runtime.status.toggleAttribute("data-error", error);
   runtime.emptyStatus.textContent = error ? message : "";
-  runtime.root.querySelector('[data-action="reload"]').hidden = !(error && runtime.docId);
+  runtime.root.querySelector('[data-action="reload"]').hidden = !(error && runtime.docId && !writingSharedDocument(runtime.docId));
 }
 
 function setNavigationLock(runtime, locked) {
-  const readOnly = locked || (writingSharedDocument(runtime.docId) && !writingCollaborationEditable(runtime));
+  const bookOpen = Boolean(runtime.binder?.bookOverviewId);
+  const readOnly = locked || (!bookOpen && writingSharedDocument(runtime.docId) && !writingCollaborationEditable(runtime));
   runtime.title.readOnly = readOnly;
   runtime.paper.contentEditable = !readOnly && runtime.docId ? "true" : "false";
   if (runtime.navigationLocked !== locked || runtime.editorReadOnly !== readOnly) {
@@ -5043,18 +9133,35 @@ function setNavigationLock(runtime, locked) {
   if (runtime.formatLauncher) runtime.formatLauncher.disabled = readOnly;
   const manualNote = runtime.root.querySelector('[data-action="manual-footnote"]');
   if (manualNote) {
-    manualNote.disabled = readOnly || writingSharedDocument(runtime.docId);
-    manualNote.title = writingSharedDocument(runtime.docId) ? "Insert footnotes in a private Studio draft" : "Insert footnote";
+    manualNote.disabled = readOnly || bookOpen || writingSharedDocument(runtime.docId);
+    manualNote.title = bookOpen ? "Footnotes are available in a chapter’s Studio draft" :
+      writingSharedDocument(runtime.docId) ? "Insert footnotes in a private Studio draft" : "Insert footnote";
   }
   for (const field of [runtime.alignment, runtime.fontFamily, runtime.fontSize]) if (field) field.disabled = readOnly;
   lockWritingBinder(runtime, locked);
+  if (!runtime.binder?.bookOverviewId && typeof paintWritingParagraphStyleMenu === "function") paintWritingParagraphStyleMenu(runtime);
+}
+
+function writingActionLocksNavigation(type, extra = {}) {
+  return navigationActions.has(type) &&
+    !(type === "binder" && ["book-save", "book-preview"].includes(extra?.operation));
 }
 
 function send(runtime, type, extra = {}, authoredSnapshot = null, sharedFlushed = false) {
-  if (!sharedFlushed && type !== "axiom-bookmark" && writingSharedDocument(runtime.docId) && handleWritingSharedAction(runtime, type, extra, authoredSnapshot,
-    () => send(runtime, type, extra, authoredSnapshot, true))) return;
+  const bookWrite = type === "binder" && (["book-save", "book-preview", "book-outline"].includes(extra.operation)
+    || extra.book_manuscript === true);
+  const bookSearch = ["scan", "scan-deeper", "scan-poll"].includes(type) && Boolean(extra.studio_book_id);
+  const bookCitation = ["link", "read", "history-read", "reading-open", "axiom-footnote", "axiom-notes", "paste-cited"].includes(type) && Boolean(extra.studio_book_id);
+  const bookSend = type === "remote-send" && Boolean(extra.book_id);
+  if (!bookWrite && !bookCitation && typeof flushBinderBook === "function" &&
+      flushBinderBook(runtime, () => send(runtime, type, extra, authoredSnapshot, sharedFlushed))) return;
+  // A Book is already saved as a collection of drafts by its inline editor.
+  // The ordinary Save command must never write the hidden single-draft paper.
+  if (type === "save" && runtime.binder?.bookOverviewId) return;
+  if (!bookWrite && !bookSearch && !bookCitation && !bookSend && !sharedFlushed && type !== "axiom-bookmark" && writingSharedDocument(runtime.docId) && handleWritingSharedAction(runtime, type, extra, authoredSnapshot,
+    (resumedExtra = extra) => send(runtime, type, resumedExtra, authoredSnapshot, true))) return;
   if (runtime.pending) {
-    const navigation = navigationActions.has(type);
+    const navigation = writingActionLocksNavigation(type, extra);
     if (type !== "save" && (!runtime.queued || (navigation && ["scan", "scan-deeper"].includes(runtime.queued.type)))) {
       runtime.queued = {type, extra};
       if (navigation) setNavigationLock(runtime, true);
@@ -5062,7 +9169,7 @@ function send(runtime, type, extra = {}, authoredSnapshot = null, sharedFlushed 
     }
     return;
   }
-  if (!runtime.docId && !["new", "open", "close", "files", "import", "compile", "peer-review-import", "open-care-reader", "remote-connect", "open-archive", "unshare", "binder", "history-open", "history-load",
+  if (!runtime.docId && !bookSearch && !bookCitation && !bookSend && !["new", "open", "open-book", "close", "files", "import", "compile", "peer-review-import", "open-care-reader", "remote-connect", "open-archive", "unshare", "binder", "history-open", "history-load",
     "library-close", "library-full", "library-draft", "open-use", "compact-axiom"].includes(type)) return;
   if (type === "scan-poll") {
     const nonce = id();
@@ -5072,8 +9179,8 @@ function send(runtime, type, extra = {}, authoredSnapshot = null, sharedFlushed 
   }
   clearTimeout(runtime.saveTimer);
   runtime.saveTimer = 0;
-  const snapshot = authoredSnapshot || (runtime.docId ? capture(runtime) : {title: "", html: ""});
-  const positions = runtime.docId && runtime.references?.length && type !== "history-footnotes" &&
+  const snapshot = bookWrite || bookSearch || bookCitation || bookSend ? {title: "", html: ""} : authoredSnapshot || (runtime.docId ? capture(runtime) : {title: "", html: ""});
+  const positions = !bookWrite && !bookSearch && !bookCitation && !bookSend && runtime.docId && runtime.references?.length && type !== "history-footnotes" &&
     !Object.hasOwn(extra, "footnote_positions") ? footnotePositions(runtime, extra.reference_id) : null;
   const movedFootnotes = positions && Object.keys(positions).length > 0;
   if (type === "save" && same(snapshot, runtime.base) && !movedFootnotes && !runtime.error) {
@@ -5084,7 +9191,7 @@ function send(runtime, type, extra = {}, authoredSnapshot = null, sharedFlushed 
   runtime.pending = {type, nonce, snapshot, extra};
   if (type === "close") runtime.writeBesidePanel?.setAttribute("data-care-write-beside-closing", "");
   runtime.error = "";
-  const navigation = navigationActions.has(type);
+  const navigation = writingActionLocksNavigation(type, extra);
   if (navigation) {
     clearTimeout(runtime.scanTimer);
     setNavigationLock(runtime, true);
@@ -5092,7 +9199,7 @@ function send(runtime, type, extra = {}, authoredSnapshot = null, sharedFlushed 
   const searchStatus = extra.search_kind === "passage" ? "Finding passages…" : "Finding axioms…";
   status(runtime, ["scan", "scan-deeper"].includes(type) ? searchStatus : type === "read" ? "Opening reading…" :
     type === "review-draft" ? "Preparing review…" : type === "review-poll" ? "Checking review…" : "Saving…");
-  storeRecovery(runtime);
+  if (!bookWrite && !bookSearch && !bookCitation && !bookSend) storeRecovery(runtime);
   runtime.api.setTriggerValue("action", {
     type, nonce, document_id: runtime.docId, revision: runtime.revision, ...snapshot, ...extra,
     ...(["export", "compile"].includes(type) ? {footnote_mode: runtime.footnotes?.dataset.mode} : {}),
@@ -5101,6 +9208,10 @@ function send(runtime, type, extra = {}, authoredSnapshot = null, sharedFlushed 
 }
 
 function scheduleSave(runtime, delay = 650) {
+  if (runtime.bookCitationOwner) {
+    markBinderBookChanged(runtime.bookCitationOwner, runtime.paper);
+    return;
+  }
   if (writingSharedDocument(runtime.docId)) {
     const state = runtime.collaboration;
     if (state && !state.conflict && writingSharedDirty(state)) queueWritingShared(state, Math.min(delay, writingSharedSave));
@@ -5116,6 +9227,7 @@ function scheduleSave(runtime, delay = 650) {
 }
 
 function holdNavigation(runtime, resume) {
+  if (typeof flushBinderBook === "function" && flushBinderBook(runtime, resume)) return true;
   if ((runtime.compact && !runtime.writingClipboardRequest) || !runtime.docId || !runtime.root.isConnected) return false;
   if (runtime.pending?.type === "close" || runtime.queued?.type === "close") return false;
   if (runtime.collaboration) return deferWritingShared(runtime.collaboration, () => requestAnimationFrame(resume), true);
@@ -5153,11 +9265,37 @@ function onAck(runtime, ack, incoming) {
   if (!ack?.nonce || ack.nonce !== runtime.pending?.nonce) return false;
   const {type, snapshot, extra} = runtime.pending;
   runtime.acknowledgedType = type;
+  if (type === "paste-cited" && extra?.studio_book_id && typeof acknowledgeBinderBookQuotePaste === "function") {
+    acknowledgeBinderBookQuotePaste(runtime, ack);
+  }
   runtime.pending = null;
   setNavigationLock(runtime, false);
   // A progress poll never writes the draft. Its acknowledgement must not
   // declare text typed while it was in flight to have been saved.
   if (type === "scan-poll") return false;
+  if (type === "remote-send" && extra?.book_id) {
+    runtime.error = String(ack.error || "");
+    if (runtime.error) status(runtime, runtime.error, true);
+    return false;
+  }
+  if (["scan", "scan-deeper"].includes(type) && extra?.studio_book_id) {
+    runtime.error = String(ack.error || "");
+    if (runtime.error) status(runtime, runtime.error, true);
+    return false;
+  }
+  if (["link", "read", "history-read", "reading-open", "axiom-footnote", "axiom-notes", "paste-cited"].includes(type) && extra?.studio_book_id) {
+    runtime.error = String(ack.error || "");
+    status(runtime, runtime.error || (type === "paste-cited" ? "Quotation linked to chapter" : type === "link" ? "Linked to chapter" : "Opened chapter reference"), Boolean(runtime.error));
+    return false;
+  }
+  if (type === "binder" && (["book-save", "book-preview", "book-outline"].includes(extra?.operation)
+      || extra?.book_manuscript === true)) {
+    // These mutations carry their own chapter revisions. Leave the single
+    // draft's base untouched; its incoming saved body is reconciled below.
+    runtime.error = String(ack.error || "");
+    if (runtime.error) status(runtime, runtime.error, true);
+    return false;
+  }
   if (type === "delete-footnotes") {
     runtime.removingFootnotes = null;
     acknowledgeWritingFootnoteDeletion(runtime, !ack.error);
@@ -5262,6 +9400,7 @@ function loadDocument(runtime, doc, blockId, initialQuery, acknowledgement) {
   runtime.title.value = doc?.title || "";
   runtime.paper.replaceChildren(safeFragment(doc?.html || "", true));
   normalizeBlocks(runtime.paper);
+  if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(runtime);
   runtime.base = capture(runtime);
   const savedDraft = writingSharedDocument(runtime.docId) ? null : recovery.get(runtime.docId);
   if (savedDraft) {
@@ -5276,6 +9415,7 @@ function loadDocument(runtime, doc, blockId, initialQuery, acknowledgement) {
     runtime.footnoteNotes = new Map(Object.entries(savedDraft.snapshot.footnote_notes || {}));
     runtime.title.value = savedDraft.snapshot.title;
     runtime.paper.replaceChildren(safeFragment(savedDraft.snapshot.html, true));
+    if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(runtime);
     runtime.error = savedDraft.error;
     if (acknowledged) {
       runtime.pending = pending;
@@ -5298,7 +9438,7 @@ function loadDocument(runtime, doc, blockId, initialQuery, acknowledgement) {
   runtime.blocks = new Map([...runtime.paper.children].map(block => [block.dataset.blockId, blockText(block)]));
   runtime.query.value = initialQuery || "";
   runtime.anchorId = blockId || runtime.paper.firstElementChild?.dataset.blockId || "";
-  setNavigationLock(runtime, navigationActions.has(runtime.pending?.type));
+  setNavigationLock(runtime, writingActionLocksNavigation(runtime.pending?.type, runtime.pending?.extra));
   updatePaper(runtime);
   resetWritingHistory(runtime);
   if (runtime.error) status(runtime, runtime.error, true);
@@ -5358,6 +9498,11 @@ function passageSelection(runtime, range = runtime.range, maxLength = 3000) {
 }
 
 function rememberSelection(runtime, hasText) {
+  if (runtime.binder?.bookOverviewId) {
+    rememberBinderBookFormatSelection(runtime);
+    if (runtime.anchor) paintAnchor(runtime);
+    return;
+  }
   const {paper} = runtime;
   // A native select can briefly move the browser selection as it opens.
   // Keep the manuscript range and the control's pending value during that time.
@@ -5393,6 +9538,7 @@ function rememberSelection(runtime, hasText) {
     button.setAttribute("aria-pressed", String(state ?? Boolean(paper.ownerDocument.queryCommandState?.(command))));
   }
   runtime.root.classList.toggle("has-selection", !range.collapsed);
+  if (typeof paintWritingParagraphStyleMenu === "function") paintWritingParagraphStyleMenu(runtime);
   paintAnchor(runtime, hasText, block);
 }
 
@@ -5424,6 +9570,34 @@ function restoreSelection(runtime, range = runtime.range, reversed = false) {
 }
 
 function paintAnchor(runtime, hasText, block) {
+  if (runtime.binder?.bookOverviewId && typeof binderBookSearchContext === "function") {
+    const context = binderBookSearchContext(runtime);
+    const selected = context?.range && !context.range.collapsed ? binderBookScanSelection(runtime, context) : null;
+    const text = selected?.selection.text.replace(/\s+/g, " ").trim() || "";
+    runtime.anchor.textContent = text ? `Selected chapter passage · “${text.length > 85 ? text.slice(0, 82) + "…" : text}”` :
+      context?.section ? `Current chapter · ${context.section.title}` : "Click a chapter to scan its text.";
+    for (const button of runtime.root.querySelectorAll("[data-link-passage]")) button.disabled = !binderBookLinkSelection(runtime);
+    if (typeof paintBinderBookReferences === "function") paintBinderBookReferences(runtime);
+    const passage = runtime.root.querySelector('[data-action="scan-passage"]');
+    const draft = runtime.root.querySelector('[data-action="scan-draft"]');
+    let chapter = runtime.root.querySelector('[data-action="scan-chapter"]');
+    if (!chapter) {
+      chapter = element("button", "Scan chapter"); chapter.type = "button";
+      chapter.dataset.action = "scan-chapter"; passage.after(chapter);
+    }
+    chapter.hidden = false; chapter.title = "Scan the chapter containing the cursor";
+    draft.textContent = "Scan book"; draft.title = "Scan the saved text of every chapter in this Book";
+    const ready = writingSearchReady(runtime);
+    passage.disabled = !ready || !binderBookScanSelection(runtime, context);
+    chapter.disabled = !ready || !binderBookScanFields(runtime, "chapter", context);
+    draft.disabled = !ready || !binderBookScanFields(runtime, "book", context);
+    if (typeof paintLibrarianFind === "function") paintLibrarianFind(runtime);
+    return;
+  }
+  const chapter = runtime.root.querySelector('[data-action="scan-chapter"]');
+  if (chapter) chapter.hidden = true;
+  const draft = runtime.root.querySelector('[data-action="scan-draft"]');
+  draft.textContent = "Scan draft"; draft.title = "Scan this draft";
   const selection = passageSelection(runtime);
   const selected = selection?.selection.text.replace(/\s+/g, " ").trim() || "";
   const preview = selected.length > 85 ? selected.slice(0, 82) + "…" : selected;
@@ -5432,6 +9606,7 @@ function paintAnchor(runtime, hasText, block) {
   const ready = writingSearchReady(runtime);
   runtime.root.querySelector('[data-action="scan-passage"]').disabled = !ready || !selectedQuote(runtime, block || activeBlock(runtime));
   runtime.root.querySelector('[data-action="scan-draft"]').disabled = !ready || !(hasText ?? Boolean(textOf(runtime.paper)));
+  if (typeof paintLibrarianFind === "function") paintLibrarianFind(runtime);
 }
 
 function paintWritingPaperSummary(runtime) {
@@ -5534,6 +9709,7 @@ function writingSearchBookStatus(runtime) {
 }
 
 function matchingWritingSearchSettings(runtime, progress) {
+  if (typeof matchingBinderBookScan === "function" && !matchingBinderBookScan(runtime, progress)) return false;
   if (!runtime.searchMode) return true;
   if (!writingSearchReady(runtime)) return false;
   if (!progress) return !runtime.searchSettingsChanged;
@@ -5651,7 +9827,7 @@ function chooseWritingSearchSettings(runtime) {
   saveWritingSearchSettings(runtime);
   invalidateWritingSearch(runtime);
   paintWritingSearchSettings(runtime);
-  if (repeat && runtime.docId && writingSearchReady(runtime)) scan(runtime, runtime.lastSearchScope || "query");
+  if (repeat && (runtime.docId || runtime.binder?.bookOverviewId) && writingSearchReady(runtime)) scan(runtime, runtime.lastSearchScope || "query");
   else paintResults(runtime);
   if (runtime.docId && runtime.paper) paintAnchor(runtime);
   paintDraftReview(runtime);
@@ -5664,7 +9840,7 @@ function chooseWritingSearchBook(runtime) {
   const repeat = runtime.hasSearched || Boolean(runtime.query.value.trim());
   invalidateWritingSearch(runtime);
   paintWritingSearchSettings(runtime);
-  if (repeat && runtime.docId && writingSearchReady(runtime)) scan(runtime, runtime.lastSearchScope || "query");
+  if (repeat && (runtime.docId || runtime.binder?.bookOverviewId) && writingSearchReady(runtime)) scan(runtime, runtime.lastSearchScope || "query");
   else paintResults(runtime);
   if (runtime.docId && runtime.paper) paintAnchor(runtime);
   paintDraftReview(runtime);
@@ -5698,6 +9874,7 @@ function draftReviewWorking(review) {
 }
 
 function reviewWritingDraft(runtime) {
+  if (runtime.binder?.bookOverviewId) return;
   if (!runtime.docId || !writingSearchReady(runtime) || draftReviewWorking(runtime.draftReview) ||
       [runtime.pending, runtime.queued].some(action => ["review-draft", "review-poll"].includes(action?.type) || navigationActions.has(action?.type))) return;
   const model = String(runtime.draftReviewModelSelect.value || "");
@@ -5710,6 +9887,7 @@ function reviewWritingDraft(runtime) {
 }
 
 function pollWritingDraftReview(runtime) {
+  if (runtime.binder?.bookOverviewId) return;
   const review = runtime.draftReview;
   if (!runtime.docId || !review?.id || !draftReviewWorking(review) ||
       [runtime.pending, runtime.queued].some(action => ["review-draft", "review-poll"].includes(action?.type) || navigationActions.has(action?.type))) return;
@@ -5740,7 +9918,8 @@ function paintDraftReviewModels(runtime, values) {
 
 function paintDraftReview(runtime, incoming = runtime.draftReview) {
   if (!runtime.draftReviewPane) return;
-  const review = incoming?.document_id && incoming.document_id !== runtime.docId ? null : incoming;
+  const bookOpen = Boolean(runtime.binder?.bookOverviewId);
+  const review = bookOpen || incoming?.document_id && incoming.document_id !== runtime.docId ? null : incoming;
   runtime.draftReview = review;
   const submitting = [runtime.pending, runtime.queued].some(action => action?.type === "review-draft");
   const polling = [runtime.pending, runtime.queued].some(action => action?.type === "review-poll");
@@ -5752,12 +9931,13 @@ function paintDraftReview(runtime, incoming = runtime.draftReview) {
   const dirty = review && runtime.base ? !same(capture(runtime), runtime.base) : false;
   const stale = Boolean(review?.stale || dirty || (review?.revision != null && review.revision !== runtime.revision));
   const hasText = runtime.paper ? Boolean(textOf(runtime.paper)) : Boolean(runtime.docId);
-  runtime.draftReviewButton.disabled = !runtime.docId || !hasText || !models.length || !ready || submitting || working || polling;
-  runtime.draftReviewModelSelect.disabled = submitting || working;
+  runtime.draftReviewButton.disabled = bookOpen || !runtime.docId || !hasText || !models.length || !ready || submitting || working || polling;
+  runtime.draftReviewModelSelect.disabled = bookOpen || submitting || working;
   runtime.draftReviewPollButton.hidden = !working || !review?.id;
   runtime.draftReviewPollButton.disabled = submitting || polling;
   runtime.draftReviewStatus.dataset.error = String(Boolean(review?.error));
-  runtime.draftReviewStatus.textContent = submitting ? "Preparing the draft and local reading shortlist…" :
+  runtime.draftReviewStatus.textContent = bookOpen ? "Open a chapter in Studio to request a model review." :
+    submitting ? "Preparing the draft and local reading shortlist…" :
     polling ? "Checking review progress…" : review?.error ? String(review.error) :
       working ? "The model is reviewing this saved draft. Check progress when you are ready." :
         !models.length ? "No review model is available in the Library settings." :
@@ -5800,6 +9980,10 @@ function paintDraftReview(runtime, incoming = runtime.draftReview) {
 }
 
 function scan(runtime, scope, live = false) {
+  if (runtime.binder?.bookOverviewId && typeof scanBinderBook === "function") {
+    if (!writingSearchReady(runtime)) { paintResults(runtime); return; }
+    return scanBinderBook(runtime, scope === "document" ? "book" : scope, live);
+  }
   if (!runtime.docId) return;
   if (runtime.searchMode) updateWritingSearchWork(runtime, runtime.searchContextWorkId ?? runtime.searchWorkId);
   if (!writingSearchReady(runtime)) { paintResults(runtime); return; }
@@ -5825,12 +10009,13 @@ function scan(runtime, scope, live = false) {
 
 function deepenWritingSearch(runtime) {
   const progress = runtime.searchProgress;
-  if (!runtime.docId || !progress?.more || progress.status === "running" || runtime.suggestionKind !== runtime.searchKind || runtime.queued ||
+  if ((!runtime.docId && !runtime.binder?.bookOverviewId) || !progress?.more || progress.status === "running" || runtime.suggestionKind !== runtime.searchKind || runtime.queued ||
       !writingSearchReady(runtime) ||
       !matchingWritingSearchSettings(runtime, progress) ||
       ["scan", "scan-deeper"].includes(runtime.pending?.type) || navigationActions.has(runtime.pending?.type)) return;
   send(runtime, "scan-deeper", {
     search_id: progress.id, search_depth: progress.depth, search_kind: runtime.searchKind, ...writingSearchOptions(runtime),
+    ...(progress.studio_book_id ? binderBookSearchProgressFields(progress) : {}),
     ...(runtime.asyncSearch ? {background_search: true} : {}),
   });
   paintResults(runtime);
@@ -5840,15 +10025,16 @@ function scheduleWritingSearchPoll(runtime) {
   clearTimeout(runtime.searchPollTimer);
   runtime.searchPollTimer = 0;
   const progress = runtime.searchProgress;
-  if (!runtime.asyncSearch || !runtime.docId || progress?.status !== "running" ||
+  if (!runtime.asyncSearch || (!runtime.docId && !runtime.binder?.bookOverviewId) || progress?.status !== "running" ||
       !progress.job_id || runtime.panel.hidden || runtime.suggestionPane.hidden ||
       !matchingWritingSearchSettings(runtime, progress)) return;
   runtime.searchPollTimer = setTimeout(() => {
     runtime.searchPollTimer = 0;
     if (!runtime.root.isConnected || runtime.searchProgress !== progress) return;
     if (!runtime.pending && !runtime.queued && !runtime.externalNavigation && !runtime.saveTimer &&
-        !runtime.composing && !runtime.composingFootnote && same(capture(runtime), runtime.base)) {
-      send(runtime, "scan-poll", {search_id: progress.id, search_job: progress.job_id}, null, true);
+        !runtime.composing && !runtime.composingFootnote && (runtime.binder?.bookOverviewId ? !binderBookDirty(runtime) : same(capture(runtime), runtime.base))) {
+      send(runtime, "scan-poll", {search_id: progress.id, search_job: progress.job_id,
+        ...(progress.studio_book_id ? binderBookSearchProgressFields(progress) : {})}, null, true);
     }
     scheduleWritingSearchPoll(runtime);
   }, 650);
@@ -5901,7 +10087,7 @@ function chooseWritingSearchKind(runtime, kind) {
   if (!writingSearchKinds.has(kind) || runtime.searchKind === kind) return;
   clearTimeout(runtime.scanTimer);
   runtime.searchKind = kind;
-  if (runtime.query.value.trim() && runtime.docId) scan(runtime, "query");
+  if (runtime.query.value.trim() && (runtime.docId || runtime.binder?.bookOverviewId)) scan(runtime, "query");
   else paintResults(runtime);
 }
 
@@ -5930,7 +10116,7 @@ function renderPanel(runtime) {
   scheduleWritingSearchPoll(runtime);
   if (!runtime.panel.hidden) runtime.peerReview?.close();
   if (runtime.compact) runtime.outline.hidden = runtime.activePane !== "outline" || hidePanes;
-  else if (!runtime.docId) {
+  else if (!runtime.docId && !(runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden)) {
     runtime.outline.hidden = true;
     paintWritingNavigator(runtime);
   }
@@ -6063,7 +10249,8 @@ function setLibraryMinimized(runtime, minimized) {
   runtime.libraryMinimized = minimized;
   updateLibraryDockVisibility(runtime);
   if (minimized) {
-    runtime.libraryResume.focus({preventScroll: true});
+    if (runtime.resumeStack) runtime.resumeStack.focusResume(runtime.libraryResume);
+    else runtime.libraryResume.focus({preventScroll: true});
   } else {
     runtime.activePane = "";
     runtime.peerReview?.close();
@@ -6520,7 +10707,7 @@ function scheduleWritingFormatDismissal(runtime) {
 }
 
 function openWritingFormatting(runtime, footnotes = false) {
-  if (!runtime.docId || runtime.paper.contentEditable !== "true") return;
+  if (!runtime.binder?.bookOverviewId && (!runtime.docId || runtime.paper.contentEditable !== "true")) return;
   rememberSelection(runtime);
   if (runtime.compact) {
     cancelWritingFormatDismissal(runtime);
@@ -6541,7 +10728,9 @@ function closeWritingFormatting(runtime) {
     renderPanel(runtime);
     tuckWritingFormatBar(runtime, false);
   }
-  restoreSelection(runtime);
+  const body = typeof binderBookEditingTarget === "function" && binderBookEditingTarget(runtime);
+  if (body) restoreSelection(Object.assign(Object.create(runtime), {paper: body}), runtime.binder.bookRange);
+  else restoreSelection(runtime);
 }
 
 function paintWritingNavigator(runtime) {
@@ -6550,7 +10739,8 @@ function paintWritingNavigator(runtime) {
   views.hidden = runtime.navigatorClosed || (!binderOpen && runtime.outline.hidden);
   for (const button of views.querySelectorAll("[data-navigator-view]")) {
     const isBinder = button.dataset.navigatorView === "binder";
-    button.disabled = !isBinder && !runtime.docId;
+    const bookOpen = Boolean(runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden);
+    button.disabled = !isBinder && !runtime.docId && !bookOpen;
     button.setAttribute("aria-pressed", String(isBinder === Boolean(binderOpen)));
   }
 }
@@ -6613,6 +10803,33 @@ function noteTyping(runtime, dismissTools = true) {
 }
 
 function paintOutline(runtime) {
+  const bookRows = typeof binderBookOutlineRows === "function" ? binderBookOutlineRows(runtime) : null;
+  if (bookRows !== null) {
+    if (!runtime.compact) {
+      runtime.outline.hidden = false;
+      paintWritingNavigator(runtime);
+    }
+    const signature = JSON.stringify(["book", runtime.binder.bookOverviewId, bookRows]);
+    if (signature === runtime.outlineSignature) return;
+    runtime.outlineSignature = signature;
+    if (typeof paintWritingOutlineTree === "function") {
+      paintWritingOutlineTree(runtime, bookRows, {book: true, onNavigate: row => {
+        if (!runtime.compact && !runtime.outlineWide) runtime.outlineDisclosure.open = false;
+        navigateBinderBookOutline(runtime, row);
+      }});
+      return;
+    }
+    runtime.outlineList.replaceChildren(...(bookRows.length ? bookRows.map(row => {
+      const button = makeButton(row.label, () => {
+        if (!runtime.compact && !runtime.outlineWide) runtime.outlineDisclosure.open = false;
+        navigateBinderBookOutline(runtime, row);
+      });
+      button.dataset.level = String(Math.min(6, Math.max(1, row.level || 1)));
+      button.dataset.bookOutline = row.id;
+      return button;
+    }) : [element("p", "Add a chapter to build this Book’s outline.", "empty-results")]));
+    return;
+  }
   const headings = [...runtime.paper.querySelectorAll(writingHeadingSelector)]
     .map((heading, index) => [index, topBlock(runtime.paper, heading)?.dataset.blockId,
       heading.localName.slice(1), writingHeadingLabel(heading)])
@@ -6621,9 +10838,17 @@ function paintOutline(runtime) {
     runtime.outline.hidden = !runtime.docId || (!headings.length && !runtime.outlineRequested);
     paintWritingNavigator(runtime);
   }
-  const signature = JSON.stringify(headings);
+  const signature = JSON.stringify(["document", runtime.docId, headings]);
   if (signature === runtime.outlineSignature) return;
   runtime.outlineSignature = signature;
+  if (typeof paintWritingOutlineTree === "function") {
+    const rows = headings.map(([index, block, level, label]) => ({
+      id: `heading:${block}${runtime.paper.querySelectorAll(writingHeadingSelector)[index]?.parentElement === runtime.paper ? "" : ":" + index}`,
+      label, block, index, kind: "heading", heading_level: Number(level),
+    }));
+    paintWritingOutlineTree(runtime, rows, {book: false, onNavigate: row => navigateWritingOutlineHeading(runtime, row)});
+    return;
+  }
   runtime.outlineList.replaceChildren(...(headings.length ? headings.map(([index, blockId, level, text]) => {
     const button = makeButton(text, () => {
       if (runtime.binder) closeBinderReading(runtime, false);
@@ -6641,6 +10866,18 @@ function paintOutline(runtime) {
     button.dataset.level = level;
     return button;
   }) : [element("p", "Add a heading to make a place you can jump back to.", "empty-results")]));
+}
+
+function navigateWritingOutlineHeading(runtime, row) {
+  if (runtime.binder) closeBinderReading(runtime, false);
+  if (!runtime.compact && !runtime.outlineWide) runtime.outlineDisclosure.open = false;
+  const heading = runtime.paper.querySelectorAll(writingHeadingSelector)[row.index];
+  if (!heading || heading.parentElement === runtime.paper) return jump(runtime, row.block, null, true);
+  refreshWritingA4(runtime, true);
+  const caret = document.createRange();
+  caret.selectNodeContents(heading); caret.collapse(true);
+  restoreSelection(runtime, caret); rememberSelection(runtime);
+  scrollWritingA4Context(runtime.a4.well, heading.getBoundingClientRect());
 }
 
 function targetOf(record) {
@@ -6722,7 +10959,9 @@ function paintHistory(runtime) {
   const kind = runtime.historyKind;
   const rows = historyRows(runtime);
   const waiting = runtime.pending?.type === "history-load" && runtime.pending.extra?.kind === kind;
-  const signature = JSON.stringify([kind, rows, waiting, Boolean(runtime.docId)]);
+  const bookOpen = Boolean(runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden);
+  const linkReady = kind === "axioms" && Boolean(bookOpen ? binderBookLinkSelection(runtime) : runtime.docId && passageSelection(runtime));
+  const signature = JSON.stringify([kind, rows, waiting, Boolean(runtime.docId), bookOpen, linkReady]);
   if (signature === runtime.historySignature) return;
   runtime.historySignature = signature;
   for (const button of runtime.root.querySelectorAll("[data-history-kind]")) {
@@ -6740,6 +10979,10 @@ function paintHistory(runtime) {
     card.classList.add("history-card");
     card.dataset.kind = rowKind;
     actions.classList.add("history-actions");
+    actions.addEventListener?.("pointerdown", event => {
+      if (event.button != null && event.button !== 0 || !event.target.closest?.("button")) return;
+      rememberSelection(runtime); event.preventDefault();
+    });
     if (rowKind === "axiom" && runtime.docId && !row.scope) {
       actions.append(makeButton("Read beside draft", () => {
         selectTab(runtime, "reading");
@@ -6762,6 +11005,18 @@ function paintHistory(runtime) {
         route: row.studio_route || row.route || null, destination: row.destination || "",
         reading_title: row.title || "", beside: !runtime.compact,
       })));
+    }
+    if (rowKind === "axiom" && typeof row.id === "string" && row.id.trim() && row.id.length <= 2048) {
+      const href = safeHref(row.destination);
+      let route = row.studio_route || row.route || null;
+      if (!route && href && new URL(href).origin === new URL(document.baseURI).origin) route = Object.fromEntries(new URL(href).searchParams);
+      const work = row.work_id || route?.work || (href ? new URL(href).searchParams.get("work") : "") || "";
+      const link = linkButton(runtime, {kind: "axiom", item_id: row.id, history_item_id: row.id, work_id: work,
+        history_scope: row.scope || "", history_route: route});
+      link.textContent = "Link this axiom";
+      link.dataset.historyLink = "";
+      link.disabled = !linkReady;
+      actions.append(link);
     }
     return card;
   });
@@ -6880,26 +11135,29 @@ function readingButton(runtime, target, label = "Read beside draft") {
       const passage = target.kind === "passage";
       const route = passage ? runtime.reading.focus.route : runtime.reading.focus.sheet_route;
       if (openLibrary && Object.keys(route || {}).length) {
-        send(runtime, "reading-open", {destination: passage ? "source" : "sheet", item_id: target.item_id, target_key: target.target_key, beside: true});
+        sendWritingReferenceAction(runtime, "reading-open", {destination: passage ? "source" : "sheet", item_id: target.item_id, target_key: target.target_key, beside: true});
       }
       return;
     }
     runtime.readingError = "";
     runtime.readingSignature = "";
     runtime.readingContent?.replaceChildren(element("p", "Opening reading…", "empty-results"));
-    send(runtime, "read", {target_key: target.target_key || "", item_id: target.item_id || "", open_library: openLibrary});
+    sendWritingReferenceAction(runtime, "read", {target_key: target.target_key || "", item_id: target.item_id || "", open_library: openLibrary});
   });
 }
 
 function linkButton(runtime, target) {
   const passageTarget = target.kind === "passage";
   const button = makeButton(passageTarget ? "Link passage" : "Link selection", () => {
+    if (runtime.binder?.bookOverviewId) return linkBinderBookSelection(runtime, target);
     const passage = passageSelection(runtime);
     if (!passage) return;
     const quote = renderedText(runtime, runtime.range.cloneContents()).trim().slice(0, 3000) || passage.selection.text.trim();
     send(runtime, "link", {
       item_id: target.item_id || "",
       target_key: target.target_key || "",
+      ...(target.history_item_id ? {history_item_id: target.history_item_id, work_id: target.work_id || "",
+        history_scope: target.history_scope || "", history_route: target.history_route && {...target.history_route}} : {}),
       block_id: passage.blockId,
       quote,
       selection: passage.selection,
@@ -6907,7 +11165,8 @@ function linkButton(runtime, target) {
   });
   button.dataset.linkPassage = "";
   button.title = `Highlight text in the draft to attach this ${passageTarget ? "source passage" : "axiom"}`;
-  button.disabled = !passageSelection(runtime);
+  button.disabled = runtime.binder?.bookOverviewId ? !binderBookLinkSelection(runtime) : !passageSelection(runtime);
+  if (runtime.binder?.bookOverviewId) button.title = "Highlight words in this chapter to attach this reference";
   return button;
 }
 
@@ -7084,8 +11343,21 @@ function writingFootnoteParts(reference, previous, mode) {
     ...(detailed ? [{text: " — " + detailed}] : []),
   ];
   const includeText = mode === "citation_id_text";
-  if (reference.shared_citation) return [{text: reference.shared_citation},
-    ...(includeText && !quotedPassage && target.text ? [{text: " — " + target.text}] : [])];
+  if (reference.shared_citation && !source?.title) {
+    let citation = String(reference.shared_citation);
+    const text = String(passage ? excerpt : target.text || "").trim();
+    // Portable editions may already have one selected style baked into their
+    // citation. Remove only our exact trailing decorations before restyling.
+    if (!passage && text && citation.endsWith(" — " + text)) citation = citation.slice(0, -(text.length + 3));
+    if (!passage && referenceId && citation.endsWith(` [${referenceId}]`)) citation = citation.slice(0, -(referenceId.length + 3));
+    const showId = referenceId && (quotedPassage || !passage && (mode === "citation_id" || includeText)) && !citation.includes(referenceId);
+    return [
+      {text: citation},
+      ...(showId ? [{text: " "}, {text: `[${referenceId}]`, identity: true}] : []),
+      ...(includeText && !quotedPassage && text && !citation.includes(text) ? [{text: " — " + text}] : []),
+      ...(includeText && !passage && !text ? [{text: " — Axiom text not included in this shared reference.", unavailable: true}] : []),
+    ];
+  }
   const suffix = [];
   if (referenceId && (quotedPassage || (!passage && source?.title && (mode === "citation_id" || includeText)))) {
     suffix.push({text: " "}, {text: `[${referenceId}]`, identity: true});
@@ -7124,6 +11396,11 @@ function appendWritingFootnote(parent, parts) {
     if (!part.text) continue;
     if (part.italic) parent.append(element("em", part.text));
     else if (part.identity) parent.append(element("span", part.text, "footnote-id"));
+    else if (part.unavailable) {
+      const unavailable = element("span", part.text, "footnote-unavailable");
+      unavailable.title = "Remove this link and relink the axiom to include its text.";
+      parent.append(unavailable);
+    }
     else parent.append(document.createTextNode(part.text));
   }
 }
@@ -8311,7 +12588,7 @@ function paintFootnotes(runtime) {
 }
 
 function readingDestination(runtime, target, destination, label) {
-  return makeButton(label, () => send(runtime, "reading-open", {
+  return makeButton(label, () => sendWritingReferenceAction(runtime, "reading-open", {
     destination, item_id: target.item_id || "", target_key: target.target_key || "",
     beside: !runtime.compact,
   }));
@@ -8438,6 +12715,7 @@ function jump(runtime, blockId, reference = null, focusEditor = false) {
 }
 
 function paintResults(runtime) {
+  if (typeof paintLibrarianFind === "function") paintLibrarianFind(runtime);
   const kind = runtime.searchKind;
   const passage = kind === "passage";
   const ready = writingSearchReady(runtime);
@@ -8512,6 +12790,7 @@ function paintResults(runtime) {
   else runtime.results.replaceChildren(...cards);
   syncResultBookmarks(runtime);
   if (continuing) runtime.suggestionPane.scrollTop = scroll;
+  if (typeof paintLibrarianFind === "function") paintLibrarianFind(runtime);
 }
 
 function citationDetails(target) {
@@ -8537,6 +12816,10 @@ function citationDetails(target) {
 }
 
 function paintReferences(runtime) {
+  if (runtime.binder?.bookOverviewId && typeof paintBinderBookReferences === "function") {
+    paintBinderBookReferences(runtime);
+    return;
+  }
   const signature = JSON.stringify(runtime.references);
   if (signature === runtime.referenceSignature) return;
   runtime.referenceSignature = signature;
@@ -8654,10 +12937,12 @@ function clipboardEdit(command, value = null) {
 function showClipboardDialog(runtime, target, mode, text = "") {
   if (!currentClipboardTarget(runtime, target) || runtime.clipboardDialog.open) return;
   runtime.clipboardTarget = target;
+  runtime.clipboardMatchStyle = mode === "paste-match";
   runtime.clipboardField.value = text;
   runtime.clipboardField.readOnly = mode === "copy";
   runtime.clipboardField.setAttribute("aria-label", mode === "copy" ? "Text to copy" : "Text to paste");
-  runtime.clipboardDialog.querySelector("[data-clipboard-title]").textContent = mode === "copy" ? "Copy text" : "Paste text";
+  runtime.clipboardDialog.querySelector("[data-clipboard-title]").textContent = mode === "copy" ? "Copy text" :
+    mode === "paste-match" ? "Paste and Match Style" : "Paste text";
   runtime.clipboardDialog.querySelector("[data-clipboard-hint]").textContent = mode === "copy"
     ? "Press ⌘C to copy the selected text."
     : "Press ⌘V here, then choose Insert text.";
@@ -8820,6 +13105,7 @@ function writingClipboardState(runtime) {
 
 function restoreWritingClipboard(runtime, before) {
   runtime.paper.replaceChildren(...before.nodes);
+  if (typeof adoptWritingParagraphStyles === "function") adoptWritingParagraphStyles(runtime);
   runtime.references = before.references;
   runtime.snapshot = null;
   runtime.blocks = new Map([...runtime.paper.children].map(block => [block.dataset.blockId, blockText(block)]));
@@ -8910,7 +13196,7 @@ function clipboardFootnoteAction(runtime, target, packet, cut = false, printed =
 }
 
 function insertManualFootnote(runtime) {
-  if (!runtime.docId || runtime.paper.contentEditable !== "true" || runtime.composing || runtime.composingFootnote ||
+  if (runtime.binder?.bookOverviewId || !runtime.docId || runtime.paper.contentEditable !== "true" || runtime.composing || runtime.composingFootnote ||
       writingSharedDocument(runtime.docId)) return;
   if (runtime.pending || runtime.queued) {
     status(runtime, "Wait for the current draft save, then insert the footnote.");
@@ -8990,8 +13276,21 @@ function acknowledgeWritingClipboard(runtime, ack) {
   }
 }
 
+function paintWritingShareButton(runtime) {
+  const button = runtime.formatting?.querySelector('[data-action="collaborate"]');
+  if (!button) return;
+  const binder = runtime.binder;
+  const book = binder?.bookOverviewId && !binder.reading.hidden && binder.contents.booksById.get(binder.bookOverviewId);
+  const shared = book ? book.shared === true : writingSharedDocument(runtime.docId);
+  button.dataset.sharedFile = String(shared);
+  button.disabled = !book && !runtime.docId;
+  button.title = shared ? "Send this shared file or request reader review" : "Send this file for collaboration or reader review";
+  button.setAttribute('aria-label', button.title);
+}
+
 function nativeWritingSourceQuote(runtime, event) {
-  if (!runtime.root || writingSharedDocument(runtime.docId)) return false;
+  const bookOpen = runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden;
+  if (!runtime.root || writingSharedDocument(runtime.docId) && !bookOpen) return false;
   const range = writingSelectionRange(runtime.root);
   if (!range || range.collapsed) return false;
   const first = writingElement(range.startContainer)?.closest?.("[data-source-quote-key]");
@@ -8999,6 +13298,7 @@ function nativeWritingSourceQuote(runtime, event) {
   if (!first || first !== last) return false;
   const choices = [
     ...(runtime.suggestions || []), ...(runtime.references || []).map(reference => reference.target),
+    ...(bookOpen && typeof binderBookCitationEditor === "function" ? binderBookCitationEditor(runtime)?.references || [] : []).map(reference => reference.target),
     runtime.reading?.focus, ...(runtime.reading?.nearby || []), ...(runtime.reading?.chain || []),
   ].filter(Boolean).map(targetOf);
   const source = choices.find(reading => reading.kind === "passage" && reading.target_key === first.dataset.sourceQuoteKey);
@@ -9022,6 +13322,10 @@ function nativeWritingSourceQuote(runtime, event) {
 }
 
 function nativeWritingClipboard(runtime, event, cut = false) {
+  if ((event.composedPath?.()[0] || event.target)?.closest?.("input, textarea, select, [data-footnote-note]")) return;
+  if (typeof nativeBinderBookChapterClipboard === "function" && nativeBinderBookChapterClipboard(runtime, event, cut)) return;
+  if (runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden &&
+      runtime.binder.reading.contains(event.composedPath?.()[0] || event.target)) return;
   if (!event.clipboardData || event.defaultPrevented || event.target.closest?.("input, textarea, select, [data-footnote-note]")) return;
   let manuscript = writingSelectionRange(runtime.paper);
   if (!cut && !manuscript && nativeWritingSourceQuote(runtime, event)) return;
@@ -9073,6 +13377,7 @@ async function copyWritingFragment(runtime, target) {
 }
 
 async function copyText(runtime) {
+  if (runtime.binder?.bookOverviewId) return copyBinderBookText(runtime);
   const target = clipboardTarget(runtime);
   if (!currentClipboardTarget(runtime, target)) return;
   const {range} = target;
@@ -9116,6 +13421,7 @@ function citedWritingClipboard(runtime) {
 }
 
 async function copyWritingWithFootnotes(runtime) {
+  if (runtime.binder?.bookOverviewId) return copyBinderBookText(runtime);
   const target = clipboardTarget(runtime);
   if (!currentClipboardTarget(runtime, target)) return;
   const {html, text} = citedWritingClipboard(runtime);
@@ -9165,6 +13471,7 @@ function styleWritingBlocks(runtime, range, tag) {
     const bookmark = writingHistoryBookmark(runtime, range);
     if (splitWritingStyleUnit(runtime, units[0], range, tag)) {
       restoreWritingHistoryBookmark(runtime, bookmark);
+      if (typeof applyWritingParagraphPreset === "function") applyWritingParagraphPreset(runtime, tag);
       return true;
     }
   }
@@ -9179,17 +13486,26 @@ function styleWritingBlocks(runtime, range, tag) {
     block.replaceWith(replacement);
     changed.set(block, replacement);
   }
-  if (!changed.size) return false;
+  if (!changed.size) return typeof applyWritingParagraphPreset === "function" && applyWritingParagraphPreset(runtime, tag, range);
   const updated = document.createRange();
   updated.setStart(changed.get(startContainer) || startContainer, startOffset);
   updated.setEnd(changed.get(endContainer) || endContainer, endOffset);
   restoreSelection(runtime, updated);
   if (backward) selection.setBaseAndExtent?.(updated.endContainer, endOffset, updated.startContainer, startOffset);
+  if (typeof applyWritingParagraphPreset === "function") applyWritingParagraphPreset(runtime, tag, updated);
   return true;
 }
 
 function formatText(runtime, command, value = null) {
+  if (runtime.binder?.bookOverviewId) {
+    formatBinderBookText(runtime, command, value);
+    return;
+  }
   if (runtime.paper.contentEditable !== "true" || runtime.composing) return;
+  if (command === "updateParagraphStyle" && !writingParagraphStylesAvailable(runtime)) {
+    status(runtime, "Save shared edits, then restart CARE Remote on the host Mac to enable shared paragraph styles.");
+    return;
+  }
   if (command === "undo" || command === "redo") {
     applyWritingHistory(runtime, command);
     return;
@@ -9200,6 +13516,14 @@ function formatText(runtime, command, value = null) {
   beginWritingEdit(runtime, "format", range);
   if (command === "formatBlock") {
     if (styleWritingBlocks(runtime, range, value)) markEdited(runtime, true);
+  } else if (command === "resetParagraphFont" || command === "updateParagraphStyle") {
+    const bookmark = writingHistoryBookmark(runtime, range);
+    const changed = command === "resetParagraphFont" ? resetWritingParagraphTypography(runtime, range) :
+      updateWritingParagraphStyle(runtime, range);
+    if (changed) {
+      restoreWritingHistoryBookmark(runtime, bookmark);
+      markEdited(runtime, true);
+    }
   } else if (command === "align" && paragraphAlignments.has(value)) {
     for (const block of writingParagraphUnits(runtime.paper, range)) block.style.textAlign = value;
     markEdited(runtime, true);
@@ -9213,6 +13537,160 @@ function formatText(runtime, command, value = null) {
     markEdited(runtime, true);
   }
   rememberSelection(runtime);
+}
+
+function rememberBinderBookFormatSelection(runtime) {
+  const focused = runtime.root.getRootNode().activeElement;
+  const field = focused?.closest?.('[contenteditable="true"], [contenteditable="plaintext-only"]');
+  if (field && runtime.binder.readingText.contains(field)) {
+    const selected = writingSelectionRange(field);
+    runtime.binder.bookClipboardField = field;
+    if (selected) runtime.binder.bookClipboardRange = selected.cloneRange();
+    if (!field.dataset.bookSection) {
+      runtime.binder.activeBookBody = null;
+      runtime.binder.bookRange = null;
+      return;
+    }
+  }
+  const body = typeof binderBookEditingTarget === "function" && binderBookEditingTarget(runtime);
+  if (!body) return;
+  const range = writingSelectionRange(body);
+  if (!range) return;
+  runtime.binder.bookRange = range.cloneRange();
+  const selection = selectionFor(body);
+  runtime.binder.bookRangeReversed = !range.collapsed && selection?.anchorNode === range.endContainer &&
+    selection.anchorOffset === range.endOffset;
+  // Read the same paragraph and typography state as a standalone Studio draft,
+  // without switching its active document or research/citation anchor.
+  const paragraph = writingLogicalParagraph(body, range.startContainer);
+  const units = range.collapsed ? [paragraph] : writingParagraphUnits(body, range);
+  const tags = [...runtime.format.options].map(option => option.value);
+  const tag = unit => tags.includes(unit?.localName) ? unit.localName : "p";
+  const alignment = unit => unit?.style.textAlign || "left";
+  const formatValue = tag(units[0]);
+  const alignValue = alignment(units[0]);
+  runtime.format.value = units.every(unit => tag(unit) === formatValue) ? formatValue : "";
+  if (runtime.alignment) runtime.alignment.value = units.every(unit => alignment(unit) === alignValue) ? alignValue : "";
+  const typography = range.collapsed ? [] : writingTextPortions(range).map(({node}) => writingTypographyAt(body, node));
+  const {font, size} = typography[0] || writingTypographyAt(body, range.startContainer);
+  if (runtime.fontFamily) runtime.fontFamily.value = typography.every(style => style.font === font) ? font : "";
+  if (runtime.fontSize) {
+    const consistent = typography.every(style => style.size === size);
+    runtime.fontSize.placeholder = consistent ? "Auto" : "Mixed";
+    runtime.fontSize.value = consistent ? size : "";
+  }
+  for (const button of runtime.root.querySelectorAll("[data-command][aria-pressed]")) {
+    const command = button.dataset.command;
+    const state = writingFormatState(body, range, command);
+    button.setAttribute("aria-pressed", String(state ?? Boolean(body.ownerDocument.queryCommandState?.(command))));
+  }
+  if (typeof paintWritingParagraphStyleMenu === "function") {
+    paintWritingParagraphStyleMenu(Object.assign(Object.create(runtime), {paper: body}));
+  }
+}
+
+function formatBinderBookText(runtime, command, value = null) {
+  if (["undo", "redo"].includes(command) && typeof binderBookQuoteHistoryCommand === "function" &&
+      binderBookQuoteHistoryCommand(runtime, command)) return;
+  if (["undo", "redo"].includes(command) && typeof binderBookChapterHistoryCommand === "function" &&
+      binderBookChapterHistoryCommand(runtime, command)) return;
+  const body = typeof binderBookEditingTarget === "function" && binderBookEditingTarget(runtime);
+  if (!body || body.contentEditable !== "true" || runtime.binder.bookComposing) return;
+  const active = writingSelectionRange(body);
+  const saved = rangeInPaper(body, active) ? active : runtime.binder.bookRange;
+  const editing = Object.assign(Object.create(runtime), {
+    paper: body, range: saved, rangeReversed: Boolean(runtime.binder.bookRangeReversed),
+    anchorId: topBlock(body, saved?.startContainer)?.dataset.blockId || "",
+  });
+  const range = restoreSelection(editing, saved?.cloneRange(), editing.rangeReversed);
+  let changed = false;
+  if (command === "formatBlock") changed = styleWritingBlocks(editing, range, value);
+  else if (command === "resetParagraphFont") changed = resetWritingParagraphTypography(editing, range);
+  else if (command === "updateParagraphStyle") {
+    const selected = selectedWritingParagraphStyle(editing, range);
+    if (!selected) return;
+    const bookmark = writingHistoryBookmark(editing, range);
+    for (const chapter of runtime.binder.readingText.querySelectorAll("[data-book-section]")) {
+      if (chapter.contentEditable !== "true") continue;
+      const chapterRuntime = Object.assign(Object.create(runtime), {paper: chapter});
+      if (setWritingParagraphStyle(chapterRuntime, selected.tag, selected.style)) markBinderBookChanged(runtime, chapter);
+    }
+    restoreWritingHistoryBookmark(editing, bookmark);
+    runtime.binder.bookRange = writingSelectionRange(body)?.cloneRange() || editing.range;
+    rememberBinderBookFormatSelection(runtime);
+    return;
+  }
+  else if (command === "align" && paragraphAlignments.has(value)) {
+    for (const block of writingParagraphUnits(body, range)) block.style.textAlign = value;
+    changed = true;
+  } else if (["fontFamily", "fontSize", "clearTypography"].includes(command)) {
+    changed = writingTypography(editing, range, command, value);
+  } else if (!range.collapsed && writingInlineMarks.has(command)) {
+    changed = styleWritingInline(editing, range, command);
+  } else if (styleSimpleWritingList(editing, range, writingListCommands[command])) changed = true;
+  else changed = Boolean(clipboardEdit(command, value));
+  if (!changed) return;
+  normalizeBlocks(body);
+  if (typeof preserveWritingParagraphStyles === "function") preserveWritingParagraphStyles(editing);
+  runtime.binder.bookRange = writingSelectionRange(body)?.cloneRange() || editing.range;
+  markBinderBookChanged(runtime, body);
+  rememberBinderBookFormatSelection(runtime);
+}
+
+function selectBinderBookBody(runtime) {
+  const field = runtime.binder.bookClipboardField;
+  return selectBinderBookChapter(runtime, field?.dataset.bookSection || field?.dataset.bookSectionTitle
+    ? field : runtime.binder.activeBookBody);
+}
+
+function binderBookClipboardTarget(runtime) {
+  rememberBinderBookFormatSelection(runtime);
+  const field = runtime.binder.bookClipboardField ||
+    (typeof binderBookEditingTarget === "function" && binderBookEditingTarget(runtime));
+  if (!field?.isConnected) return null;
+  const active = writingSelectionRange(field);
+  const saved = rangeInPaper(field, runtime.binder.bookClipboardRange) ? runtime.binder.bookClipboardRange : runtime.binder.bookRange;
+  return {field, range: active || (rangeInPaper(field, saved) ? saved : null), bookId: runtime.binder.bookOverviewId};
+}
+
+async function copyBinderBookText(runtime) {
+  if (typeof copyBinderBookChapterSelection === "function" && await copyBinderBookChapterSelection(runtime)) return;
+  const target = binderBookClipboardTarget(runtime);
+  if (!target) return;
+  const {field, range} = target;
+  const text = range && !range.collapsed ? range.toString() : field.innerText || field.textContent;
+  if (!text) return;
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    if (!field.isConnected || runtime.binder.bookOverviewId !== target.bookId) return;
+    restoreSelection(Object.assign(Object.create(runtime), {paper: field}), range);
+    clipboardEdit("copy");
+  }
+}
+
+async function pasteBinderBookFromMenu(runtime, providedText = null) {
+  if (typeof pasteBinderBookChapterSelection === "function" && await pasteBinderBookChapterSelection(runtime, providedText)) return;
+  const target = binderBookClipboardTarget(runtime);
+  if (!target) return;
+  let text = providedText;
+  try { if (text == null) text = await navigator.clipboard.readText(); }
+  catch {
+    status(runtime, "Press Paste with the insertion point in your Book.", true);
+    return;
+  }
+  const {field, range, bookId} = target;
+  if (!text || !field.isConnected || runtime.binder.bookOverviewId !== bookId ||
+      !["true", "plaintext-only"].includes(field.contentEditable)) return;
+  const editing = Object.assign(Object.create(runtime), {paper: field});
+  const insertion = restoreSelection(editing, range?.cloneRange());
+  if (!clipboardEdit("insertText", text)) {
+    insertion.deleteContents();
+    insertion.insertNode(field.ownerDocument.createTextNode(text));
+    insertion.collapse(false);
+    restoreSelection(editing, insertion);
+  }
+  if (field.dataset.bookSection) markBinderBookChanged(runtime, field);
+  else field.dispatchEvent(new Event("input", {bubbles: true}));
 }
 
 function writingElement(node) {
@@ -9306,6 +13784,7 @@ function tabInWriting(runtime, event) {
 }
 
 function selectWritingDocument(runtime) {
+  if (runtime.binder?.bookOverviewId) return selectBinderBookBody(runtime);
   const {paper} = runtime;
   if (paper.contentEditable !== "true") return;
   const well = runtime.a4?.well;
@@ -9337,6 +13816,13 @@ function selectWritingDocument(runtime) {
 }
 
 function writingSelectAllAtFocus(runtime, event, target) {
+  if (runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden) {
+    if (event.defaultPrevented || runtime.composing || runtime.composingFootnote ||
+        !runtime.root.isConnected || !selectBinderBookChapter(runtime, target)) return false;
+    event.preventDefault();
+    if (runtime.anchor) paintAnchor(runtime);
+    return true;
+  }
   if (event.defaultPrevented || !runtime.docId || !runtime.root.isConnected || runtime.composing ||
       runtime.composingFootnote || runtime.paper.contentEditable !== "true" ||
       !target || !runtime.paper.contains(target) ||
@@ -9390,7 +13876,7 @@ function writingPrimaryShortcut(event) {
 
 function writingSaveShortcut(runtime, event) {
   if (event.defaultPrevented || event.isComposing || runtime.composing || runtime.composingFootnote ||
-      !runtime.docId || !writingPrimaryShortcut(event) || event.altKey || event.shiftKey ||
+      (!runtime.docId && !runtime.binder?.bookOverviewId) || !writingPrimaryShortcut(event) || event.altKey || event.shiftKey ||
       String(event.key || "").toLowerCase() !== "s") return false;
   event.preventDefault();
   send(runtime, "save");
@@ -9399,7 +13885,7 @@ function writingSaveShortcut(runtime, event) {
 
 function writingFormatShortcut(runtime, event) {
   if (event.defaultPrevented || !writingPrimaryShortcut(event) || event.isComposing || runtime.composing ||
-      runtime.composingFootnote || runtime.paper.contentEditable !== "true") return false;
+      runtime.composingFootnote || (!runtime.binder?.bookOverviewId && runtime.paper.contentEditable !== "true")) return false;
   const key = String(event.key || "").toLowerCase();
   if (!event.altKey && !event.shiftKey && key === "a") {
     event.preventDefault();
@@ -9590,7 +14076,7 @@ function insertSourceQuotation(runtime, target, source) {
   const before = writingClipboardState(runtime);
   try {
     runtime.applyingClipboard = true;
-    const quotation = document.createTextNode("‘" + source.quote + "’");
+    const quotation = document.createTextNode(binderBookQuotedText(source.quote));
     range.deleteContents();
     range.insertNode(quotation);
     normalizeBlocks(runtime.paper, runtime.blocks);
@@ -9633,6 +14119,7 @@ function paste(runtime, event) {
 }
 
 async function pasteFromMenu(runtime) {
+  if (runtime.binder?.bookOverviewId) return pasteBinderBookFromMenu(runtime);
   const target = clipboardTarget(runtime);
   if (!currentClipboardTarget(runtime, target) || runtime.paper.contentEditable !== "true") return;
   let text = "", html = "", metadata = "", fragment = "";
@@ -9722,6 +14209,9 @@ function setup(root, api) {
   installWritingA4(runtime);
   installWritingSelection(runtime);
   installWritingSelectAll(runtime);
+  installBinderBookChapterSelection(runtime);
+  installWritingPasteMatch(runtime);
+  installLibrarianFind(runtime);
   installFootnoteMode(runtime);
   installFootnoteNotes(runtime);
   installFootnoteFocusReturn(runtime);
@@ -9882,13 +14372,17 @@ function setup(root, api) {
     event.preventDefault();
     const target = runtime.clipboardTarget;
     const text = runtime.clipboardField.value;
+    const matchStyle = runtime.clipboardMatchStyle;
     runtime.clipboardDialog.close();
-    if (target) insertClipboard(runtime, target, text);
+    if (target) {
+      if (matchStyle) insertWritingMatchStyle(runtime, target, text);
+      else insertClipboard(runtime, target, text);
+    }
   });
   on(runtime.clipboardField, "paste", event => {
     const clipboard = event.clipboardData;
     const target = runtime.clipboardTarget;
-    if (!clipboard || !target || runtime.clipboardField.readOnly) return;
+    if (!clipboard || !target || runtime.clipboardField.readOnly || runtime.clipboardMatchStyle) return;
     const source = studioClipboardSource(runtime,
       clipboard.getData("text/plain"), clipboard.getData("text/html"), clipboard.getData(studioSourceMime), clipboard.getData(studioFragmentMime));
     if (!source) return;
@@ -9900,6 +14394,7 @@ function setup(root, api) {
   on(runtime.clipboardDialog, "close", () => {
     const target = runtime.clipboardTarget;
     runtime.clipboardTarget = null;
+    runtime.clipboardMatchStyle = false;
     runtime.clipboardField.value = "";
     if (target && currentClipboardTarget(runtime, target) && !runtime.paper.matches(":focus")) {
       restoreSelection(runtime, target.range);
@@ -9933,9 +14428,22 @@ function setup(root, api) {
   on(window, "care-writing-file-command", event => {
     if (runtime.compact || !root.isConnected) return;
     const command = event.detail?.command;
+    if (command === "export" && runtime.binder?.bookOverviewId) {
+      const bookId = runtime.binder.bookOverviewId;
+      const prepare = () => {
+        const book = runtime.binder.contents.booksById.get(bookId);
+        if (!book) return;
+        binderBookAction(runtime, bookId, "book-export", {
+          document_revisions: Object.fromEntries(book.sections.map(section => [section.document_id, section.revision])),
+        });
+      };
+      if (!flushBinderBook(runtime, prepare)) prepare();
+      return;
+    }
     if (command === "copy") return void copyText(runtime);
     if (command === "copy-cited") return void copyWritingWithFootnotes(runtime);
     if (command === "paste") return void pasteFromMenu(runtime);
+    if (command === "paste-match-style") return void pasteWritingAndMatchStyle(runtime);
     if (command === "binder") return toggleWritingBinder(runtime);
     if (command === "select-drafts") return openWritingBinder(runtime);
     if (command === "select-draft" && typeof event.detail.target_id === "string" && runtime.binder) {
@@ -9952,7 +14460,20 @@ function setup(root, api) {
     if (command === "open-recent" && typeof event.detail.target_id === "string") {
       return send(runtime, "open", {target_id: event.detail.target_id});
     }
+    if (command === "open-recent-book" && typeof event.detail.target_id === "string") {
+      return send(runtime, "open-book", {target_id: event.detail.target_id});
+    }
     if (!["new", "files", "import", "save", "export", "peer-review-import", "open-care-reader", "remote-share", "remote-review-request", "remote-connect"].includes(command)) return;
+    const visibleBook = runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden &&
+      runtime.binder.contents.booksById.get(runtime.binder.bookOverviewId);
+    if (visibleBook && ["remote-share", "remote-review-request"].includes(command)) {
+      return send(runtime, "remote-send", {book_id: visibleBook.id, initial_mode: command === "remote-review-request" ? "reader" : "editor"});
+    }
+    if (visibleBook && command === "export") return prepareBinderBook(runtime, "book-export");
+    if (visibleBook && command === "open-care-reader") {
+      return visibleBook.shared ? send(runtime, "remote-send", {book_id: visibleBook.id, initial_mode: "reader"}) :
+        binderBookAction(runtime, visibleBook.id, "book-library");
+    }
     if (command === "new") {
       runtime.focusNewDraft = true;
       const folder = event.detail.folder_id;
@@ -10015,8 +14536,11 @@ function setup(root, api) {
     else if (!runtime.peerReview?.close()) togglePane(runtime, "research");
   });
   on(window, "beforeunload", event => {
-    if (!root.isConnected || !runtime.docId || (runtime.collaboration ? !writingSharedDirty(runtime.collaboration) :
-      same(capture(runtime), runtime.base))) return;
+    if (!root.isConnected) return;
+    const bookDirty = typeof binderBookDirty === "function" && binderBookDirty(runtime);
+    const draftDirty = runtime.docId && (runtime.collaboration ? writingSharedDirty(runtime.collaboration) :
+      !same(capture(runtime), runtime.base));
+    if (!bookDirty && !draftDirty) return;
     event.preventDefault();
     event.returnValue = "";
   });
@@ -10099,6 +14623,8 @@ function setup(root, api) {
       return;
     }
     if (writingSaveShortcut(runtime, event)) return;
+    const bookBody = typeof binderBookEditingTarget === "function" && binderBookEditingTarget(runtime);
+    if (bookBody?.contains(event.target) && writingFormatShortcut(runtime, event)) return;
     if (event.key === "Escape" && !event.isComposing) {
       if (runtime.compact && drawerToolsOpen()) {
         event.preventDefault();
@@ -10172,6 +14698,7 @@ function setup(root, api) {
     if (action === "paste") void pasteFromMenu(runtime);
     if (action === "clipboard-close") runtime.clipboardDialog.close();
     if (action === "scan-passage") scan(runtime, "passage");
+    if (action === "scan-chapter") scan(runtime, "chapter");
     if (action === "scan-draft") scan(runtime, "document");
     if (action === "scan-deeper") deepenWritingSearch(runtime);
     if (action === "focus") {
@@ -10192,9 +14719,16 @@ function setup(root, api) {
         restoreSelection(runtime, runtime.range, runtime.rangeReversed);
       }
     }
-    if (action === "collaborate") send(runtime, "remote-connect");
+    if (action === "collaborate") {
+      const book = runtime.binder?.bookOverviewId && !runtime.binder.reading.hidden &&
+        runtime.binder.contents.booksById.get(runtime.binder.bookOverviewId);
+      send(runtime, "remote-send", book ? {book_id: book.id} : {});
+    }
     if (action === "ribbon-find" && !requestWritingFind(runtime)) openWritingFind(runtime);
-    if (action === "ribbon-export") send(runtime, "export");
+    if (action === "ribbon-export") {
+      if (runtime.binder?.bookOverviewId) prepareBinderBook(runtime, "book-export");
+      else send(runtime, "export");
+    }
     if (action === "select-all-text") selectWritingDocument(runtime);
     if (action === "layout") {
       rememberSelection(runtime);
@@ -10256,6 +14790,9 @@ export default function(component) {
   if (!runtime) {
     runtime = setup(root, {setTriggerValue});
     runtime.compact = Boolean(data.compact);
+    installWritingToolbarControls(runtime);
+    installWritingResumeStack(runtime);
+    installWritingCompanionVisibility(runtime);
     installWritingFormatBar(runtime);
     installWritingFind(runtime);
     installWritingScrollViewport(runtime);
@@ -10271,6 +14808,7 @@ export default function(component) {
     } else {
       installOutline(runtime);
       installWritingBinder(runtime);
+      installWritingBookTabs(runtime);
       installWritingZoom(runtime);
       installWritingPeerReview(runtime);
       selectTab(runtime, "suggestions");
@@ -10336,8 +14874,10 @@ export default function(component) {
     scheduleSave(runtime);
   }
   const current = Boolean(incoming && incomingId);
-  if (!current) setWritingFullscreen(runtime, false);
-  runtime.writingFullscreenButton.hidden = !current || runtime.compact;
+  const manuscriptOpen = !data.compact && Boolean(data.initial_book || runtime.binder?.bookOverviewId);
+  const editableSurface = current || manuscriptOpen;
+  if (!editableSurface) setWritingFullscreen(runtime, false);
+  runtime.writingFullscreenButton.hidden = !editableSurface || runtime.compact;
   root.classList.toggle("no-document", !current);
   runtime.workspace.hidden = !current && runtime.compact;
   runtime.empty.hidden = current || !runtime.compact;
@@ -10349,13 +14889,13 @@ export default function(component) {
   const drawerTools = root.querySelector('[data-action="drawer-tools"]');
   drawerTools.hidden = !data.compact;
   const layout = root.querySelector('[data-action="layout"]');
-  if (layout) layout.hidden = Boolean(data.compact) || !current;
+  if (layout) layout.hidden = Boolean(data.compact) || !editableSurface;
   const drawerReading = runtime.compact && Boolean(data.library_dock?.route && data.library_dock.request);
   drawerTools.disabled = !current || drawerReading;
   if (drawerTools.disabled) drawerTools.setAttribute("aria-expanded", "false");
   for (const action of ["focus", "panel", "outline", "formatting", "copy", "paste", "save"]) {
     const button = root.querySelector(`[data-action="${action}"]`);
-    if (button) button.hidden = !current || drawerReading || (!runtime.compact && ["focus", "panel", "outline"].includes(action));
+    if (button) button.hidden = !editableSurface || drawerReading || (!runtime.compact && ["focus", "panel", "outline"].includes(action));
   }
   runtime.title.hidden = !current;
   const files = root.querySelector('[data-action="files"]');
@@ -10369,7 +14909,11 @@ export default function(component) {
   paintDocuments(runtime, data.documents || []);
   if (!runtime.compact) {
     runtime.showUnavailableArchive = data.show_unavailable_archive === true;
-    paintWritingBinder(runtime, data.documents || [], data.folders || [], data.trash || [], acknowledgement, data.archived || []);
+    paintWritingBinder(runtime, data.documents || [], data.folders || [], data.trash || [], acknowledgement,
+      data.archived || [], data.books || [], data.initial_book || "", data.editing_book || null);
+    updateWritingBookTabs(runtime, data);
+    paintWritingShareButton(runtime);
+    setNavigationLock(runtime, Boolean(runtime.navigationLocked));
   }
   const matchingSearch = matchingWritingSearchSettings(runtime, data.search_progress);
   runtime.suggestions = matchingSearch ? data.suggestions || [] : [];
@@ -10418,7 +14962,7 @@ export default function(component) {
     });
   }
   if (jumpToReference) requestAnimationFrame(() => jump(runtime, initialBlock, initialReference));
-  else if (modePosition || focusNewDraft || (changedDocument && current && !runtime.compact)) {
+  else if (!runtime.binder?.bookOverviewId && (modePosition || focusNewDraft || (changedDocument && current && !runtime.compact))) {
     requestAnimationFrame(() => {
       const well = runtime.a4?.well;
       if (modePosition && well && runtime.docId === incomingId && root.isConnected) {

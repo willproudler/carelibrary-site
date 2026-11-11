@@ -1,5 +1,7 @@
 """Studio Binder boundaries using HTTPS ASGI requests and disposable accounts."""
 from pathlib import Path
+from html import escape
+import json
 import sys
 import tempfile
 import unittest
@@ -138,3 +140,36 @@ class StudioBinderTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt; &amp; text", preview["html"])
         self.assertNotIn("<script", preview["html"])
         self.assertNotIn("<img", preview["html"])
+
+    async def test_heading_styles_survive_account_save_and_reload_without_untrusted_css(self):
+        styles = {"h2": {"font": "Georgia", "size": "18", "bold": True, "italic": False,
+                         "underline": True, "align": "left", "weight": "700"}}
+        encoded = escape(json.dumps(styles), quote=True)
+        body = (f'<h2 data-block-id="heading" data-writing-styles="{encoded}" '
+                'style="font-family: Georgia; font-size: 18pt; font-weight: 700; font-style: italic; '
+                'text-decoration-line: underline; background-image: url(https://example.test)">Heading</h2>'
+                f'<p data-block-id="prose" data-writing-styles="{encoded}">Writing remains.</p>')
+        draft = await self.draft("Styled draft", body, format="html", footnotes=[])
+        self.assertEqual(draft["body"].count("data-writing-styles="), 1)
+        for declaration in ("font-weight: 700", "font-style: italic", "text-decoration-line: underline"):
+            self.assertIn(declaration, draft["body"])
+        self.assertNotIn("background-image", draft["body"])
+        path = f"{DRAFTS}/{draft['id']}"
+        saved = await self.client.put(path, json={"account": OWNER, "title": draft["title"],
+            "body": draft["body"], "format": "html", "footnotes": [], "revision": draft["revision"]})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["draft"]["body"], draft["body"])
+        self.assertEqual((await self.client.get(path)).json()["draft"], saved.json()["draft"])
+
+    async def test_heading_presets_reject_unknown_properties_and_nested_registries(self):
+        style = {"font": "Georgia", "size": "18", "bold": True, "italic": False,
+                 "underline": False, "align": "left"}
+        from server.studio_drafts import draft_content
+        for invalid in ({"script": style}, {"h2": {**style, "css": "url(https://example.test)"}},
+                        {"h2": {**style, "bold": 1}}, {"h2": {**style, "size": "018"}},
+                        {"h2": {**style, "font": "var(--injected)"}}):
+            body = '<h2 data-writing-styles="' + escape(json.dumps(invalid), quote=True) + '">Heading</h2>'
+            self.assertNotIn("data-writing-styles", draft_content("Title", body, "html").body)
+        encoded = escape(json.dumps({"h2": style}), quote=True)
+        body = f'<div>Before<h2 data-writing-styles="{encoded}">Nested heading</h2></div>'
+        self.assertNotIn("data-writing-styles", draft_content("Title", body, "html").body)

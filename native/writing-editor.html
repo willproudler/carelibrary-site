@@ -148,9 +148,22 @@
                   <option value="h1">Heading 1</option>
                   <option value="h2">Heading 2</option>
                   <option value="h3">Heading 3</option>
+                  <option value="h4">Heading 4</option>
+                  <option value="h5">Heading 5</option>
+                  <option value="h6">Heading 6</option>
                   <option value="blockquote">Quotation</option>
                   <option value="pre">Preformatted</option>
                 </select>
+                <details class="paragraph-style-menu" data-paragraph-style-menu>
+                  <summary title="Paragraph style options" aria-label="Paragraph style options">
+                    <svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 5h12M4 10h8M4 15h5m5-4v6m-3-3h6"/></svg>
+                  </summary>
+                  <div class="paragraph-style-options">
+                    <button type="button" data-command="updateParagraphStyle">Update Paragraph to match selection</button>
+                    <button type="button" data-command="resetParagraphFont">Reset paragraphs to default font</button>
+                    <p>Styles are saved with this document and shared with collaborators.</p>
+                  </div>
+                </details>
               </div>
               <div class="format-group typography-group" data-format-min="36" aria-label="Typography" role="group">
                 <select data-font-family aria-label="Font family" title="Font family">
@@ -428,11 +441,11 @@
       </section>
       <div class="research-body" id="care-writing-search" data-suggestions tabindex="0" aria-label="Search the Library">
         <div class="history-kinds search-kinds" role="group" aria-label="Search source type">
-          <button type="button" data-search-kind="axiom" aria-pressed="true">Axioms</button>
-          <button type="button" data-search-kind="passage" aria-pressed="false">Passages</button>
+          <button type="button" data-search-kind="axiom" aria-pressed="true" title="Find ideas in saved CARE readings"><svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="m10 2.5 7 4v7l-7 4-7-4v-7l7-4Zm-7 4 7 4 7-4m-7 4v7"/></svg><span>Axioms</span></button>
+          <button type="button" data-search-kind="passage" aria-pressed="false" title="Find phrases in original source texts"><svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M4 3.5h12v13H4v-13ZM7 7h6m-6 3h6m-6 3h4"/></svg><span>Passages</span></button>
         </div>
         <details class="search-settings" data-search-settings>
-          <summary>Search settings <span data-search-setting-summary>Thorough · Whole library</span></summary>
+          <summary aria-label="Search settings" title="Refine search level and Library scope"><svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-5 1v4"/></svg><span class="find-settings-label">Refine</span><span data-search-setting-summary>Thorough · Whole library</span></summary>
           <div class="search-settings-fields">
             <label>Search level
               <select data-search-mode aria-label="Search level">
@@ -465,16 +478,16 @@
         </details>
         <form data-search-form>
           <input type="search" data-query aria-label="Search axioms by idea or ID" placeholder="Search by idea or axiom ID…" maxlength="500" autocomplete="off" aria-describedby="care-writing-search-hint">
-          <button type="submit" data-search-submit>Search</button>
+          <button type="submit" data-search-submit aria-label="Search the Library" title="Search the Library"><svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5"/><path d="m12.3 12.3 4.2 4.2"/></svg><span>Search</span></button>
         </form>
         <p class="search-id-hint" id="care-writing-search-hint" data-search-hint>Try an idea, a phrase or an exact ID such as CH_KCPI:A3.</p>
         <div class="scan-actions">
           <button type="button" data-action="scan-passage">Scan passage</button>
           <button type="button" data-action="scan-draft">Scan draft</button>
         </div>
-        <label class="live-suggestions"><input type="checkbox" data-live> Suggest as I write</label>
+        <label class="live-suggestions" title="Find Library connections as you write"><input type="checkbox" data-live><span>Live suggestions</span></label>
         <details class="draft-review" data-draft-review-pane>
-          <summary>After writing <span>Review a finished draft</span></summary>
+          <summary><svg class="icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3.5h10v13H5v-13ZM8 7h4m-4 3h4m-4 3h2m5-5 2 2-2 2"/></svg><strong>Review draft</strong><span>With a model</span></summary>
           <p class="draft-review-help">Reviews up to 12 sources from your citations and local search for support, possible challenges and gaps. Uses your API key; runs only when you request it.</p>
           <label class="draft-review-model">Review model
             <select data-draft-review-model aria-label="Model for the finished draft review"></select>
