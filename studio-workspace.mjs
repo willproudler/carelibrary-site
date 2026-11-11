@@ -69,6 +69,41 @@ export function studioLibraryFragment(destination) {
   return '#' + route.toString();
 }
 
+export function studioFootnoteFragment(source) {
+  if (!['axiom', 'passage'].includes(source?.kind) || typeof source.item_id !== 'string' || !source.item_id) return null;
+  const fragment = studioLibraryFragment(source.href);
+  if (!fragment) return null;
+  const route = new URLSearchParams(fragment.slice(1));
+  for (const key of ['ref', 'focus']) if (route.has(key) && route.get(key) !== source.item_id) return null;
+  // Older portable footnotes sometimes retained only the book route. Add its
+  // exact source address rather than opening the book at an unrelated place.
+  if (!route.has('ref') && !route.has('focus')) route.set(route.has('book') ? 'focus' : 'ref', source.item_id);
+  const root = ['book', 'field', 'lateral'].find(key => route.has(key));
+  const ordered = new URLSearchParams([[root, route.get(root)]]);
+  for (const [key, value] of route) if (key !== root) ordered.append(key, value);
+  return searchReadingHref('#' + ordered.toString(), source.item_id);
+}
+
+export async function resolveStudioFootnoteReading(draft, referenceId, {search = searchPublished} = {}) {
+  const source = draft.footnotes?.find(note => note.id === referenceId)?.source;
+  if (!['axiom', 'passage'].includes(source?.kind) || typeof source.item_id !== 'string' || !source.item_id) {
+    throw new Error('This footnote has no linked Library reading.');
+  }
+  const saved = studioFootnoteFragment(source);
+  if (saved) return {...source, href: saved};
+  // An explicit route may name a saved edition. Only ID-only citations may be
+  // recovered through the canonical published index.
+  if (typeof source.href === 'string' && source.href.trim()) {
+    throw new Error('This footnote’s saved Library route is unavailable. Its saved citation is still in your draft.');
+  }
+  const {results} = await search({query: source.item_id, kind: source.kind, mode: 'classic', limit: 8});
+  const found = results.find(row => row.item_id === source.item_id && row.kind === source.kind &&
+    (!source.work_id || row.work_id === source.work_id));
+  const fragment = found && studioFootnoteFragment(found);
+  if (!fragment) throw new Error('This footnote’s reading is not available in the published Library. Its saved citation is still in your draft.');
+  return {...found, href: fragment};
+}
+
 export function studioDraftApi(fetcher = globalThis.fetch) {
   async function request(account, method, id = '', payload) {
     const response = await fetcher(`${DRAFT_API}${id ? `/${encodeURIComponent(id)}` : ''}`, {
@@ -668,12 +703,13 @@ export function createStudioWorkspace({
   }
 
   function openLibraryReading(reading, destination) {
-    if (!reading) return;
+    if (!reading) throw new Error('This linked reading is no longer available. Search the Library to open it again.');
     const href = destination === 'route' ? reading.href : searchReadingHref(reading.href, reading.item_id);
     const fragment = studioLibraryFragment(href);
-    if (!fragment) return;
+    if (!fragment) throw new Error('This reading has no available Library route. Its saved citation is still in your draft.');
     libraryReading = {focus: {...reading, target_key: reading.item_id, route: {view: 'library'}, sheet_route: {view: 'library'}}};
     setLibraryDock(fragment, reading);
+    return true;
   }
 
   function openLibrary(destination = '') {
@@ -941,9 +977,12 @@ export function createStudioWorkspace({
           openLibraryReading(findLibraryReading(action.target_key), action.destination);
           break;
         case 'axiom-footnote':
-        case 'axiom-notes':
-          openLibraryReading(draft.footnotes?.find(note => note.id === action.reference_id)?.source);
+        case 'axiom-notes': {
+          const reading = await resolveStudioFootnoteReading(draft, action.reference_id);
+          if (state !== store || active !== draft || mounted !== editor) return;
+          openLibraryReading(reading);
           break;
+        }
         case 'compile':
         case 'binder': {
           const compile = action.type === 'compile';

@@ -1,9 +1,9 @@
 {
-  "version": "folio_96",
+  "version": "folio_97",
   "source": "care_platform/writing_editor_assets.py",
   "assets": {
     "writing-editor.html": "154179e1d2014340898423ca74583039f3698d1a394589bd8836969172ca33c6",
-    "writing-editor.css": "500991dd27384d99ca2c1eff0449c2559b94ad0ef8e29d696df1c467f6eed969",
-    "writing-editor.mjs": "977eae3e2839b3520f20a87f9727eff437d3e55e36e61a0e50d2fb5072c3e533"
+    "writing-editor.css": "a8abce184666078cb5fa270790fae2019f4794e44023147d3544b31b6a84cfd2",
+    "writing-editor.mjs": "0a1c4e5c6a3d36cf4c0264f3ec2b58abb7f19b1d525b91c0f002ff79cea1416f"
   }
 }

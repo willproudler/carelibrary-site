@@ -1022,7 +1022,7 @@ function bookPaginationFurniture(sheet, pages) {
   Object.assign(sheet.style, {position: "relative", isolation: "isolate", background: "transparent",
     borderColor: "transparent", boxShadow: "none"});
   Object.assign(pages.style, {position: "absolute", inset: "0 auto auto 0", insetInlineStart: "0px",
-    inlineSize: "100%", margin: "0px", padding: "0px", gap: "24px", zIndex: "0", pointerEvents: "none"});
+    inlineSize: "100%", margin: "0px", padding: "0px", gap: "24px", zIndex: "auto", pointerEvents: "none"});
   for (const child of sheet.children) if (child !== pages) {
     child.style.position = "relative"; child.style.zIndex = "1";
   }
@@ -1060,6 +1060,9 @@ function bookPaginationProbe(runtime, sheet, units) {
     wrapper.style.marginBlockStart = `${Math.max(0, (bounds.top - previous) / scale)}px`;
     previous = bounds.bottom;
     const copy = bookPaginationClean(unit.node);
+    for (const marker of copy.querySelectorAll("[data-writing-footnote]")) {
+      marker.dataset.writingFootnote = JSON.stringify([unit.section, marker.dataset.writingFootnote]);
+    }
     bookPaginationCopyTypography(unit.node, copy);
     copy.style.marginBlockStart = "0px"; copy.style.marginBlockEnd = "0px";
     const originals = [unit.node, ...unit.node.querySelectorAll("h1,h2,h3,h4,h5,h6")];
@@ -1074,7 +1077,11 @@ function bookPaginationProbe(runtime, sheet, units) {
   for (const identity of sections) {
     const editor = typeof binderBookCitationEditor === "function" && binderBookCitationEditor(runtime, identity);
     for (const row of editor?.footnoteList?.children || []) {
-      const copy = row.cloneNode(true); copy.dataset.bookPaginationSection = identity; list.append(copy);
+      const copy = row.cloneNode(true);
+      copy.dataset.bookPaginationSection = identity;
+      copy.dataset.bookPaginationReference = row.dataset.footnoteId;
+      copy.dataset.footnoteId = JSON.stringify([identity, row.dataset.footnoteId]);
+      list.append(copy);
     }
   }
   const footnotes = element("aside"); footnotes.dataset.mode = mode;
@@ -1083,6 +1090,12 @@ function bookPaginationProbe(runtime, sheet, units) {
     a4: {active: true, pages, stage, well: {scrollTop: 0, getBoundingClientRect: () => stage.getBoundingClientRect()},
       scale, signature: null, layoutNodes: [], followCaret: false}});
   return {proxy, stage, pages, units, scale};
+}
+
+function bookPaginationRestoreFootnoteIdentities(pages) {
+  for (const row of pages.querySelectorAll("[data-book-pagination-reference]")) {
+    row.dataset.footnoteId = row.dataset.bookPaginationReference;
+  }
 }
 
 function bookPaginationTurns(probe) {
@@ -1184,6 +1197,7 @@ function paintBookPagination(runtime, state) {
       const probe = bookPaginationProbe(runtime, sheet, units);
       try {
         paintWritingA4(probe.proxy);
+        bookPaginationRestoreFootnoteIdentities(probe.pages);
         const count = probe.pages.children.length;
         if (!count) continue;
         const map = bookPaginationPageMap(probe), turns = bookPaginationTurns(probe);
@@ -1235,6 +1249,7 @@ function paintBookPagination(runtime, state) {
     if (typeof status === "function") status(runtime, "CARE could not lay out the Book pages. Your chapter text is still here.", true);
   } finally {
     observeBookPagination(runtime, state);
+    if (typeof revealBinderBookFootnote === "function") revealBinderBookFootnote(runtime);
   }
 }
 
@@ -1259,14 +1274,7 @@ function refreshBookPagination(runtime) {
     const fonts = binder.reading.ownerDocument.fonts;
     fonts?.ready.then(() => { if (!signal?.aborted) force(); });
     fonts?.addEventListener?.("loadingdone", force, {signal});
-    const openFootnote = event => {
-      const link = event.target.closest?.("[data-open-printed-footnote]");
-      const section = link?.closest?.("[data-book-pagination-section]")?.dataset.bookPaginationSection;
-      if (section && link.closest("[data-book-pagination-pages]")) {
-        if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
-        event.preventDefault(); event.stopPropagation(); openBinderBookCitation(runtime, section, link.dataset.openPrintedFootnote);
-      }
-    };
+    const openFootnote = event => typeof handleBinderBookFootnoteEvent === "function" && handleBinderBookFootnoteEvent(runtime, event);
     binder.readingText.addEventListener("click", openFootnote, {capture: true, signal});
     binder.readingText.addEventListener("keydown", openFootnote, {capture: true, signal});
     signal?.addEventListener("abort", () => {
@@ -2327,13 +2335,112 @@ function binderBookCitationEditor(runtime, sectionId = "") {
 function openBinderBookCitation(runtime, sectionId, referenceId) {
   const context = binderBookCitationContext(runtime, sectionId);
   const editor = binderBookCitationEditor(runtime, sectionId);
-  if (!context || !editor?.references.some(reference => reference.id === referenceId)) return;
+  if (!context || !editor?.references.some(reference => reference.id === referenceId && reference.target.kind !== "manual")) return;
+  const bookId = context.book.id, scope = context.book._remote_scope, documentId = context.section.document_id;
   runtime.binder.activeBookBody = context.body;
   const perform = () => {
     const saved = binderBookCitationContext(runtime, sectionId);
-    if (saved) send(runtime, "axiom-footnote", {reference_id: referenceId, ...binderBookCitationFields(saved)});
+    const references = saved && binderBookCitationEditor(runtime, sectionId)?.references;
+    if (saved?.book.id === bookId && saved.book._remote_scope === scope &&
+        saved.section.document_id === documentId && references?.some(reference => reference.id === referenceId)) {
+      send(runtime, "axiom-footnote", {reference_id: referenceId, ...binderBookCitationFields(saved)});
+    }
   };
   if (!flushBinderBook(runtime, perform)) perform();
+}
+
+function binderBookPrintedFootnote(runtime, sectionId, referenceId) {
+  const binder = runtime.binder;
+  // Physical footnotes are clones outside each editable source body. Their
+  // section identity matters: copied chapters can retain the same reference ID.
+  const printed = [...(binder.readingText?.querySelectorAll("[data-book-pagination-section]") || [])]
+    .find(row => row.dataset.bookPaginationSection === sectionId && row.dataset.footnoteId === referenceId &&
+      row.closest("[data-book-pagination-pages]"));
+  if (printed) return printed;
+  if (binder.reading.classList?.contains("book-pagination-live")) return null;
+  const editor = binderBookCitationEditor(runtime, sectionId);
+  return !editor?.footnotes.hidden && [...(editor?.footnoteList.children || [])]
+    .find(row => row.dataset.footnoteId === referenceId) || null;
+}
+
+function revealBinderBookFootnote(runtime) {
+  const binder = runtime.binder, request = binder.bookFootnoteJump;
+  if (!request) return false;
+  const context = binderBookCitationContext(runtime, request.sectionId);
+  if (!context || context.book.id !== request.bookId || context.book._remote_scope !== request.scope ||
+      context.section.document_id !== request.documentId) {
+    binder.bookFootnoteJump = null; return false;
+  }
+  const row = binderBookPrintedFootnote(runtime, request.sectionId, request.referenceId);
+  if (!row) return false;
+  binder.bookFootnoteJump = null;
+  const target = row.querySelector("[data-open-printed-footnote]") || row.querySelector("[data-footnote-note]") || row;
+  const well = runtime.a4?.well;
+  if (well?.getBoundingClientRect) {
+    const top = Math.max(0, well.scrollTop + row.getBoundingClientRect().top - well.getBoundingClientRect().top - 32);
+    if (well.scrollTo) well.scrollTo(0, top); else well.scrollTop = top;
+  } else row.scrollIntoView?.({block: "center", inline: "nearest", behavior: "auto"});
+  target.focus?.({preventScroll: true});
+  return true;
+}
+
+function jumpToBinderBookFootnote(runtime, sectionId, referenceId) {
+  const context = binderBookCitationContext(runtime, sectionId);
+  if (!context || !binderBookCitationEditor(runtime, sectionId)?.references.some(reference => reference.id === referenceId)) return;
+  runtime.binder.activeBookBody = context.body;
+  runtime.binder.bookFootnoteJump = {bookId: context.book.id, scope: context.book._remote_scope,
+    documentId: context.section.document_id, sectionId, referenceId};
+  if (!revealBinderBookFootnote(runtime) && typeof refreshBookPagination === "function") refreshBookPagination(runtime);
+}
+
+function binderBookFootnoteSelected(node) {
+  const root = node.getRootNode?.(), doc = node.ownerDocument;
+  const selection = root?.getSelection?.() || doc?.getSelection?.() || doc?.defaultView?.getSelection?.();
+  if (!selection || selection.isCollapsed !== false) return false;
+  if (node.contains(selection.anchorNode) || node.contains(selection.focusNode)) return true;
+  try { return Boolean(selection.rangeCount && selection.getRangeAt(0).intersectsNode(node)); }
+  catch { return false; }
+}
+
+function handleBinderBookFootnoteEvent(runtime, event) {
+  const target = event.target?.closest ? event.target : event.target?.parentElement;
+  const printed = target?.closest("[data-open-printed-footnote]");
+  const marker = target?.closest("[data-writing-footnote]");
+  if (!printed && !marker) return false;
+  const node = printed || marker;
+  const source = node.closest("[data-book-pagination-section], [data-book-citation-section], [data-book-section]");
+  const sectionId = source?.dataset.bookPaginationSection || source?.dataset.bookCitationSection || source?.dataset.bookSection;
+  if (!sectionId) return false;
+  // Claim stale Book nodes too, so they can never fall through to the hidden
+  // standalone draft's footnote handlers.
+  const context = binderBookCitationContext(runtime, sectionId);
+  if (!context || node.closest("[data-book-pagination-probe]")) return true;
+  const editor = binderBookCitationEditor(runtime, sectionId);
+  const referenceId = printed?.dataset.openPrintedFootnote || marker?.dataset.writingFootnote;
+  const reference = editor?.references.find(reference => reference.id === referenceId);
+  if (!reference || source.dataset.bookSection && source !== context.body ||
+      source.dataset.bookCitationSection && source !== editor.footnotes ||
+      source.dataset.bookPaginationSection && (!node.closest("[data-book-pagination-pages]") ||
+        !runtime.binder.readingText?.contains(source))) return true;
+  if (event.type === "keydown" && !["Enter", " "].includes(event.key)) {
+    return !(event.key === "Escape" || (event.metaKey || event.ctrlKey) && String(event.key).toLowerCase() === "s");
+  }
+  if (event.defaultPrevented || event.isComposing || event.altKey || event.shiftKey ||
+      target.closest("[data-footnote-note], input, textarea, select") ||
+      event.type === "click" && (event.detail > 1 || binderBookFootnoteSelected(node))) return true;
+  event.preventDefault(); event.stopPropagation();
+  if (printed || reference.target.kind !== "manual" && (event.metaKey || event.ctrlKey)) openBinderBookCitation(runtime, sectionId, referenceId);
+  else jumpToBinderBookFootnote(runtime, sectionId, referenceId);
+  return true;
+}
+
+function paintBinderBookFootnoteNavigation(editor) {
+  for (const marker of editor.paper.querySelectorAll("[data-writing-footnote]")) {
+    marker.tabIndex = -1;
+    marker.removeAttribute("role");
+    marker.setAttribute("aria-label", `Go to footnote ${marker.dataset.footnoteNumber}`);
+    marker.title = "Go to footnote · ⌘-click to open reference · Option-drag to move";
+  }
 }
 
 function paintBinderBookReferences(runtime) {
@@ -2366,7 +2473,7 @@ function observeBinderBookCitationMode(runtime) {
   const observer = new MutationObserver(() => {
     for (const [sectionId] of binder.bookCitations || []) {
       const editor = binderBookCitationEditor(runtime, sectionId);
-      if (editor) paintFootnotes(editor);
+      if (editor) { paintFootnotes(editor); paintBinderBookFootnoteNavigation(editor); }
     }
   });
   observer.observe(runtime.footnotes, {attributes: true, attributeFilter: ["data-mode"]});
@@ -2375,25 +2482,7 @@ function observeBinderBookCitationMode(runtime) {
 }
 
 function installBinderBookCitationEvents(runtime, sectionId, body, footnotes) {
-  const open = event => {
-    const printed = event.target.closest?.("[data-open-printed-footnote]");
-    const marker = event.target.closest?.("[data-writing-footnote]");
-    if (!printed && !marker) return;
-    if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
-    event.stopPropagation();
-    const identity = printed?.dataset.openPrintedFootnote || marker?.dataset.writingFootnote;
-    const activate = printed || event.metaKey || event.ctrlKey || event.detail === 0 ||
-      event.type === "keydown" && ["Enter", " "].includes(event.key);
-    if (activate) {
-      event.preventDefault(); openBinderBookCitation(runtime, sectionId, identity);
-    } else if (marker && event.detail === 1 && !event.altKey && !event.shiftKey) {
-      const editor = binderBookCitationEditor(runtime, sectionId);
-      if (!editor) return;
-      const range = footnoteBoundary(marker, true);
-      restoreSelection(editor, range);
-      runtime.binder.activeBookBody = body; runtime.binder.bookRange = range.cloneRange();
-    }
-  };
+  const open = event => handleBinderBookFootnoteEvent(runtime, event);
   for (const node of [body, footnotes]) {
     node.addEventListener("click", open, {capture: true});
     node.addEventListener("keydown", open, {capture: true});
@@ -2458,7 +2547,7 @@ function paintBinderBookCitations(runtime, book, section, saved, body, sheet) {
     for (const identity of state.removed) if (!savedIds.has(identity)) state.removed.delete(identity);
   }
   const editor = binderBookCitationEditor(runtime, section.id);
-  if (editor) paintFootnotes(editor);
+  if (editor) { paintFootnotes(editor); paintBinderBookFootnoteNavigation(editor); }
   observeBinderBookCitationMode(runtime);
   if (binder.activeBookBody === body) paintBinderBookReferences(runtime);
 }
@@ -4861,6 +4950,9 @@ function paintBinderBook(runtime) {
       if (runtime.anchor && typeof paintAnchor === "function") paintAnchor(runtime);
     };
     body.addEventListener("focusin", rememberBookPassage);
+    body.addEventListener("keydown", event => {
+      if (typeof tabInBinderBook === "function") tabInBinderBook(runtime, body, event);
+    });
     body.addEventListener("paste", event => {
       if (typeof pasteBinderBookSourceQuote === "function" && pasteBinderBookSourceQuote(runtime, body, event)) return;
       const clipboard = event.clipboardData;
@@ -12535,6 +12627,9 @@ function paintFootnotes(runtime) {
     if (marker) numberFootnote(marker, reference, index);
     if (!marker || move) anchor.insertNode(marker || footnoteMarker(reference, index));
   }
+  if (runtime.bookCitationOwner && typeof paintBinderBookFootnoteNavigation === "function") {
+    paintBinderBookFootnoteNavigation(runtime);
+  }
   if (attached.some(note => note.move)) scheduleSave(runtime);
   const mode = runtime.footnotes.dataset.mode || "citation";
   const styled = notes.map(({reference, anchor}, index) => ({
@@ -13724,7 +13819,11 @@ function moveWritingListItem(item, outdent) {
   return true;
 }
 
-function tabInWriting(runtime, event) {
+function tabInWriting(runtime, event, {
+  begin = range => beginWritingEdit(runtime, "indent", range),
+  changed = () => markEdited(runtime, true),
+  remember = () => rememberSelection(runtime),
+} = {}) {
   if (event.key !== "Tab" || event.altKey || event.metaKey || event.ctrlKey ||
       event.isComposing || runtime.composing || runtime.paper.contentEditable !== "true") return false;
   const {paper} = runtime;
@@ -13742,21 +13841,21 @@ function tabInWriting(runtime, event) {
     caret.selectNodeContents(next);
     caret.collapse(true);
     restoreSelection(runtime, caret);
-    rememberSelection(runtime);
+    remember();
     next.scrollIntoView({block: "nearest"});
     return true;
   }
   const item = start.closest("li");
   if (item && range.collapsed) {
     const {startContainer, startOffset} = range;
-    beginWritingEdit(runtime, "indent", range);
+    begin(range);
     if (moveWritingListItem(item, event.shiftKey)) {
       event.preventDefault();
       const caret = document.createRange();
       caret.setStart(startContainer, startOffset);
       caret.collapse(true);
       restoreSelection(runtime, caret);
-      markEdited(runtime, true);
+      changed();
       return true;
     }
   }
@@ -13765,22 +13864,47 @@ function tabInWriting(runtime, event) {
     const first = block && pointAtOffset(block, 0)?.[0];
     if (first?.nodeType !== Node.TEXT_NODE || !first.data.startsWith("\t")) return false;
     event.preventDefault();
-    beginWritingEdit(runtime, "indent", range);
+    begin(range);
     first.deleteData(0, 1);
     restoreSelection(runtime, range);
-    markEdited(runtime, true);
+    changed();
     return true;
   }
   event.preventDefault();
-  beginWritingEdit(runtime, "indent", range);
+  begin(range);
   range.deleteContents();
   const tab = document.createTextNode("\t");
   range.insertNode(tab);
   range.setStartAfter(tab);
   range.collapse(true);
   restoreSelection(runtime, range);
-  markEdited(runtime, true);
+  changed();
   return true;
+}
+
+function tabInBinderBook(runtime, body, event) {
+  const binder = runtime.binder;
+  if (event.defaultPrevented || event.key !== "Tab" || binder?.locked || binder?.bookComposing ||
+      body.contentEditable !== "true" || typeof binderBookCitationContext !== "function") return false;
+  const context = binderBookCitationContext(runtime, body.dataset.bookSection);
+  if (!context || context.body !== body) return false;
+  const editing = Object.assign(Object.create(runtime), {paper: body, composing: binder.bookComposing, editHistory: null});
+  let before;
+  const remember = () => {
+    binder.activeBookBody = body;
+    binder.bookRange = writingSelectionRange(body)?.cloneRange() || binder.bookRange;
+  };
+  return tabInWriting(editing, event, {
+    begin: () => { before ||= binderBookQuoteSnapshot(runtime, context); },
+    remember,
+    changed: () => {
+      remember();
+      markBinderBookChanged(runtime, body);
+      binder.bookQuoteHistory = {bookId: context.book.id, sectionId: context.section.id,
+        documentId: context.section.document_id, before, after: binderBookQuoteSnapshot(runtime, context), applied: true};
+      binder.chapterHistory = null;
+    },
+  });
 }
 
 function selectWritingDocument(runtime) {
@@ -14603,6 +14727,8 @@ function setup(root, api) {
     if (event.target.closest('[data-command], [data-link-passage], [data-action="manual-footnote"]')) event.preventDefault();
   });
   on(root, "keydown", event => {
+    if (typeof handleBinderBookFootnoteEvent === "function" &&
+        handleBinderBookFootnoteEvent(runtime, event)) return;
     if (runtime.clipboardDialog.contains(event.target)) return;
     if (runtime.compact && event.target === runtime.select && event.key === "Escape") return;
     const printed = event.target.closest(printedFootnoteSelector);
@@ -14655,6 +14781,8 @@ function setup(root, api) {
     }
   });
   on(root, "click", event => {
+    if (typeof handleBinderBookFootnoteEvent === "function" &&
+        handleBinderBookFootnoteEvent(runtime, event)) return;
     const pageNote = event.target.closest(printedFootnoteSelector);
     if (pageNote) {
       if (!selectedPrintedFootnotes(runtime).includes(pageNote.dataset.openPrintedFootnote)) {

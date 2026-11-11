@@ -2710,7 +2710,7 @@ a { color: var(--accent); }
   font-variant-numeric: tabular-nums;
   vertical-align: super;
   white-space: nowrap;
-  cursor: text;
+  cursor: pointer;
 }
 .binder-book-chapter-text .footnote-marker::before { content: "\2060"; }
 .binder-book-chapter-text .footnote-marker:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
@@ -3506,7 +3506,9 @@ a { color: var(--accent); }
 .book-paginated-sheet > :not([data-book-pagination-pages]) { position: relative; z-index: 1; }
 .book-pagination-pages {
   position: absolute;
-  z-index: 0;
+  /* Keep note controls in the isolated sheet's stacking context so they sit
+     above the editable body's blank page gaps, as ordinary A4 notes do. */
+  z-index: auto;
   inset: 0 auto auto 0;
   inline-size: var(--book-page-width);
   margin: 0;

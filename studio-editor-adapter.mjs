@@ -24,12 +24,13 @@ export function filterBetaStudioControls(root) {
 
 function installBetaStudioCapabilities(root) {
   if (adapters.has(root)) return adapters.get(root);
-  root.setAttribute('data-beta-studio', '');
+  const host = root.host || root;
+  host.setAttribute('data-beta-studio', '');
   const Observer = root.ownerDocument?.defaultView?.MutationObserver || globalThis.MutationObserver;
   const observer = Observer ? new Observer(() => filterBetaStudioControls(root)) : null;
   filterBetaStudioControls(root);
   observer?.observe(root, {childList: true, subtree: true});
-  const close = () => { observer?.disconnect(); root.removeAttribute('data-beta-studio'); adapters.delete(root); };
+  const close = () => { observer?.disconnect(); host.removeAttribute('data-beta-studio'); adapters.delete(root); };
   adapters.set(root, close);
   return close;
 }
