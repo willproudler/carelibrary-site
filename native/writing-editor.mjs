@@ -8616,7 +8616,8 @@ function installWritingResumeStack(runtime) {
     if (numo) {
       owner.careNumoResume = numo;
       owner.careNumoFocusResume = numoFocus = () => focusResume(candidate);
-      retain(numo); iconButton(numo, writingResumeNumogramIcon, 'Resume NUMO');
+      retain(numo); iconButton(numo, writingResumeNumogramIcon,
+        owner.careNumoDockState?.mode === 'minimized' ? 'Resume NUMO' : 'Open NUMO');
     }
     watchControls(); paint();
   }
@@ -10290,9 +10291,9 @@ function setLibraryExpanded(runtime, expanded) {
 function updateLibraryDockVisibility(runtime) {
   const hasLibrary = Boolean(runtime.libraryRequest);
   const minimized = hasLibrary && Boolean(runtime.libraryMinimized);
-  const open = hasLibrary && !minimized && !runtime.writingFullscreen;
+  const open = hasLibrary && !minimized;
   runtime.libraryDock.hidden = !hasLibrary;
-  runtime.libraryDock.inert = minimized || Boolean(runtime.writingFullscreen);
+  runtime.libraryDock.inert = minimized;
   runtime.root.classList.toggle("library-open", open);
   runtime.root.classList.toggle("library-minimized", minimized);
   if (runtime.libraryResume) runtime.libraryResume.hidden = !minimized;
@@ -10334,6 +10335,21 @@ function setWritingFullscreen(runtime, active) {
     runtime.a4.signature = null;
     refreshWritingA4(runtime, true);
   }
+}
+
+function minimizeWritingFullscreenCompanion(runtime) {
+  if (!runtime.writingFullscreen) return false;
+  if (runtime.libraryRequest && !runtime.libraryMinimized) {
+    if (runtime.libraryExpanded) setLibraryExpanded(runtime, false)?.focus({preventScroll: true});
+    else setLibraryMinimized(runtime, true);
+    return true;
+  }
+  const doc = runtime.root.ownerDocument;
+  if (doc.querySelector?.('.care-numo-companion')?.careNumoDockState?.mode === 'open') {
+    doc.dispatchEvent(new doc.defaultView.CustomEvent('care:numogram-companion-minimize'));
+    return true;
+  }
+  return false;
 }
 
 function setLibraryMinimized(runtime, minimized) {
@@ -10527,7 +10543,6 @@ function paintLibraryDock(runtime, dock) {
     return;
   }
   if (runtime.libraryRequest === dock.request) return;
-  setWritingFullscreen(runtime, false);
   runtime.libraryRequest = dock.request;
   runtime.libraryReportedWorkId = "";
   runtime.libraryMinimized = false;
@@ -14647,6 +14662,7 @@ function setup(root, api) {
     if (event.defaultPrevented || event.key !== "Escape" || event.isComposing ||
         runtime.compact || !root.isConnected || runtime.clipboardDialog.open || document.querySelector('[role="dialog"]')) return;
     event.preventDefault();
+    if (minimizeWritingFullscreenCompanion(runtime)) return;
     if (runtime.writingFullscreen && runtime.panel.hidden && !runtime.peerReview?.close()) {
       setWritingFullscreen(runtime, false);
       runtime.writingFullscreenButton.focus({preventScroll: true});

@@ -18,15 +18,16 @@ favicon.ico favicon.svg index.html landing.mjs legacy-landing.mjs
 library-boot.mjs library-core.mjs library-loader.mjs library-sort.mjs
 library.css library.html llms.txt login.html login.mjs public-app.css public-app.mjs
 native-draft-reader.mjs
+seo-shell.css seo-shell.mjs
 numo-header-skin.css public-fields.mjs public-library.mjs public-reader-adapter.mjs quick-start.pdf
 reading-workspace.mjs request-access.html request-access.mjs resource-loader.mjs
-robots.txt saved-library.mjs saved-translations.mjs site.js site.webmanifest
+robots.txt research-index.json saved-library.mjs saved-translations.mjs site.js site.webmanifest
 site-settings.html site-settings.mjs
 studio-workspace.css studio-workspace.mjs studio-editor-adapter.mjs study-sets.css study-sets.mjs
 sitemap.xml styles.css welcome.html
 ui-fonts-ofl.txt ui-icons-apache.txt web-workspace.css web-workspace.mjs
 """.split()
-ASSET_DIRECTORIES = ("assets", "data", "native")
+ASSET_DIRECTORIES = ("assets", "data", "native", "numogram", "books")
 ASSET_EXTENSIONS = {
     ".html", ".css", ".mjs", ".js", ".json", ".jsonpart", ".svg", ".ico",
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".woff", ".woff2", ".ttf", ".otf",
@@ -75,22 +76,36 @@ def stamp_browser_modules(destination: Path) -> None:
             digest.update(path.read_bytes())
     version = digest.hexdigest()[:16]
     pattern = re.compile(r"(?P<quote>['\"`])(?P<url>(?:\.{0,2}/)?[A-Za-z0-9_./-]+\.(?:mjs|js|css))(?:\?v=[A-Za-z0-9_.-]+)?(?P=quote)")
-    for name in ROOT_FILES:
-        path = destination / name
+    for path in destination.rglob("*"):
+        if not path.is_file():
+            continue
         if path.suffix not in {".html", ".mjs", ".js", ".css"}:
             continue
         def replace(match):
             url = match['url']
-            target = (destination / url.lstrip('/')).resolve()
+            target = ((destination / url.lstrip('/')) if url.startswith('/') else path.parent / url).resolve()
             if not target.is_relative_to(destination) or not target.is_file():
                 return match.group(0)
             return f"{match['quote']}{url}?v={version}{match['quote']}"
         path.write_text(pattern.sub(replace, path.read_text()))
 
 
+def build_search_pages(source: Path) -> None:
+    # The builder is also loaded with importlib by release-boundary tests.
+    # Resolve helper modules from this maintained tools directory in either mode.
+    tools = str(Path(__file__).resolve().parent)
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    from search_index import build as build_search_index
+    from ai_discovery import build as build_ai_discovery
+    build_search_index(source)
+    build_ai_discovery(source)
+
+
 def build(source: Path) -> Path:
     source = source.resolve(strict=True)
     destination = source / "dist"
+    build_search_pages(source)
     copy_browser_files(source, destination)
     # These builders verify the existing public export, not the private library.
     subprocess.run([sys.executable, str(source / "tools/optimise-covers.py"), str(destination)], check=True)

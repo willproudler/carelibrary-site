@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {createPublicAssetPlan} from '../tools/build-public-assets.mjs';
-import {createLibraryLoader,fetchPublicJSON,loadLibrary} from '../library-loader.mjs';
+import {createLibraryLoader,fetchPublicJSON,loadLibrary,projectPublicCovers} from '../library-loader.mjs';
 import {indexLibrary} from '../library-core.mjs';
 
 const work=(id,slug)=>({id,slug,title:slug,author:'Author',sources:[{id:`${id}-source`,title:'Source',order:1,text:'Complete source',chapter_id:`${id}-chapter`,paragraphs:[{id:`${id}-passage`,text:'A saved passage.'}]}],units:[{id:`${id}-chapter`,title:'Chapter',layer:'CH',order:1,parents:[],sections:[{name:'Claims',items:[{id:`${id}-claim`,text:'A recorded claim.',refs:[`${id}-passage`]}]}]}]});
@@ -60,7 +60,7 @@ test('transient requests retry; absent files and malformed data fail clearly',as
 test('catalogue requests revalidate while immutable reading chunks can be reused',async()=>{
   const h=harness(),calls=[];
   const loader=await loadLibrary({baseURL:'https://carelibrary.org/library-loader.mjs',fetch:async(url,options)=>{calls.push([String(url),options.cache]);return {ok:true,json:async()=>h.catalog};}});
-  assert.equal(calls[0][0],'https://carelibrary.org/data/catalogue.json');assert.equal(calls[0][1],'no-cache');assert.equal(loader.data,h.catalog);
+  assert.equal(calls[0][0],'https://carelibrary.org/data/catalogue.json');assert.equal(calls[0][1],'no-cache');assert.deepEqual(loader.data,h.catalog);assert.notEqual(loader.data,h.catalog);
 });
 
 test('asset generation rejects incomplete and cross-book references instead of shipping broken routes',()=>{
@@ -80,4 +80,35 @@ test('release delivery files preserve every canonical book and remain under the 
     assert.equal(Buffer.byteLength(content),descriptor.bytes);
     indexLibrary({works:[work]});
   }
+});
+
+
+test('field JSON assets stay rooted at the published app from semantic search URLs',async()=>{
+ let requested;
+ await fetchPublicJSON('./data/fields/saved.json',{baseURL:'https://carelibrary.org/library-loader.mjs',
+  fetch:async(url)=>{requested=String(url);return {ok:true,json:async()=>({saved:true})};}});
+ assert.equal(requested,'https://carelibrary.org/data/fields/saved.json');
+});
+
+
+test('clean book URLs keep catalogue and loaded-work covers rooted without changing export paths',async()=>{
+  const data=fixture();
+  const original='./assets/covers/book/cover.jpg';
+  data.works[0].cover_url=original;
+  data.fields=[{id:'FIELD',members:[{id:'A',cover_url:original}]}];
+  const h=harness(data),before=JSON.stringify(h.catalog);
+  assert.equal(h.loader.data.works[0].cover_url,'https://carelibrary.org/assets/covers/book/cover.jpg');
+  assert.equal(h.loader.data.fields[0].members[0].cover_url,'https://carelibrary.org/assets/covers/book/cover.jpg');
+  const opened=await h.loader.ensureWork('A');
+  assert.equal(opened.cover_url,'https://carelibrary.org/assets/covers/book/cover.jpg');
+  assert.equal(data.works[0].cover_url,original);
+  assert.equal(JSON.stringify(h.catalog),before);
+  const record={cover_url:'/assets/covers/book/cover.jpg',reading_source_path:'./assets/covers/source-proof.json',
+    text:'An authored ./assets/covers/ phrase.',json_path:'./data/chunks/evidence.json'};
+  const projected=projectPublicCovers(record,'https://carelibrary.org/library-loader.mjs');
+  assert.equal(projected.cover_url,'https://carelibrary.org/assets/covers/book/cover.jpg');
+  assert.equal(projected.reading_source_path,record.reading_source_path);
+  assert.equal(projected.text,record.text);
+  assert.equal(projected.json_path,record.json_path);
+  assert.equal(record.cover_url,'/assets/covers/book/cover.jpg');
 });

@@ -33,14 +33,28 @@ test('ranks exact names and aliases before prefixes and incidental matches', () 
 test('the public demon panel shows only books still available in the beta catalogue', () => {
   const [published, unavailable] = reference.public_books_by_demon['MESH-02'];
   const content = {innerHTML:''}, handlers = {}, opened = [];
+  const frames = new Map(), readiness = [];
+  let frameId = 0;
+  const ownerDocument = {addEventListener() {}, removeEventListener() {}, dispatchEvent() {}};
+  const frame = {
+    document:ownerDocument,
+    requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+    matchMedia() { return {matches:true}; },
+    CustomEvent:class { constructor(type, options) { this.type=type; Object.assign(this, options); } },
+  };
+  ownerDocument.defaultView = frame;
   const root = {
+    ownerDocument,
+    get childElementCount() { return content.innerHTML ? 1 : 0; },
     querySelector: selector => selector === '[data-content]' ? content : null,
     contains: () => true,
     addEventListener(type, handler) { handlers[type] = handler; },
     removeEventListener(type) { delete handlers[type]; },
   };
   const shadow = {querySelector: () => root, replaceChildren() {}};
-  const host = {shadowRoot:shadow, setAttribute() {}, removeAttribute() {}};
+  const host = {ownerDocument, shadowRoot:shadow, dataset:{}, isConnected:true,
+    setAttribute() {}, removeAttribute() {}, dispatchEvent(event) { readiness.push(event); }};
   const atlas = mountNumogramAtlas(host, {
     libraryBooks:[{id:published, title:'Published book', slug:'beta-public'}],
     openSource: href => opened.push(href),
@@ -51,6 +65,10 @@ test('the public demon panel shows only books still available in the beta catalo
     assert.match(content.innerHTML, /Published book/);
     assert.ok(!content.innerHTML.includes(unavailable));
     assert.doesNotMatch(content.innerHTML, /Matrix record/);
+    assert.equal(readiness.length, 0, 'The panel must render before readiness is announced');
+    for (const [id, callback] of [...frames]) { frames.delete(id); callback(); }
+    assert.equal(readiness.filter(event => event.type === 'care:numo-ready').length, 1);
+    assert.equal(host.dataset.careNumoReady, 'true');
     handlers.click({target:{closest:() => ({dataset:{instrumentPublicBook:published}})}});
     assert.deepEqual(opened, ['/library.html#book=beta-public']);
 
@@ -58,5 +76,7 @@ test('the public demon panel shows only books still available in the beta catalo
     assert.doesNotMatch(content.innerHTML, /Matrix record|Books in CARE Library/);
   } finally {
     atlas.unmount();
+    assert.equal(host.dataset.careNumoReady, undefined);
+    assert.equal(frames.size, 0, 'Unmount cancels pending browser frames');
   }
 });

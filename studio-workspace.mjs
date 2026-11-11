@@ -7,6 +7,7 @@ import {copyStudioFootnotes, footnoteSavePayload, linkStudioFootnote, nativeStud
 
 export {nativeStudioFootnotes};
 import {studioBinderApi} from './native/beta-binder.mjs';
+import {studioBinderDocuments} from './native/studio-first-drafts.mjs';
 
 const DRAFT_API = '/api/studio/drafts';
 export const MAX_DRAFT_TITLE = 160;
@@ -535,10 +536,9 @@ export function createStudioWorkspace({
   function pickerData() {
     const folders = binder?.folders || [];
     const byFolder = new Map(folders.map(folder => [folder.id, folder]));
-    const drafts = (store?.entries() || []).map(entry => ({
-      id: entry.id, title: titleOf(entry), folder_id: binder?.locations[entry.id] || null,
-    }));
+    const drafts = studioBinderDocuments(store?.entries() || [], binder).map(entry => ({...entry, title: titleOf(entry)}));
     function location(draft) {
+      if (draft.first_draft) return 'First drafts';
       const names = [];
       const seen = new Set();
       for (let folder = byFolder.get(draft.folder_id); folder && !seen.has(folder.id); folder = byFolder.get(folder.parent_id)) {
@@ -604,10 +604,10 @@ export function createStudioWorkspace({
         write_beside_nonce: besideNonce,
         document: nativeStudioDocument(active),
         selected_id: active.id,
-        documents: store.entries().map(entry => ({...entry, folder_id: binder?.locations[entry.id] || null})),
+        documents: studioBinderDocuments(store.entries(), binder),
         folders: binder?.folders || [],
         trash: binder?.trash || [],
-        show_unavailable_archive: true,
+        show_unavailable_archive: false,
         references: (active.footnotes || []).map(studioFootnoteReference),
         library_dock: libraryDock,
         search_books: searchBooks(),

@@ -25,6 +25,7 @@ from .config import Settings, inside
 from .library_search import MAX_REQUEST_BYTES as SEARCH_REQUEST_BYTES
 from .library_search import LibrarySearchError, PublishedLibrarySearch, aq_options, search_options
 from .site_settings import MAX_REVISION, SiteSettingsConflict, SiteSettingsStore
+from .search_pages import search_page
 from .studio_binder import MAX_REQUEST_BYTES as BINDER_REQUEST_BYTES, StudioBinderStore
 from .studio_drafts import DRAFT_ID, MAX_REQUEST_BYTES as STUDIO_REQUEST_BYTES, MAX_REVISION as STUDIO_MAX_REVISION
 from .studio_drafts import StudioDraftError, StudioDraftStore, draft_content
@@ -38,8 +39,16 @@ PUBLIC_FILES = frozenset({
     "auth.mjs", "login.mjs", "landing.mjs", "legacy-landing.mjs", "request-access.mjs",
     "auth.css", "styles.css", "discover.css", "discover-atlas.css",
     "discover-experiments.css", "brand-header.css", "site.webmanifest",
-    "favicon.ico", "favicon.svg", "quick-start.pdf", "robots.txt", "sitemap.xml", "llms.txt",
+    "favicon.ico", "favicon.svg", "quick-start.pdf", "robots.txt", "sitemap.xml", "llms.txt", "research-index.json",
     "ui-fonts-ofl.txt", "ui-icons-apache.txt", "care-version.json",
+    "seo-shell.css", "seo-shell.mjs", "public-app.css", "web-workspace.css",
+    "studio-workspace.css", "study-sets.css", "numo-header-skin.css",
+})
+PUBLIC_NUMOGRAM = frozenset({
+    "native/numogram-atlas.mjs", "native/numogram-instrument.mjs", "native/numogram-reference.mjs",
+    "native/numogram-header-search.mjs", "native/numogram-header-search.css", "native/numogram-companion.css",
+    "native/feature-previews.css", "native/desktop-chrome.css", "native/writing-studio-picker.css",
+    "native/rooms.css", "native/preparation-desk.css", "native/preparation-preview.css",
 })
 PUBLIC_BRANDING = frozenset({
     "assets/care-header-mark.svg", "assets/care-mark.svg", "assets/favicon-32.png",
@@ -425,7 +434,13 @@ def resource_path(root, relative):
 
 
 async def static_file(request):
-    relative = request.url.path.lstrip("/") or "index.html"
+    root = request.app.state.settings.web_root
+    configuration = await run_in_threadpool(request.app.state.site_settings.get)
+    search = await run_in_threadpool(search_page, root, request.url.path,
+                                     full_text=not configuration["beta_enabled"])
+    if search and search.redirect:
+        return Response(status_code=308, headers={"Location": search.canonical})
+    relative = search.resource if search else request.url.path.lstrip("/") or "index.html"
     parts = Path(relative).parts
     if relative != "/".join(parts):
         raise HTTPException(404, "Not found.")
@@ -433,7 +448,8 @@ async def static_file(request):
     if relative.casefold() in OWNER_FILES and relative not in OWNER_FILES:
         raise HTTPException(404, "Not found.")
     suffix = Path(relative).suffix.lower()
-    public = relative in PUBLIC_FILES or relative in PUBLIC_BRANDING
+    public = (search is not None or relative in PUBLIC_FILES or relative in PUBLIC_BRANDING
+              or relative in PUBLIC_NUMOGRAM or relative in NUMO_FONTS)
     owner_only = relative in OWNER_FILES
     permitted = (public or owner_only or relative == "library.html"
                  or (len(parts) == 1 and suffix in {".mjs", ".js", ".css"})
@@ -454,7 +470,6 @@ async def static_file(request):
                  and (reading_companion != document_companion)
                  and len(companion_id) == 1
                  and bool(re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", companion_id[0])))
-    configuration = await run_in_threadpool(request.app.state.site_settings.get)
     if not configuration["beta_enabled"] and relative == "index.html":
         destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
         return json_response({"location": destination}, 303, {"Location": destination})
@@ -469,13 +484,14 @@ async def static_file(request):
             return json_response({"error": message}, 401)
         if owner_only and not is_owner(request, user):
             raise HTTPException(403, "Only the website owner can manage these settings.")
-    root = request.app.state.settings.web_root
     resource = "index.html" if relative == "discover.html" else relative
     path = resource_path(root, resource)
     media_type = ("application/json" if suffix in {".json", ".jsonpart"}
                   else "text/javascript" if suffix in {".mjs", ".js"}
                   else mimetypes.guess_type(str(path))[0] or "application/octet-stream")
     headers = {"Vary": "Cookie, Accept-Encoding"}
+    if public and suffix == ".html":
+        headers["Link"] = '</llms.txt>; rel="describedby"; type="text/markdown"'
     if not public:
         headers["X-Robots-Tag"] = "noindex"
     # The workspace companions follow the same access rules as the main Library.

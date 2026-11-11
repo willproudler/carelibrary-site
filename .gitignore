@@ -7,6 +7,10 @@ data/cover-variants.json
 assets/covers/web/
 _site/
 dist/
+/books/
+/numogram/
+/research-index.json
+/search/
 .venv/
 .env
 .env.*

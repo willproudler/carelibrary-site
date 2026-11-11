@@ -61,7 +61,7 @@ test('ordinary book navigation never treats an empty connection identity as a re
 test('field files load on demand and use the newest published cover metadata',async()=>{
   const field={id:'FIELD:selected',field:'corpus',members:[{id:'PUBLISHED',cover_url:'new-cover'}],bundle_url:'./data/fields/abc-def.json'};
   let calls=0;
-  const loader=async(url)=>{calls++;assert.equal(url,field.bundle_url);return {ok:true,json:async()=>({bundle:{id:field.id,field:field.field,members:[{id:'PUBLISHED',cover_url:'old-cover'}]},references:{}})};};
+  const loader=async(url)=>{calls++;assert.ok(String(url).endsWith(field.bundle_url.slice(1)));return {ok:true,json:async()=>({bundle:{id:field.id,field:field.field,members:[{id:'PUBLISHED',cover_url:'old-cover'}]},references:{}})};};
   await loadPublicField(field,loader);await loadPublicField(field,loader);
   assert.equal(calls,1);assert.equal(field.bundle.members[0].cover_url,'new-cover');
   await assert.rejects(loadPublicField({...field,bundle:null,bundle_url:'https://elsewhere.example/private'},loader),/no published file/);
@@ -74,7 +74,7 @@ const fieldResponse=field=>({ok:true,json:async()=>({bundle:{id:field.id,field:f
 test('concurrent field readers share one bounded request and cache the immutable bundle',async()=>{
   const field=downloadableField();let calls=0,release;
   const fetcher=async(url,options)=>{
-    calls++;assert.equal(url,field.bundle_url);assert.equal(options.cache,'force-cache');
+    calls++;assert.ok(String(url).endsWith(field.bundle_url.slice(1)));assert.equal(options.cache,'force-cache');
     assert.ok(options.signal instanceof AbortSignal);
     await new Promise(resolve=>{release=resolve;});return fieldResponse(field);
   };

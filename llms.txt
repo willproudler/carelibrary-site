@@ -1,13 +1,86 @@
-# CARE Library Beta
+# CARE Library and NUMO
 
-CARE Library is a reading environment for following ideas through texts, arguments, and recorded connections.
-CARE means Canonical Axiomatic Reduction Engine, created by William Proudler.
+> A reading environment for tracing original texts, arguments and recorded connections, with an interactive Numogram and its attributed CCRU demon reference.
 
-Discover is the public landing page. The library and its reading files require an approved beta account. Visitors can request access by providing their name and email; the team reviews each request before granting access.
+The public research index lists the published books, exact source sections and all 45 demon records. Canonical book and chapter URLs open the existing source and CARE panes; demon URLs open the same NUMO instrument on that entry.
 
-- [Discover CARE](https://carelibrary.org/)
-- [Log in](https://carelibrary.org/login.html)
+Book and source metadata are public. Original source text follows the website’s current beta access setting. Private Studio drafts, account records and unpublished books are not listed.
+
+Original author prose and saved AI-assisted CARE interpretations are separate. For quotations, verify the original source section and cite its canonical URL, author, book title, section title and recorded source ID. Recorded links describe provenance, not proof of an interpretation. No page or index grants a new reuse licence.
+
+## Research entry points
+
+- [Machine-readable research index](https://carelibrary.org/research-index.json): Canonical URLs, authors, exact source IDs and public reference identities.
+- [Books by title and author](https://carelibrary.org/books/)
+- [Numogram](https://carelibrary.org/numogram/): The map, zones, currents, gates and linked demon records.
+- [Sitemap](https://carelibrary.org/sitemap.xml)
+
+## Books
+
+- [A Treatise of Human Nature — David Hume](https://carelibrary.org/books/a-treatise-of-human-nature-david-hume/)
+- [Capital Volume 1 — Karl Marx](https://carelibrary.org/books/capital-volume-1-karl-marx/)
+- [Civilization and its Discontents — Sigmund Freud](https://carelibrary.org/books/civilization-and-its-discontents-sigmund-freud/)
+- [Confessions — Augustine of Hippo](https://carelibrary.org/books/confessions-augustine-of-hippo/)
+- [Ethics — Baruch Spinoza](https://carelibrary.org/books/ethics-baruch-spinoza/)
+- [Matter and Memory — Henri Bergson](https://carelibrary.org/books/matter-and-memory-henri-bergson/)
+- [Metaphysics — Aristotle](https://carelibrary.org/books/metaphysics-aristotle/)
+- [Monas Hieroglyphica — John Dee](https://carelibrary.org/books/monas-hieroglyphica-john-dee/)
+- [On the Nature of Things — Lucretius](https://carelibrary.org/books/on-the-nature-of-things-lucretius/)
+- [Science of Logic — Georg Wilhelm Friedrich Hegel](https://carelibrary.org/books/science-of-logic-georg-wilhelm-friedrich-hegel/)
+- [Summa Theologiae · First Part — Thomas Aquinas](https://carelibrary.org/books/summa-theologiae-first-part-thomas-aquinas/)
+- [The Critique of Pure Reason — Immanuel Kant](https://carelibrary.org/books/the-critique-of-pure-reason-immanuel-kant/)
+- [Thus Spoke Zarathustra — Friedrich Nietzsche](https://carelibrary.org/books/thus-spoke-zarathustra-friedrich-nietzsche/)
+- [Timaeus — Plato](https://carelibrary.org/books/timaeus-plato/)
+
+## Numogram demons
+
+- [Lurgo](https://carelibrary.org/numogram/lurgo/): MESH-00; net-span 1::0
+- [Duoddod](https://carelibrary.org/numogram/duoddod/): MESH-01; net-span 2::0
+- [Doogu](https://carelibrary.org/numogram/doogu/): MESH-02; net-span 2::1
+- [Ixix](https://carelibrary.org/numogram/ixix/): MESH-03; net-span 3::0
+- [Ixigool](https://carelibrary.org/numogram/ixigool/): MESH-04; net-span 3::1
+- [Ixidod](https://carelibrary.org/numogram/ixidod/): MESH-05; net-span 3::2
+- [Krako](https://carelibrary.org/numogram/krako/): MESH-06; net-span 4::0
+- [Sukugool](https://carelibrary.org/numogram/sukugool/): MESH-07; net-span 4::1
+- [Skoodu](https://carelibrary.org/numogram/skoodu/): MESH-08; net-span 4::2
+- [Skarkix](https://carelibrary.org/numogram/skarkix/): MESH-09; net-span 4::3
+- [Tokhatto](https://carelibrary.org/numogram/tokhatto/): MESH-10; net-span 5::0
+- [Tukkamu](https://carelibrary.org/numogram/tukkamu/): MESH-11; net-span 5::1
+- [Kuttadid](https://carelibrary.org/numogram/kuttadid/): MESH-12; net-span 5::2
+- [Tikkitix](https://carelibrary.org/numogram/tikkitix/): MESH-13; net-span 5::3
+- [Katak](https://carelibrary.org/numogram/katak/): MESH-14; net-span 5::4
+- [Tchu](https://carelibrary.org/numogram/tchu/): MESH-15; net-span 6::0
+- [Djungo](https://carelibrary.org/numogram/djungo/): MESH-16; net-span 6::1
+- [Djuddha](https://carelibrary.org/numogram/djuddha/): MESH-17; net-span 6::2
+- [Djynxx](https://carelibrary.org/numogram/djynxx/): MESH-18; net-span 6::3
+- [Tchakki](https://carelibrary.org/numogram/tchakki/): MESH-19; net-span 6::4
+- [Tchattuk](https://carelibrary.org/numogram/tchattuk/): MESH-20; net-span 6::5
+- [Puppo](https://carelibrary.org/numogram/puppo/): MESH-21; net-span 7::0
+- [Bubbamu](https://carelibrary.org/numogram/bubbamu/): MESH-22; net-span 7::1
+- [Oddubb](https://carelibrary.org/numogram/oddubb/): MESH-23; net-span 7::2
+- [Pabbakis](https://carelibrary.org/numogram/pabbakis/): MESH-24; net-span 7::3
+- [Ababbatok](https://carelibrary.org/numogram/ababbatok/): MESH-25; net-span 7::4
+- [Papatakoo](https://carelibrary.org/numogram/papatakoo/): MESH-26; net-span 7::5
+- [Bobobja](https://carelibrary.org/numogram/bobobja/): MESH-27; net-span 7::6
+- [Minommo](https://carelibrary.org/numogram/minommo/): MESH-28; net-span 8::0
+- [Mur Mur](https://carelibrary.org/numogram/mur-mur/): MESH-29; net-span 8::1
+- [Nammamad](https://carelibrary.org/numogram/nammamad/): MESH-30; net-span 8::2
+- [Mummumix](https://carelibrary.org/numogram/mummumix/): MESH-31; net-span 8::3
+- [Numko](https://carelibrary.org/numogram/numko/): MESH-32; net-span 8::4
+- [Muntuk](https://carelibrary.org/numogram/muntuk/): MESH-33; net-span 8::5
+- [Mommoljo](https://carelibrary.org/numogram/mommoljo/): MESH-34; net-span 8::6
+- [Mombbo](https://carelibrary.org/numogram/mombbo/): MESH-35; net-span 8::7
+- [Uttunul](https://carelibrary.org/numogram/uttunul/): MESH-36; net-span 9::0
+- [Tutagool](https://carelibrary.org/numogram/tutagool/): MESH-37; net-span 9::1
+- [Unnunddo](https://carelibrary.org/numogram/unnunddo/): MESH-38; net-span 9::2
+- [Ununuttix](https://carelibrary.org/numogram/ununuttix/): MESH-39; net-span 9::3
+- [Ununak](https://carelibrary.org/numogram/ununak/): MESH-40; net-span 9::4
+- [Tukutu](https://carelibrary.org/numogram/tukutu/): MESH-41; net-span 9::5
+- [Unnutchi](https://carelibrary.org/numogram/unnutchi/): MESH-42; net-span 9::6
+- [Nuttubab](https://carelibrary.org/numogram/nuttubab/): MESH-43; net-span 9::7
+- [Ummnu](https://carelibrary.org/numogram/ummnu/): MESH-44; net-span 9::8
+
+## Optional
+
+- [About CARE](https://carelibrary.org/about.html)
 - [Request beta access](https://carelibrary.org/request-access.html)
-- [Quick start guide](https://carelibrary.org/quick-start.pdf)
-
-Original source texts and saved AI-assisted interpretations are distinct. Recorded references describe provenance, not proof of correctness. Missing passage links must not be invented.

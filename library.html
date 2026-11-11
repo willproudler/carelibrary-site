@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB"><head>
+<html lang="en-GB" data-care-toolbar-labels="false" data-care-slider-arrows="true"><head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="dark"><style>html,body{background:#0d1015;color:#ece8df;color-scheme:dark}</style><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="/public-app.css?v=20261023-simple-search"><script type="module" src="/library-boot.mjs?v=20261102-beta"></script>
 <link rel="stylesheet" href="/brand-header.css?v=c47c12affb3ca81e">
 <link rel="stylesheet" href="/auth.css?v=20261102-beta">
-<link rel="stylesheet" href="/web-workspace.css">
+<link rel="stylesheet" href="/web-workspace.css?v=20261111-fixed-workbench">
 <script type="module" src="/care-about.mjs?v=20261111.19"></script>
 <link rel="stylesheet" href="/native/feature-previews.css">
 <link rel="stylesheet" href="/native/desktop-chrome.css">
@@ -104,7 +104,7 @@
     <a data-care-room="laterals" data-page="laterals" href="#view=laterals"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#hub"/></svg></span><span class="room-card-label"><strong>Laterals</strong>Follow ideas across books</span></span></a>
     <button type="button" data-care-room="dialogues" data-full-feature="Dialogues"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#forum"/></svg></span><span class="room-card-label"><strong>Dialogues</strong>Read and listen to conversations<small class="room-unavailable">Available in the full version</small></span></span></button>
     <a data-care-room="corpuses" data-page="corpuses" href="#view=corpuses"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#public"/></svg></span><span class="room-card-label"><strong>Corpora</strong>Read a body of work together</span></span></a>
-    <a data-care-room="numo" data-page="numogram" href="#view=numogram"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#scatter_plot"/></svg></span><span class="room-card-label"><strong>NUMO</strong>Enter the Numogram and its readings</span></span></a>
+    <a data-care-room="numo" data-page="numogram" href="#view=numogram"><span class="room-card-content"><span class="room-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><g data-numogram-glyph="" stroke-width=".8"><path d="M10.1 2.2h2.5m3 3.1 1.4 2.2M7.1 9.4l1.6-2.1m3.6 6.2v2.9m0 2.8V22"/><path opacity=".7" d="M9.5 2.9C7 3.2 6.5 5.4 8.1 6.7m6.9-.8c-2 1.2-3.6-.2-4.3-2.7M8.9 8.2c.7 2.1 1.1 3.8 2.6 4.9m5-4.8c-.1 2.8-1.8 4.6-3.3 5m-.2 3.5c1.6.6 1.6 1.8.1 2.2"/><g fill="var(--workspace-icon-zone-fill,none)"><circle data-numogram-zone="3" cx="10.1" cy="2.2" r=".9"/><circle data-numogram-zone="6" cx="12.6" cy="2" r=".9"/><circle data-numogram-zone="2" cx="15.6" cy="5.3" r=".9"/><circle data-numogram-zone="7" cx="17" cy="7.5" r=".9"/><circle data-numogram-zone="5" cx="8.7" cy="7.3" r=".9"/><circle data-numogram-zone="4" cx="7.1" cy="9.4" r=".9"/><circle data-numogram-zone="1" cx="12.3" cy="13.5" r=".9"/><circle data-numogram-zone="8" cx="12.3" cy="16.4" r=".9"/><circle data-numogram-zone="9" cx="12.3" cy="19.2" r=".9"/><circle data-numogram-zone="0" cx="12.3" cy="22" r=".9"/></g></g></svg></span><span class="room-card-label"><strong>NUMO</strong>Enter the Numogram and its readings</span></span></a>
     <button type="button" data-care-room="store" data-full-feature="CARE Store"><span class="room-card-content"><span class="room-card-icon"><svg data-material-symbol viewBox="0 0 960 960" aria-hidden="true"><use href="/assets/ui-icons/workbench.svg#storefront"/></svg></span><span class="room-card-label"><strong>Store</strong>Find books for your library<small class="room-unavailable">Available in the full version</small></span></span></button>
     <!-- End shared desktop Rooms -->
     <div class="care-rooms-tools">TOOLS</div>
@@ -124,8 +124,6 @@
      <button type="button" data-history="-1" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 10h-11m5-5-5 5 5 5"/></svg>Back</button>
      <button type="button" data-history="1" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10h11m-5-5 5 5-5 5"/></svg>Forward</button>
     </div>
-    <label><input type="checkbox" id="workbench-labels"> Show toolbar labels</label>
-    <label><input type="checkbox" id="workbench-arrows"> Show slider arrows</label>
     <a href="#view=preparation">Add to Library · Preview</a>
     <button type="button" data-full-feature="Run Room">Run Room · Full version</button>
     <button type="button" data-full-feature="Desktop settings">Desktop settings · Full version</button>

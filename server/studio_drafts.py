@@ -403,6 +403,8 @@ class StudioDraftStore:
                 db.execute("ALTER TABLE studio_drafts ADD COLUMN trash_root TEXT")
             if "trashed_at" not in columns:
                 db.execute("ALTER TABLE studio_drafts ADD COLUMN trashed_at REAL")
+            if "first_draft" not in columns:
+                db.execute("ALTER TABLE studio_drafts ADD COLUMN first_draft INTEGER NOT NULL DEFAULT 0 CHECK(first_draft IN (0,1))")
             db.execute("""CREATE INDEX IF NOT EXISTS studio_drafts_owner_updated
                 ON studio_drafts(owner, updated_at DESC)""")
 

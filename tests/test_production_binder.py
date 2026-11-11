@@ -173,3 +173,60 @@ class StudioBinderTests(unittest.IsolatedAsyncioTestCase):
         encoded = escape(json.dumps({"h2": style}), quote=True)
         body = f'<div>Before<h2 data-writing-styles="{encoded}">Nested heading</h2></div>'
         self.assertNotIn("data-writing-styles", draft_content("Title", body, "html").body)
+
+    async def test_first_drafts_are_owned_editable_documents_and_preserve_saved_rich_text(self):
+        folder = await self.folder("Project")
+        source = '<p data-block-id="opening">An <em>early manuscript</em> with its evidence</p><p>Second paragraph</p>'
+        notes = [{"id": "note", "block_id": "opening", "marker_offset": 3, "marker_order": 0, "note": "Keep this note"}]
+        draft = await self.draft("Untitled draft 2", source, format="html", footnotes=notes, folder_id=folder)
+        action = {"item_kind": "document", "target_id": draft["id"], "target_revision": draft["revision"],
+                  "folder_id": folder, "first_draft": True}
+        placed = await self.act("place-draft", **action)
+        self.assertEqual(placed["first_drafts"], [draft["id"]])
+        self.assertEqual(placed["locations"], {draft["id"]: folder})
+        self.assertEqual(placed["ack"], {"binder_placed": True, "binder_title": "An early manuscript with its evidence", "revision": 2})
+        self.assertEqual((await self.client.get(BINDER)).json()["first_drafts"], [draft["id"]])
+        path = f"{DRAFTS}/{draft['id']}"
+        reopened = (await self.client.get(path)).json()["draft"]
+        self.assertEqual((reopened["body"], reopened["footnotes"]), (draft["body"], draft["footnotes"]))
+        stale = await self.client.post(BINDER, json={"account": OWNER, "operation": "place-draft", **action, "first_draft": False})
+        self.assertEqual((stale.status_code, stale.json()), (409, {"error": "draft_conflict"}))
+        self.assertEqual((await self.client.get(BINDER)).json()["first_drafts"], [draft["id"]])
+        revised = {key: reopened[key] for key in ("title", "revision", "format", "footnotes")}
+        revised["body"] = reopened["body"] + "<p>New writing</p>"
+        saved = await self.client.put(path, json={"account": OWNER, **revised})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        edited = saved.json()["draft"]
+        self.assertEqual((await self.client.get(BINDER)).json()["first_drafts"], [draft["id"]])
+        moved = await self.act("place-draft", **{**action, "first_draft": False, "target_revision": edited["revision"]})
+        self.assertEqual(moved["first_drafts"], [])
+        self.assertEqual(moved["locations"][draft["id"]], folder)
+        self.assertEqual(moved["ack"]["revision"], edited["revision"])
+        self.assertEqual((await self.client.get(path)).json()["draft"], edited)
+
+    async def test_first_drafts_protect_hidden_folder_members_and_selection_moves_clear_the_shelf(self):
+        parent = await self.folder("Project")
+        folder = await self.folder("Chapter", parent)
+        draft = await self.draft("An authored title", folder_id=folder)
+        placed = await self.act("place-draft", item_kind="document", target_id=draft["id"], target_revision=1,
+                                folder_id=folder, first_draft=True)
+        self.assertEqual(placed["ack"]["revision"], 1)
+        denied = await self.client.post(BINDER, json={"account": OWNER, "operation": "trash", "item_kind": "folder", "target_id": parent})
+        self.assertEqual((denied.status_code, denied.json()), (409, {"error": "binder_folder_contains_first_drafts"}))
+        self.assertEqual((await self.client.get(BINDER)).json()["trash"], [])
+        moved = await self.act("move-selection", folder_id=None, document_ids=[draft["id"]], document_revisions={draft["id"]: 1})
+        self.assertEqual(moved["first_drafts"], [])
+        await self.act("trash", item_kind="folder", target_id=parent)
+        self.assertEqual((await self.client.get(f"{DRAFTS}/{draft['id']}")).json()["draft"]["body"], draft["body"])
+
+    async def test_first_drafts_placement_rejects_cross_account_targets_and_invalid_flags(self):
+        draft = await self.draft("Private early manuscript")
+        payload = {"account": OWNER, "operation": "place-draft", "item_kind": "document", "target_id": draft["id"],
+                   "target_revision": 1, "folder_id": None, "first_draft": True}
+        other = await self.client_for(OTHER)
+        denied = await other.post(BINDER, json={**payload, "account": OTHER})
+        self.assertEqual((denied.status_code, denied.json()), (404, {"error": "draft_not_found"}))
+        for flag in (1, "true", None):
+            response = await self.client.post(BINDER, json={**payload, "first_draft": flag})
+            self.assertEqual((response.status_code, response.json()), (400, {"error": "binder_invalid"}))
+        self.assertEqual((await self.client.get(BINDER)).json()["first_drafts"], [])

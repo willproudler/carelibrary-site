@@ -1524,9 +1524,6 @@ a { color: var(--accent); }
     --draft-right-rail: var(--draft-left-rail);
   }
 }
-.studio.bare[data-writing-fullscreen] :is(.library-dock, .library-resume-launcher, .axiom-return-launcher) {
-  visibility: hidden;
-}
 .writing-launchers {
   position: fixed;
   z-index: 5;
@@ -1819,8 +1816,6 @@ a { color: var(--accent); }
 .studio.bare .writing-a4-pages {
   inset-inline-start: clamp(-2rem, calc((var(--paper-width) - 100cqi) / 14), 0rem);
 }
-
-.studio.library-open .writing-a4-pages { inset-inline-start: 0; }
 
 .writing-a4-sheet {
   --a4-sheet-height: calc(100cqi * 297 / 210);

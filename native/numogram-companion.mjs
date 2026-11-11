@@ -1,6 +1,17 @@
+export function numogramCompanionLayout(doc) {
+  const fullscreen = doc.documentElement.hasAttribute('data-care-writing-fullscreen');
+  const workspace = doc.querySelector('#studio-workspace');
+  const editor = workspace?.querySelector('.studio-web__native-editor')?.shadowRoot
+    ?.querySelector('[data-writing-studio]');
+  const toolbar = fullscreen ? editor?.querySelector('[data-formatting]:not([hidden])') : null;
+  const bounds = (toolbar || workspace)?.getBoundingClientRect();
+  return {toolbar, top: Math.max(0, toolbar ? bounds?.bottom || 0 : bounds?.top || 0)};
+}
+
 export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargins, beforeOpen, openSource, libraryBooks}) {
   const doc = host.ownerDocument;
-  host.className = 'numo-companion';
+  const win = doc.defaultView;
+  host.className = 'numo-companion care-numo-companion';
   host.hidden = true;
   host.innerHTML = `
     <aside class="numo-companion-panel" aria-label="NUMO beside draft" hidden>
@@ -28,9 +39,14 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
         <ol data-numo-lines></ol>
       </section>
     </aside>
-    <button class="numo-companion-resume" type="button" data-action="resume" hidden>Resume NUMO</button>`;
+    <button class="numo-companion-resume" type="button" data-action="resume" data-numo-resume hidden>Open NUMO</button>`;
   const $ = selector => host.querySelector(selector);
   const panel = $('aside'), resume = $('[data-action="resume"]');
+  host.careNumoResume = resume;
+  host.careNumoDockState = {mode: 'closed'};
+  // A native writing view is fixed above the page. Keep this overlay out of
+  // the page's own stacking contexts, without moving or resizing the draft.
+  doc.body?.append(host);
   const map = $('.numo-companion-instrument'), finder = $('.numo-companion-draft');
   const input = finder.querySelector('input'), output = $('[data-numo-lines]'), status = $('[data-numo-status]');
   let surface = 'map', phase = 'closed', visible = false, libraryOpen = false, librarianOpen = false, instrument, module, opening;
@@ -45,7 +61,19 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   function paint() {
     host.hidden = !visible || phase === 'closed';
     panel.hidden = phase !== 'open';
-    resume.hidden = phase !== 'minimized' || libraryOpen || librarianOpen;
+    resume.hidden = !visible || phase === 'open';
+    const label = phase === 'minimized' ? 'Resume NUMO' : 'Open NUMO';
+    resume.title = label;
+    resume.setAttribute('aria-label', label);
+    resume.setAttribute('aria-expanded', String(visible && phase === 'open'));
+    const caption = resume.querySelector('[data-resume-label]') || resume;
+    if (caption.textContent !== label) caption.textContent = label;
+    host.careNumoDockState.mode = phase;
+    const open = visible && phase === 'open';
+    if (host.careNumoVisible !== open) {
+      host.careNumoVisible = open;
+      doc.dispatchEvent(new win.CustomEvent('care:numogram-companion-visibility', {detail: {open}}));
+    }
     map.hidden = surface === 'draft';
     finder.hidden = surface !== 'draft';
     for (const button of host.querySelectorAll('[data-view]')) {
@@ -85,7 +113,7 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
 
   function setPhase(next) {
     phase = next;
-    if (phase !== 'open') stop();
+    if (phase === 'closed') stop();
     if (phase === 'closed') hideMargins();
     paint();
   }
@@ -130,15 +158,21 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   function open() {
     beforeOpen();
     setPhase('open');
+    fit();
     void showMap();
   }
+
+  resume.onclick = open;
 
   host.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset.action === 'close') setPhase('closed');
-    else if (button.dataset.action === 'minimize') { setPhase('minimized'); resume.focus(); }
-    else if (button.dataset.action === 'resume') open();
+    else if (button.dataset.action === 'minimize') {
+      setPhase('minimized');
+      if (host.careNumoFocusResume) host.careNumoFocusResume();
+      else resume.focus();
+    }
     else if (button.dataset.action === 'all') void scan(true);
     else if (button.dataset.action === 'margins') {
       if (clearMargins) hideMargins();
@@ -177,6 +211,26 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
     instrument?.openAQ({query,total:result.total});
   });
 
+  let toolbar;
+  const sizeObserver = win.ResizeObserver ? new win.ResizeObserver(() => fit()) : null;
+  function fit() {
+    const layout = numogramCompanionLayout(doc);
+    if (toolbar !== layout.toolbar) {
+      if (toolbar) sizeObserver?.unobserve(toolbar);
+      toolbar = layout.toolbar;
+      if (toolbar) sizeObserver?.observe(toolbar);
+    }
+    host.style.setProperty('--numo-dock-top', `${layout.top}px`);
+  }
+  const fullscreenWatch = win.MutationObserver ? new win.MutationObserver(fit) : null;
+  fullscreenWatch?.observe(doc.documentElement, {attributes: true, attributeFilter: ['data-care-writing-fullscreen']});
+  const workspace = doc.querySelector('#studio-workspace');
+  if (workspace) sizeObserver?.observe(workspace);
+  win.addEventListener('resize', fit);
+  const minimizeFromWriting = () => { if (phase === 'open') setPhase('minimized'); };
+  doc.addEventListener('care:numogram-companion-minimize', minimizeFromWriting);
+  fit();
+
   return {
     open,
     minimize() { if (phase === 'open') setPhase('minimized'); },
@@ -197,7 +251,15 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
       visible = value;
       if (!visible) { libraryOpen = librarianOpen = false; stop(); }
       paint();
+      fit();
       if (visible && phase === 'open') void showMap();
+    },
+    destroy() {
+      stop(); hideMargins(); fullscreenWatch?.disconnect(); sizeObserver?.disconnect();
+      win.removeEventListener('resize', fit);
+      doc.removeEventListener('care:numogram-companion-minimize', minimizeFromWriting);
+      host.careNumoVisible = false;
+      host.hidden = resume.hidden = true;
     },
   };
 }

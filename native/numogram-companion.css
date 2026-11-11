@@ -1,10 +1,9 @@
 .numo-companion[hidden], .numo-companion [hidden] { display: none !important; }
-#main:has(.numo-companion:not([hidden])) { position: relative; }
-.numo-companion { position: absolute; inset: 0; pointer-events: none; --numo-pane-edge: #345442; --numo-pane-ink: #b7e8c9; }
+.numo-companion { position: fixed; z-index: 54; inset: 0; pointer-events: none; --numo-pane-edge: #345442; --numo-pane-ink: #b7e8c9; }
 .numo-companion-panel {
   pointer-events: auto; container-type: inline-size;
-  position: absolute; z-index: 54; inset: .65rem .7rem .7rem auto;
-  display: flex; flex-direction: column; width: clamp(24rem, 45vw, 52rem);
+  position: fixed; z-index: 54; inset: var(--numo-dock-top,.65rem) 0 0 auto;
+  display: flex; flex-direction: column; width: min(clamp(25rem, 42vw, 48rem),100vw);
   min-height: 0; overflow: hidden; border: 1px solid var(--numo-pane-edge);
   border-radius: 13px; background: #000; box-shadow: 0 12px 40px #0008;
 }
@@ -29,11 +28,11 @@
 .numo-companion-draft li span { overflow-wrap: anywhere; font: 1rem/1.35 Georgia, serif; }
 .numo-companion .numo-companion-resume {
   pointer-events: auto;
-  position: absolute; z-index: 52; right: 1rem; bottom: calc(7rem + var(--care-safe-bottom,0px));
+  position: fixed; z-index: 54; right: 1rem; bottom: calc(7rem + var(--care-safe-bottom,0px));
   padding: .45rem .7rem; border-radius: 999px; color: #3dff8c; font-size: .74rem;
 }
 @media (max-width: 720px) {
-  .numo-companion-panel { inset: auto .35rem .35rem; width: auto; height: 78%; }
+  .numo-companion-panel { inset: auto 0 0; width: auto; height: min(78dvh,calc(100dvh - var(--numo-dock-top,0px))); }
   .numo-companion-top button { min-height: 40px; }
 }
 .numo-companion-top { flex-wrap: nowrap; background: #000; }
@@ -56,16 +55,13 @@
   .numo-companion-top button { padding-inline: .35rem; font-size: .66rem; }
 }
 
-@media (min-width: 54rem) {
-  #main { --numo-split-width: clamp(25rem, 42vw, 48rem); }
-  #main:has(.numo-companion-panel:not([hidden])) > #studio-workspace {
-    flex: 0 0 calc(100% - var(--numo-split-width));
-  }
-  .numo-companion-panel {
-    inset: 0 0 0 auto;
-    width: var(--numo-split-width);
-    border-radius: 0;
-    border-block-end: 0;
-    border-inline-end: 0;
-  }
+.numo-companion-panel {
+  border-radius: 0;
+  border-block-end: 0;
+  border-inline-end: 0;
+}
+html[data-care-writing-fullscreen] .numo-companion,
+html[data-care-writing-fullscreen] .numo-companion-panel {
+  z-index: 999982;
+  visibility: visible;
 }

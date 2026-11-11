@@ -3,6 +3,7 @@ const binderFields = {
   'folder-from-selection': ['folder_name', 'folder_id', 'document_ids', 'document_revisions'],
   'move-selection': ['folder_id', 'document_ids', 'document_revisions'],
   move: ['item_kind', 'target_id', 'target_revision', 'folder_id'],
+  'place-draft': ['item_kind', 'target_id', 'target_revision', 'folder_id', 'first_draft'],
   rename: ['item_kind', 'target_id', 'target_revision', 'name'],
   trash: ['item_kind', 'target_id', 'target_revision'],
   restore: ['item_kind', 'target_id'],
@@ -15,6 +16,7 @@ const binderErrors = {
   binder_trash_not_found: 'That item is no longer in Trash.',
   binder_name_taken: 'This location already has a folder with that name.',
   binder_folder_limit: 'This account has reached the Binder folder limit.',
+  binder_folder_contains_first_drafts: 'Move the First drafts out of this folder before moving it to Trash.',
   binder_cycle: 'A folder cannot move inside itself or a subfolder.',
   binder_preview_too_large: 'Choose fewer drafts to read together.',
   draft_too_large: 'Use a shorter draft name.',
@@ -27,8 +29,8 @@ const binderErrors = {
 
 export function binderActionPayload(action, activeRevision) {
   if (action.operation === 'place-draft') {
-    if (action.first_draft !== false) throw new Error('First drafts are available in CARE Studio on the Mac.');
-    action = {...action, operation: 'move', item_kind: 'document'};
+    if (typeof action.first_draft !== 'boolean') throw new Error('Choose a valid draft location.');
+    action = {...action, item_kind: 'document'};
   }
   const {operation, document_id: activeId} = action;
   if (!Object.hasOwn(binderFields, operation)) throw new Error('Unsupported Binder action.');

@@ -1,0 +1,12 @@
+html[data-care-search-page]:not([data-care-search-ready=true]),html[data-care-search-page]:not([data-care-search-ready=true]) body{height:auto;overflow:auto}
+html[data-care-search-page]:not([data-care-search-ready=true]) body{display:block}
+#care-search-content{position:relative;z-index:2;min-height:100dvh;overflow:clip}
+#care-search-content[hidden]{display:none!important}
+#care-search-content main{display:block;min-height:auto}
+#care-search-app{position:fixed;inset:0;display:flex;flex-direction:column;visibility:hidden;pointer-events:none}
+html[data-care-search-ready=true] #care-search-app{visibility:visible;pointer-events:auto}
+.care-search-access{max-width:1040px;margin:0 auto 30px;padding:18px 24px;border:1px solid #344438;color:#c4d1b5;font:15px/1.6 system-ui,sans-serif}
+.care-search-access[hidden]{display:none}
+.care-search-access a{text-decoration:underline;text-underline-offset:4px}
+html[data-care-search-anonymous=true] #care-search-app [data-studio-picker],html[data-care-search-anonymous=true] #care-search-app .workbench-desktop-tool,html[data-care-search-anonymous=true] #care-search-app [data-file-group=documents],html[data-care-search-anonymous=true] #care-search-app [data-full-feature],html[data-care-search-anonymous=true] #care-search-app [data-document-picker]{display:none!important}
+html[data-care-search-anonymous=true] #care-search-app #reader{overflow:hidden;display:flex}

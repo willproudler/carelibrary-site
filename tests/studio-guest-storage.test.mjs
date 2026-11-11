@@ -119,3 +119,53 @@ test('blocked guest storage fails explicitly and a later retry can reopen it', a
   blocked = false;
   assert.deepEqual(await api.list(null), {drafts: []});
 });
+
+test('guest First drafts survive reopening, remain editable and move back into folders', async () => {
+  const indexedDB = memoryIndexedDB();
+  const {api, binderApi} = createGuestStudioStorage({indexedDB});
+  const {ack: {binder_folder: folder}} = await binderApi.act(null, {operation: 'create-folder', folder_name: 'Project'});
+  const {draft} = await api.create(null, {title: 'Untitled', body: 'The opening words of an early manuscript\nSecond paragraph', folder_id: folder});
+  const place = {operation: 'place-draft', document_id: draft.id, target_id: draft.id,
+    target_revision: draft.revision, folder_id: folder, first_draft: true};
+  const placed = await binderApi.act(null, place);
+  assert.deepEqual(placed.first_drafts, [draft.id]);
+  assert.equal(placed.locations[draft.id], folder);
+  assert.equal(placed.ack.binder_title, 'The opening words of an early manuscript');
+  assert.equal(placed.ack.revision, 2);
+  const reopened = createGuestStudioStorage({indexedDB});
+  assert.deepEqual((await reopened.binderApi.list()).first_drafts, [draft.id]);
+  const saved = (await reopened.api.load(null, draft.id)).draft;
+  assert.equal(saved.body, draft.body);
+  await assert.rejects(reopened.binderApi.act(null, {...place, first_draft: false}), {code: 'draft_conflict'});
+  assert.deepEqual((await reopened.binderApi.list()).first_drafts, [draft.id]);
+  const edited = (await reopened.api.update(null, draft.id, {...saved, body: 'Revised early manuscript'})).draft;
+  assert.deepEqual((await reopened.binderApi.list()).first_drafts, [draft.id]);
+  const moved = await reopened.binderApi.act(null, {...place, target_revision: edited.revision, first_draft: false});
+  assert.deepEqual(moved.first_drafts, []);
+  assert.equal(moved.locations[draft.id], folder);
+  assert.equal(moved.ack.revision, edited.revision);
+  assert.equal((await reopened.api.load(null, draft.id)).draft.body, edited.body);
+});
+
+test('guest First drafts protect their old folder from recursive Trash and keep named titles', async () => {
+  const {api, binderApi} = createGuestStudioStorage({indexedDB: memoryIndexedDB()});
+  const {ack: {binder_folder: parent}} = await binderApi.act(null, {operation: 'create-folder', folder_name: 'Project'});
+  const {ack: {binder_folder: folder}} = await binderApi.act(null, {operation: 'create-folder', folder_name: 'Chapter', folder_id: parent});
+  const {draft} = await api.create(null, {title: 'Authored title', body: 'Opening text', folder_id: folder});
+  const placed = await binderApi.act(null, {operation: 'place-draft', target_id: draft.id,
+    target_revision: draft.revision, folder_id: folder, first_draft: true});
+  assert.equal(placed.ack.binder_title, draft.title);
+  assert.equal(placed.ack.revision, draft.revision);
+  await assert.rejects(binderApi.act(null, {operation: 'trash', item_kind: 'folder', target_id: parent}),
+    {code: 'binder_folder_contains_first_drafts'});
+  assert.deepEqual((await binderApi.list()).first_drafts, [draft.id]);
+  assert.deepEqual((await binderApi.list()).trash, []);
+  const moved = await binderApi.act(null, {operation: 'move-selection', document_ids: [draft.id],
+    document_revisions: {[draft.id]: draft.revision}, folder_id: null});
+  assert.deepEqual(moved.first_drafts, []);
+  assert.equal(moved.locations[draft.id], null);
+  assert.equal((await api.load(null, draft.id)).draft.body, draft.body);
+  const trashed = await binderApi.act(null, {operation: 'trash', item_kind: 'folder', target_id: parent});
+  assert.deepEqual(trashed.trash.map(item => item.id), [parent]);
+  assert.equal((await api.load(null, draft.id)).draft.body, draft.body);
+});

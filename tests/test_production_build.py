@@ -24,6 +24,11 @@ class ProductionBuildTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
         self.fixture_number = 0
+        # These fixtures exercise the staging boundary, not real catalogue/SEO
+        # generation. The real generator has separate attestation tests.
+        search = patch.object(production, "build_search_pages")
+        self.search_pages = search.start()
+        self.addCleanup(search.stop)
 
     def site(self):
         self.fixture_number += 1
@@ -157,6 +162,7 @@ class ProductionBuildTests(unittest.TestCase):
             with patch("builtins.print"):
                 result = production.build(site)
         self.assertEqual(result, site / "dist")
+        self.search_pages.assert_called_once_with(site)
         commands = [call.args[0] for call in run.call_args_list]
         self.assertEqual(commands, [
             [sys.executable, str(site / "tools/optimise-covers.py"), str(site / "dist")],

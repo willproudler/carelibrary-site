@@ -81,17 +81,33 @@ export default function mountNumogramAtlas(host, {openSource, focusHeaderAQ, com
     },
     setTriggerValue: receiveAction,
   });
+  // mountInstrument renders synchronously; announce after the resulting DOM
+  // gets its first browser frame, including an immediately selected demon.
+  const frame=host.ownerDocument.defaultView;
+  const readySlot=Symbol.for('care.public-numogram.ready-owner'),readyOwner=Symbol('numogram');
+  host[readySlot]=readyOwner;
+  let readyFrame=0;
+  const announceReady=()=>{
+    readyFrame=0;
+    if(host[readySlot]!==readyOwner||host.isConnected===false||!shadow.querySelector('.nl')?.childElementCount)return;
+    host.dataset.careNumoReady='true';
+    host.dispatchEvent(new frame.CustomEvent('care:numo-ready',{bubbles:true,composed:true}));
+  };
+  if(frame?.requestAnimationFrame)readyFrame=frame.requestAnimationFrame(announceReady);
+  else announceReady();
   return {
     openAQ: target=>openAQ?.(target),
     openReference: target=>openReference?.(target),
     openTools: ()=>openTools?.(),
     unmount() {
+      if(readyFrame)frame?.cancelAnimationFrame?.(readyFrame);
+      const owns=host[readySlot]===readyOwner;
+      if(owns){delete host[readySlot];delete host.dataset.careNumoReady;}
       acceptAQ = null;
       openAQ = openReference = openTools = null;
       pending?.abort();
       unmount?.();
-      shadow.replaceChildren();
-      host.removeAttribute('data-care-numo-surface');
+      if(owns){shadow.replaceChildren();host.removeAttribute('data-care-numo-surface');}
     },
   };
 }

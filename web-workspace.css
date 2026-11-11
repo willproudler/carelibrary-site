@@ -582,3 +582,6 @@ main > :is(#studio-workspace, #study-sets-view) { flex: 1; min-height: 0; min-wi
 [data-beta-studio] [data-action="remote-send"],
 [data-beta-studio] [data-action="remote-connect"],
 [data-beta-studio] .binder-archive { display: none !important; }
+
+/* These public workbench choices are fixed across new and older readers. */
+.care-library-shell :is([data-care-toolbar-labels-toggle], [data-care-slider-arrows-toggle]) { display: none !important; }

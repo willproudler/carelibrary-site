@@ -1,3 +1,44 @@
+// The compact ten-zone map is shared by NUMO's tab and Rooms menu.
+export const NUMOGRAM_GLYPH = '<g data-numogram-glyph="" stroke-width=".8"><path d="M10.1 2.2h2.5m3 3.1 1.4 2.2M7.1 9.4l1.6-2.1m3.6 6.2v2.9m0 2.8V22"/><path opacity=".7" d="M9.5 2.9C7 3.2 6.5 5.4 8.1 6.7m6.9-.8c-2 1.2-3.6-.2-4.3-2.7M8.9 8.2c.7 2.1 1.1 3.8 2.6 4.9m5-4.8c-.1 2.8-1.8 4.6-3.3 5m-.2 3.5c1.6.6 1.6 1.8.1 2.2"/><g fill="var(--workspace-icon-zone-fill,none)"><circle data-numogram-zone="3" cx="10.1" cy="2.2" r=".9"/><circle data-numogram-zone="6" cx="12.6" cy="2" r=".9"/><circle data-numogram-zone="2" cx="15.6" cy="5.3" r=".9"/><circle data-numogram-zone="7" cx="17" cy="7.5" r=".9"/><circle data-numogram-zone="5" cx="8.7" cy="7.3" r=".9"/><circle data-numogram-zone="4" cx="7.1" cy="9.4" r=".9"/><circle data-numogram-zone="1" cx="12.3" cy="13.5" r=".9"/><circle data-numogram-zone="8" cx="12.3" cy="16.4" r=".9"/><circle data-numogram-zone="9" cx="12.3" cy="19.2" r=".9"/><circle data-numogram-zone="0" cx="12.3" cy="22" r=".9"/></g></g>';
+export const NUMOGRAM_READING_STYLE = Object.freeze({label:'NUMO',color:'#88c7a4',icon:NUMOGRAM_GLYPH});
+
+// The public workbench has one stable presentation. Legacy saved settings and
+// older reader-menu events must not reverse these states after a view mounts.
+export function installFixedWorkbenchPreferences(window, document) {
+  const labelsKey='care-web-toolbar-labels-v1',arrowsKey='care-slider-arrows-v1';
+  const store=(key,value)=>{try{window.localStorage.setItem(key,value);}catch{}};
+  function labels(){
+    window.careToolbarLabelsVisible=false;
+    document.documentElement.dataset.careToolbarLabels='false';
+    store(labelsKey,'false');
+    window.dispatchEvent(new window.CustomEvent('care-toolbar-labels-changed',{detail:{visible:false}}));
+  }
+  function arrows(){
+    window.careSliderArrowsVisible=true;
+    document.documentElement.dataset.careSliderArrows='true';
+    store(arrowsKey,'true');
+    window.dispatchEvent(new window.CustomEvent('care-slider-arrows-changed',{detail:{visible:true}}));
+  }
+  const requestLabels=event=>{event.stopImmediatePropagation();labels();};
+  const requestArrows=event=>{event.stopImmediatePropagation();arrows();};
+  const changedLabels=event=>{if(event.detail?.visible!==false){event.stopImmediatePropagation();labels();}};
+  const changedArrows=event=>{if(event.detail?.visible!==true){event.stopImmediatePropagation();arrows();}};
+  const storage=event=>{if(event.key===null||event.key===labelsKey)labels();if(event.key===null||event.key===arrowsKey)arrows();};
+  const listeners=[['care-toolbar-labels-request',requestLabels],['care-slider-arrows-request',requestArrows],
+    ['care-toolbar-labels-changed',changedLabels],['care-slider-arrows-changed',changedArrows],['storage',storage]];
+  for(const [type,listener] of listeners)window.addEventListener(type,listener,true);
+  labels();arrows();
+  return ()=>{for(const [type,listener] of listeners)window.removeEventListener(type,listener,true);};
+}
+
+// A native chamber address reflects the instrument's current selection and
+// takes precedence over the initial demon link supplied by a public page.
+export function numogramDemonTarget(params, demons) {
+  const id=params.get('demon');
+  if(params.get('view')!=='numogram'||params.get('numo')||!/^MESH-[0-9]{2}$/.test(id||''))return null;
+  return demons.some(demon=>demon.id===id)?{kind:'demon',id}:null;
+}
+
 const searchable = value => String(value ?? '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
 
 export function findCatalogue(works, fields, query, limit = 20) {
@@ -149,5 +190,55 @@ export function createWorkspaceHistory(history, windowLocation, onChange) {
     move(step) {
       if (validOffset(step)) history.go(step);
     },
+  };
+}
+
+// Search pages embed the same reader shell plus an inert initial route. Hash
+// navigation remains authoritative once the visitor chooses another workspace.
+export function readSearchPageRoute(document) {
+  const source=document.querySelector('#care-search-route');
+  if(!source)return null;
+  try{
+    const route=JSON.parse(source.textContent);
+    if(route?.view==='workspace'&&typeof route.book==='string'&&route.book){
+      const sources=Array.isArray(route.sources)&&route.sources.every(id=>typeof id==='string'&&id)?[...route.sources]:[];
+      return {view:'workspace',book:route.book,sources,
+        ...(typeof route.source==='string'&&sources.includes(route.source)?{source:route.source}:{})};
+    }
+    if(route?.view==='numogram')return {view:'numogram',
+      ...(typeof route.demon==='string'?{demon:route.demon}:{})};
+  }catch{}
+  return null;
+}
+
+export function searchPageRouteParams(hash, initial) {
+  const raw=String(hash||'').replace(/^#/,''),params=new URLSearchParams(raw);
+  if(!initial)return params;
+  // Full app destinations replace the page's initial route. A reference or
+  // source-only fragment stays attached to the book named by this clean URL.
+  if(['view','book','field','lateral','compare'].some(key=>params.has(key))){
+    if(params.get('view')==='workspace'&&!params.has('book')&&initial.book)params.set('book',initial.book);
+    return params;
+  }
+  const route=new URLSearchParams({view:initial.view});
+  if(initial.book)route.set('book',initial.book);
+  if(initial.source)route.set('source',initial.source);
+  if(initial.demon)route.set('demon',initial.demon);
+  const source=/^source-([1-9][0-9]*)$/.exec(raw);
+  if(source){
+    const identity=initial.sources?.[Number(source[1])-1];
+    if(identity)route.set('source',identity);
+  }else if(raw.includes('=')){
+    for(const [key,value] of params)route.set(key,value);
+  }
+  return route;
+}
+
+export function createSearchPageReady(document, window) {
+  let announced=false;
+  return detail=>{
+    if(announced||!document.querySelector('#care-search-route'))return;
+    announced=true;
+    document.dispatchEvent(new window.CustomEvent('care:search-ready',{detail}));
   };
 }

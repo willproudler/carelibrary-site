@@ -10,7 +10,9 @@ export function postLoginDestination(value = '/library.html', fragment = '') {
 function safeDestination(value, paths, fragment) {
   try {
     const url = new URL(value, 'https://care.invalid');
-    if (url.origin !== 'https://care.invalid' || !paths.includes(url.pathname) || url.username || url.password) return '/library.html';
+    const cleanPath = decodeURIComponent(url.pathname);
+    const searchPage = cleanPath.length <= 500 && /^\/(?:numogram\/(?:[a-z0-9-]+\/)?|books\/(?:[\p{L}\p{N}][\p{L}\p{N}-]*\/){0,2})$/u.test(cleanPath);
+    if (url.origin !== 'https://care.invalid' || (!paths.includes(url.pathname) && !searchPage) || url.username || url.password) return '/library.html';
     return url.pathname + url.search + (fragment || url.hash);
   } catch { return '/library.html'; }
 }

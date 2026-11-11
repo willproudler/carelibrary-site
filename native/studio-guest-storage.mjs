@@ -1,5 +1,6 @@
 import {binderActionPayload} from './beta-binder.mjs';
 import {sanitizeGuestMarkup} from './studio-guest-markup.mjs';
+import {firstDraftTitle} from './studio-first-drafts.mjs';
 
 const databaseName = 'care-studio-guest';
 const selectionLimit = 50;
@@ -133,6 +134,7 @@ function binderSnapshot(drafts, folders, ack = {}) {
   return {
     drafts: entries.sort((a, b) => b.updated_at - a.updated_at).map(draftSummary),
     locations: Object.fromEntries(entries.map(draft => [draft.id, draft.folder_id])),
+    first_drafts: entries.filter(draft => draft.first_draft).map(draft => draft.id),
     folders: activeFolders.sort((a, b) => a.name.localeCompare(b.name)).map(({id, name, parent_id}) => ({id, name, parent_id})),
     trash: trash.sort((a, b) => b.trashed_at - a.trashed_at),
     ack,
@@ -191,6 +193,9 @@ function trashItem(tables, drafts, folders, item, kind) {
       if (!folder.trash_root && folder.parent_id === id) subtree.add(folder.id);
     }
   }
+  if ([...drafts.values()].some(draft => !draft.trash_root && draft.first_draft && subtree.has(draft.folder_id))) {
+    throw fault('binder_folder_contains_first_drafts', 409, 'Move the First drafts out of this folder before moving it to Trash.');
+  }
   for (const id of subtree) put(tables.folders, folders, {...folders.get(id), trash_root: root, trashed_at});
   for (const draft of drafts.values()) if (!draft.trash_root && subtree.has(draft.folder_id)) trashDraft(draft);
 }
@@ -219,9 +224,9 @@ function restoreItem(tables, drafts, folders, id, kind) {
   }
 }
 
-function mutateBinder(tables, drafts, folders, action) {
+function mutateBinder(tables, drafts, folders, action, {content, document} = {}) {
   const {operation, target_id, item_kind} = action;
-  if (['move', 'move-selection'].includes(operation) && action.folder_id === undefined) throw binderInvalid();
+  if (['move', 'move-selection', 'place-draft'].includes(operation) && action.folder_id === undefined) throw binderInvalid();
   const folderId = folderFor(folders, action.folder_id)?.id ?? null;
   if (operation === 'create-folder') {
     return {binder_folder: createFolder(tables.folders, folders, requireFolderName(action.folder_name), folderId)};
@@ -234,7 +239,7 @@ function mutateBinder(tables, drafts, folders, action) {
     });
     const create = operation === 'folder-from-selection';
     const destination = create ? createFolder(tables.folders, folders, requireFolderName(action.folder_name), folderId) : folderId;
-    for (const draft of selected) put(tables.drafts, drafts, {...draft, folder_id: destination});
+    for (const draft of selected) put(tables.drafts, drafts, {...draft, folder_id: destination, first_draft: false});
     return create ? {binder_folder: destination} : {};
   }
   if (!['document', 'folder'].includes(item_kind) || typeof target_id !== 'string' || !/^[0-9a-f]{32}$/.test(target_id)) throw binderInvalid();
@@ -245,7 +250,15 @@ function mutateBinder(tables, drafts, folders, action) {
   const isFolder = item_kind === 'folder';
   if (!isFolder && !Number.isSafeInteger(action.target_revision)) throw binderInvalid();
   const item = isFolder ? folderFor(folders, target_id) : activeDraft(drafts.get(target_id), action.target_revision);
-  if (operation === 'trash') {
+  if (operation === 'place-draft') {
+    if (isFolder || typeof action.first_draft !== 'boolean') throw binderInvalid();
+    if (action.first_draft && !content) throw missing();
+    const title = action.first_draft ? firstDraftTitle({...item, ...content}, {document}) : item.title;
+    const revision = title === item.title ? item.revision : item.revision + 1;
+    put(tables.drafts, drafts, {...item, title, revision, folder_id: folderId, first_draft: action.first_draft,
+      ...(revision !== item.revision ? {updated_at: now()} : {})});
+    return {binder_placed: true, binder_title: title, revision};
+  } else if (operation === 'trash') {
     trashItem(tables, drafts, folders, item, item_kind);
   } else if (operation === 'move') {
     if (isFolder) {
@@ -254,7 +267,7 @@ function mutateBinder(tables, drafts, folders, action) {
       }
       ensureFolderName(folders, item.name, folderId, item.id);
       put(tables.folders, folders, {...item, parent_id: folderId});
-    } else put(tables.drafts, drafts, {...item, folder_id: folderId});
+    } else put(tables.drafts, drafts, {...item, folder_id: folderId, first_draft: false});
   } else if (operation === 'rename') {
     if (isFolder) {
       const name = requireFolderName(action.name);
@@ -418,10 +431,12 @@ export function createGuestStudioStorage({indexedDB, document = globalThis.docum
             return binderSnapshot(drafts, byId(folders), readingCopy(documents));
           });
       }
-      return transaction(binderTables, 'readwrite', listBinder, (tables, [rows, directory]) => {
+      const place = action.operation === 'place-draft';
+      return transaction(place ? [...binderTables, 'content'] : binderTables, 'readwrite',
+        tables => [...listBinder(tables), ...(place ? [tables.content.get(action.target_id)] : [])], (tables, [rows, directory, content]) => {
         const drafts = byId(rows);
         const folders = byId(directory);
-        return binderSnapshot(drafts, folders, mutateBinder(tables, drafts, folders, action));
+        return binderSnapshot(drafts, folders, mutateBinder(tables, drafts, folders, action, {content, document}));
       });
     },
   };

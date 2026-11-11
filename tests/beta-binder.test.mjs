@@ -35,13 +35,16 @@ test('Binder API is account-scoped and preserves conflict status', async () => {
     target_id: 'active', target_revision: 3, folder_id: null});
 });
 
-test('the current Studio placement dialog uses the supported beta move API', () => {
+test('the Studio placement dialog preserves First drafts and rebases the saved revision', () => {
   const action = {operation:'place-draft',document_id:'active',target_id:'active',target_revision:2,
     folder_id:'a-folder',first_draft:false,html:'Private manuscript markup'};
-  assert.deepEqual(binderActionPayload(action,3),{operation:'move',item_kind:'document',target_id:'active',
-    target_revision:3,folder_id:'a-folder'});
+  assert.deepEqual(binderActionPayload(action,3),{operation:'place-draft',item_kind:'document',target_id:'active',
+    target_revision:3,folder_id:'a-folder',first_draft:false});
   assert.equal(action.operation,'place-draft');
-  assert.throws(()=>binderActionPayload({...action,first_draft:true},3),/First drafts.*Mac/);
+  assert.equal(binderActionPayload({...action,first_draft:true},3).first_draft,true);
+  for (const first_draft of [undefined, 1, 'true', null]) {
+    assert.throws(()=>binderActionPayload({...action,first_draft},3),/valid draft location/);
+  }
   for(const operation of ['create-book','book-save','book-drag','book-container-drop','convert-folder-to-book'])
     assert.throws(()=>binderActionPayload({operation}),/Unsupported Binder action/);
 });

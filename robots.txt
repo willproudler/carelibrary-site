@@ -1,8 +1,8 @@
 User-agent: *
 Allow: /
 Disallow: /api/
-Disallow: /library.html
-Disallow: /data/
-Disallow: /native/
+Disallow: /login.html
+Disallow: /request-access.html
+Disallow: /site-settings.html
 
 Sitemap: https://carelibrary.org/sitemap.xml

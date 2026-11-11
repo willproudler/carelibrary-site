@@ -8,6 +8,7 @@ import time
 from uuid import uuid4
 
 from .studio_drafts import DRAFT_ID, MAX_DRAFTS, MAX_REVISION, StudioDraftError, _studio_html, draft_content
+from .studio_first_drafts import first_draft_title
 
 
 MAX_REQUEST_BYTES = 8 * 1024
@@ -19,6 +20,7 @@ _OPERATIONS = {
     "folder-from-selection": {"folder_name", "folder_id", "document_ids", "document_revisions"},
     "move-selection": {"folder_id", "document_ids", "document_revisions"},
     "move": {"item_kind", "target_id", "target_revision", "folder_id"},
+    "place-draft": {"item_kind", "target_id", "target_revision", "folder_id", "first_draft"},
     "rename": {"item_kind", "target_id", "target_revision", "name"},
     "trash": {"item_kind", "target_id", "target_revision"},
     "restore": {"item_kind", "target_id"},
@@ -71,7 +73,7 @@ def _selected(payload):
 def _snapshot(db, owner, ack=None):
     folders = db.execute("""SELECT id,name,parent_id FROM studio_folders
         WHERE owner=? AND trash_root IS NULL ORDER BY name_key,id""", (owner,))
-    docs = [dict(row) for row in db.execute("""SELECT id,title,revision,updated_at,folder_id FROM studio_drafts
+    docs = [dict(row) for row in db.execute("""SELECT id,title,revision,updated_at,folder_id,first_draft FROM studio_drafts
         WHERE owner=? AND trash_root IS NULL ORDER BY updated_at DESC,id""", (owner,))]
     trash = db.execute("""SELECT id,title,'document' AS kind,trashed_at FROM studio_drafts
         WHERE owner=? AND trash_root='document:' || id
@@ -79,8 +81,9 @@ def _snapshot(db, owner, ack=None):
         SELECT id,name AS title,'folder' AS kind,trashed_at FROM studio_folders
         WHERE owner=? AND trash_root='folder:' || id ORDER BY trashed_at DESC,id""", (owner, owner))
     locations = {draft["id"]: draft.pop("folder_id") for draft in docs}
+    first_drafts = [draft["id"] for draft in docs if draft.pop("first_draft")]
     return {"folders": [dict(folder) for folder in folders], "locations": locations,
-            "trash": [dict(item) for item in trash], "drafts": docs, "ack": ack or {}}
+            "first_drafts": first_drafts, "trash": [dict(item) for item in trash], "drafts": docs, "ack": ack or {}}
 
 
 def _require_draft_revision(db, owner, identity, revision):
@@ -141,7 +144,7 @@ def _move_selection(db, owner, payload, operation, folder_id):
     if operation == "folder-from-selection":
         folder_id = _create_folder(db, owner, _folder_name(payload.get("folder_name")), folder_id)
         ack["binder_folder"] = folder_id
-    db.executemany("UPDATE studio_drafts SET folder_id=? WHERE owner=? AND id=?",
+    db.executemany("UPDATE studio_drafts SET folder_id=?,first_draft=0 WHERE owner=? AND id=?",
                    [(folder_id, owner, identity) for identity in identities])
     return ack
 
@@ -153,6 +156,10 @@ def _trash(db, owner, identity, kind, root):
             WHERE owner=? AND id=?""", (root, stamp, owner, identity))
         return
     params = {"owner": owner, "id": identity, "root": root, "date": stamp, "max_revision": MAX_REVISION}
+    if db.execute(_SUBTREE + """SELECT 1 FROM studio_drafts
+        WHERE owner=:owner AND trash_root IS NULL AND first_draft=1
+            AND folder_id IN (SELECT id FROM subtree) LIMIT 1""", params).fetchone():
+        raise StudioDraftError("binder_folder_contains_first_drafts", 409)
     db.execute(_SUBTREE + """
         UPDATE studio_drafts SET trash_root=:root,trashed_at=:date,revision=min(revision+1,:max_revision)
         WHERE owner=:owner AND trash_root IS NULL AND folder_id IN (SELECT id FROM subtree)
@@ -222,7 +229,7 @@ class StudioBinderStore:
             return _snapshot(db, owner, ack)
 
     def _mutate(self, db, owner, operation, payload):
-        if operation in {"move", "move-selection"} and "folder_id" not in payload:
+        if operation in {"move", "move-selection", "place-draft"} and "folder_id" not in payload:
             raise _invalid()
         folder_id = payload.get("folder_id")
         if folder_id is not None:
@@ -231,6 +238,24 @@ class StudioBinderStore:
             return {"binder_folder": _create_folder(db, owner, _folder_name(payload.get("folder_name")), folder_id)}
         if operation in {"folder-from-selection", "move-selection"}:
             return _move_selection(db, owner, payload, operation, folder_id)
+
+        if operation == "place-draft":
+            identity = _identity(payload.get("target_id"))
+            if payload.get("item_kind") != "document" or type(payload.get("first_draft")) is not bool:
+                raise _invalid()
+            item = _require_draft_revision(db, owner, identity, payload.get("target_revision"))
+            first = payload["first_draft"]
+            title, revision = item["title"], item["revision"]
+            if first:
+                saved = self.drafts._draft(db, owner, identity)
+                title = first_draft_title(title, saved["body"], saved.get("format", "text"), time.time())
+            if title != item["title"]:
+                revision += 1
+                db.execute("UPDATE studio_drafts SET title=?,revision=?,updated_at=? WHERE owner=? AND id=?",
+                           (title, revision, time.time(), owner, identity))
+            db.execute("UPDATE studio_drafts SET folder_id=?,first_draft=? WHERE owner=? AND id=?",
+                       (folder_id, int(first), owner, identity))
+            return {"binder_placed": True, "binder_title": title, "revision": revision}
 
         identity = _identity(payload.get("target_id"))
         kind = payload.get("item_kind")
@@ -253,7 +278,7 @@ class StudioBinderStore:
                 raise StudioDraftError("binder_cycle", 409)
             db.execute("UPDATE studio_folders SET parent_id=? WHERE owner=? AND id=?", (folder_id, owner, identity))
         elif operation == "move":
-            db.execute("UPDATE studio_drafts SET folder_id=? WHERE owner=? AND id=?", (folder_id, owner, identity))
+            db.execute("UPDATE studio_drafts SET folder_id=?,first_draft=0 WHERE owner=? AND id=?", (folder_id, owner, identity))
         elif kind == "folder":
             name = _folder_name(payload.get("name"))
             db.execute("UPDATE studio_folders SET name=?,name_key=? WHERE owner=? AND id=?",

@@ -3,11 +3,11 @@ const emptyLateral=()=>({id:'',title:'',parents:[],sections:[]});
 const message='This reading could not load. Please try again.';
 const immutableURL=/^\.\/data\/chunks\/(?:work|lateral|references)-[a-f0-9]{24}\.json$/;
 
-export async function fetchPublicJSON(url,{fetch:fetcher=globalThis.fetch.bind(globalThis),cache='default',timeout=45000,retries=1}={}) {
+export async function fetchPublicJSON(url,{fetch:fetcher=globalThis.fetch.bind(globalThis),cache='default',timeout=45000,retries=1,baseURL=import.meta.url}={}) {
   for(let attempt=0;;attempt++){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
     try{
-      const response=await fetcher(url,{cache,signal:controller.signal});
+      const response=await fetcher(new URL(url,baseURL),{cache,signal:controller.signal});
       if(!response.ok){
         const error=Error(message);error.retryable=response.status===408||response.status===429||response.status>=500;throw error;
       }
@@ -21,9 +21,28 @@ export async function fetchPublicJSON(url,{fetch:fetcher=globalThis.fetch.bind(g
   }
 }
 
+// Cover files belong to the published app's root, even when the document is
+// a clean /books/.../ or /numogram/.../ URL. Keep exported source/path records
+// untouched; project only known public cover values into browser copies.
+export function projectPublicCovers(value,baseURL=import.meta.url) {
+  if(Array.isArray(value)){
+    const projected=value.map(row=>projectPublicCovers(row,baseURL));
+    return projected.some((row,index)=>row!==value[index])?projected:value;
+  }
+  if(!value||typeof value!=='object')return value;
+  let projected=value;
+  for(const [key,row] of Object.entries(value)){
+    const next=key==='cover_url'&&typeof row==='string'&&/^(?:\.\/|\/)?assets\/covers\/[a-z0-9/_%. -]+$/i.test(row)
+      ?new URL(row,baseURL).href:projectPublicCovers(row,baseURL);
+    if(next!==row){if(projected===value)projected={...value};projected[key]=next;}
+  }
+  return projected;
+}
+
 export function createLibraryLoader(catalog,{fetch:fetcher=globalThis.fetch.bind(globalThis),baseURL=import.meta.url}={}) {
   if(!Array.isArray(catalog?.works)||catalog.public_assets?.version!==1)throw Error('The library catalogue could not load. Please refresh to try again.');
-  const data=catalog,assets=data.public_assets,pending=new Map(),loaded=new Set();
+  const projected=projectPublicCovers(catalog,baseURL);
+  const data={...projected,works:[...projected.works]},assets=data.public_assets,pending=new Map(),loaded=new Set();
   data.lateral ||= emptyLateral();
   const byId=new Map(data.works.map(work=>[work.id,work]));
   const bySlug=new Map(data.works.map(work=>[work.slug,work.id]));
@@ -47,7 +66,7 @@ export function createLibraryLoader(catalog,{fetch:fetcher=globalThis.fetch.bind
     const id=resolveId(value);
     if(!id)return Promise.reject(Error('This book is not in the public collection.'));
     return once('work:'+id,async()=>{
-      const work=await chunk(assets.works[id]),header=byId.get(id);
+      const work=projectPublicCovers(await chunk(assets.works[id]),baseURL),header=byId.get(id);
       if(work.id!==id||work.slug!==header.slug||!Array.isArray(work.sources)||!Array.isArray(work.units))throw Error('This published book does not match its shelf entry.');
       const position=data.works.findIndex(row=>row.id===id);data.works[position]=work;byId.set(id,work);loaded.add(id);return work;
     });
@@ -60,7 +79,7 @@ export function createLibraryLoader(catalog,{fetch:fetcher=globalThis.fetch.bind
       if(!descriptor||!Array.isArray(descriptor.dependencies))throw Error('This saved comparison has no published file.');
       const [lateral]=await Promise.all([chunk(descriptor),ensureWorks(descriptor.dependencies)]);
       if(lateral.id!==data.lateral.id||!Array.isArray(lateral.sections))throw Error('This published comparison does not match its shelf entry.');
-      data.lateral=lateral;return data;
+      data.lateral=projectPublicCovers(lateral,baseURL);return data;
     });
   }
   async function ensureAll(){await Promise.all([ensureWorks(data.works.map(work=>work.id)),ensureLateral()]);return data;}

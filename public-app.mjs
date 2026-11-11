@@ -8,7 +8,7 @@ import mountReader from './native/study-desk.mjs?v=6270f2b8272ee079';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6270f2b8272ee079';
 import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=6270f2b8272ee079';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
-import {createTabMenus,createWorkspaceHistory,manuscriptHash,updateLibraryMenu} from './web-workspace.mjs';
+import {createTabMenus,createWorkspaceHistory,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
 import {copyStudioLibraryReference,copyStudioSource,createStudioWorkspace} from './studio-workspace.mjs';
 import {bindWorkspaceBackHistory} from './native/workspace-history-menu.mjs';
 import {createNumoCompanion} from './native/numogram-companion.mjs';
@@ -17,6 +17,8 @@ import {mountStudySets} from './study-sets.mjs';
 import {mountBetaSpotlight} from './native/beta-spotlight.mjs';
 import {mountNumogramHeaderSearch} from './native/numogram-header-search.mjs';
 import {openFeaturePreview} from './native/feature-previews.mjs';
+
+installFixedWorkbenchPreferences(window,document);
 
 const $ = selector => document.querySelector(selector);
 const loadNumogram=()=>import('./native/numogram-atlas.mjs?v=6270f2b8272ee079');
@@ -29,6 +31,8 @@ let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
 async function start(){
+ const initialSearchRoute=readSearchPageRoute(document);
+ const searchPageReady=createSearchPageReady(document,window);
  const companionRequest=new URLSearchParams(location.search);
  const companionId=companionRequest.get('care_studio_request');
  const embedded=window.parent!==window&&companionRequest.get('care_studio_embed')==='1'&&/^[a-zA-Z0-9_-]{8,80}$/.test(companionId||'');
@@ -258,7 +262,7 @@ async function start(){
  function tabDetails(key){
   const document=manuscriptTabs.get(key),work=adapter.workFor(key),field=fieldFor(key),isSaved=key===SAVED_READING_ID,isNumo=key===numoTabId;
   const kind=document?document.mode:isSaved?'saved':isNumo?'numogram':work?(work.content_kind||'work'):(field?.field||'lateral');
-  const style=document?{label:document.mode==='reader'?'Reader':'Studio',color:'#84bda6',icon:'<path d="M6 3h8l4 4v14H6zm8 0v5h4M9 12h6m-6 4h6"/>'}:isSaved?SAVED_READING_STYLE:READING_STYLES[kind]||READING_STYLES.work;
+  const style=document?{label:document.mode==='reader'?'Reader':'Studio',color:'#84bda6',icon:'<path d="M6 3h8l4 4v14H6zm8 0v5h4M9 12h6m-6 4h6"/>'}:isSaved?SAVED_READING_STYLE:(isNumo||kind==='numo')?NUMOGRAM_READING_STYLE:READING_STYLES[kind]||READING_STYLES.work;
   const title=document?.title||(isNumo?'Numogram':isSaved?'Saved library':work?.title||field?.title||data.lateral.title);
   const href=document?manuscriptHash(document.mode,document.id):isSaved?'#view=saved':isNumo?'#view=numogram':work?'#book='+encodeURIComponent(work.slug):field?'#field='+encodeURIComponent(key):'#lateral='+encodeURIComponent(data.lateral.id);
   return {document,work,field,isSaved,isNumo,kind,style,title,href};
@@ -380,7 +384,7 @@ async function start(){
   if(isManuscript())studio.hide();
   if(key===SAVED_READING_ID){if(location.hash==='#view=saved')routeFromURL();else location.hash='view=saved';return;}
   if(key===numoTabId){location.hash='view=numogram';return;}
-  if(!key){if(location.hash)location.hash='';else{view='library';paint();}return;}
+  if(!key){const home=initialSearchRoute?'#view=library':'';if(location.hash!==home)openReadingRoute(home);else{view='library';paint();}return;}
   const work=adapter.workFor(key);
   if(work)state=standaloneBookState(work.id,bookStates.get(work.id));
   else if(fieldFor(key))state={workId:(data.works[0]?.id||''),...bookStates.get(key),connectionId:key};
@@ -859,7 +863,7 @@ async function start(){
  function paintSaved(){
   const items=collectSavedItems({saved,index,fields,readLocal,card:id=>adapter.card(id,{state})});
   savedCleanup?.();savedCleanup=mountSavedLibrary({parentElement:$('#main'),data:{items,reviewer:'you',can_exit:true,theme:'dark'},setTriggerValue:async(_,event)=>{
-   if(event.action==='exit'){location.hash='';return;}
+   if(event.action==='exit'){showReading('');return;}
    const item=items.find(item=>item.id===event.id&&item.kind===event.kind);if(!item)return;
    if(event.action==='remove'){
     const next=removeSavedItem(item.field_id?readLocal(item.storage_key,{}):saved,item);
@@ -881,7 +885,7 @@ async function start(){
    previous=>workspaceHistory.replace(previous)))return;
   workspaceHistory.observe();
   const request=++routeRequest;saveState();setLoadStatus();
-  const p=new URLSearchParams(location.hash.slice(1)),field=fieldFor(p.get('field')),lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
+  const p=searchPageRouteParams(location.hash,initialSearchRoute),field=fieldFor(p.get('field')),lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
   try{
    const nextView=p.get('view');
    if(documentSplitCompanion&&(!['studio','reader'].includes(nextView)||p.get('draft')!==splitDraftId)){
@@ -900,12 +904,14 @@ async function start(){
     paint();
     if(localAddress&&!account)setLoadStatus('Restart the local preview to open drafts. Press Control-C in its Terminal window, then reopen the preview launcher.');
     await studio.show(view,draftId);
+    searchPageReady({view});
     return;
    }
    if(isManuscript())studio.hide();
    if(nextView==='preparation'){
     view='preparation';paint();
     $('#preparation-preview-title').focus({preventScroll:true});
+    searchPageReady({view});
     if(!preparationPreview)preparationPreview=loadText('./native/preparation-desk.html')
      .then(markup=>{preparationStage.innerHTML=markup;})
      .catch(()=>{preparationPreview=null;});
@@ -913,10 +919,17 @@ async function start(){
    }
    if(nextView==='numogram'){
     view='numogram';paint();
-    if(!numoWorkspace){
-     setLoadStatus('Opening CARE Numogram…');
-     const {default:mountNumogramAtlas}=await loadNumogram();
-     if(request!==routeRequest)return;
+    const opening=!numoWorkspace;
+    if(opening)setLoadStatus('Opening CARE Numogram…');
+    const [atlas,referenceModule]=await Promise.all([
+     opening?loadNumogram():null,
+     p.get('demon')&&!p.get('numo')?import('./native/numogram-reference.mjs'):null,
+    ]);
+    if(request!==routeRequest)return;
+    const reference=referenceModule?.default;
+    const demonTarget=reference?numogramDemonTarget(p,reference.demons):null;
+    if(opening){
+     const {default:mountNumogramAtlas}=atlas;
      numoWorkspace=mountNumogramAtlas(numoHost,{libraryBooks:data.works,focusHeaderAQ:()=>numoHeader?.open(),openSource:href=>{
       const source=new URL(href,location.href);
       const params=new URLSearchParams(source.hash.slice(1));
@@ -927,16 +940,19 @@ async function start(){
      pendingNumoAQ=pendingNumoReference=null;
      setLoadStatus();
     }
+    if(demonTarget)numoWorkspace.openReference(demonTarget);
+    searchPageReady({view,demon:demonTarget?.id||''});
     return;
    }
    if(nextView==='study-sets'){
     view='study-sets';paint();
     if(pendingStudySetAction)studySets.openFromShelf(pendingStudySetAction);
     pendingStudySetAction=null;
+    searchPageReady({view});
     return;
    }
    if(p.get('view')==='saved'){
-    view='saved';paint();setLoadStatus('Opening your saved readings…');await prepareSaved(request);if(request!==routeRequest)return;setLoadStatus();paint();return;
+    view='saved';paint();setLoadStatus('Opening your saved readings…');await prepareSaved(request);if(request!==routeRequest)return;setLoadStatus();paint();searchPageReady({view});return;
    }
    if(field){
     setLoadStatus('Opening '+field.title+'…');await Promise.all([loadPublicField(field),ensureField(),ensureViewer()]);if(request!==routeRequest)return;
@@ -949,7 +965,7 @@ async function start(){
     state={workId:adapter.savedConnection.members[0]?.id||data.works[0]?.id||'',...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';
    }else if(work){
     setLoadStatus('Opening '+work.title+'…');await Promise.all([loader.ensureWork(work.id),ensureViewer()]);if(request!==routeRequest)return;refreshAdapter();state=standaloneBookState(work.id,bookStates.get(work.id));view='workspace';
-   }else{view=['laterals','corpuses'].includes(p.get('view'))?p.get('view'):'library';paint();signalLibraryCompanion();return;}
+   }else{view=['laterals','corpuses'].includes(p.get('view'))?p.get('view'):'library';paint();signalLibraryCompanion();if(['library','laterals','corpuses'].includes(p.get('view')))searchPageReady({view});return;}
    if(p.has('unit')&&p.get('unit')!==data.lateral.id){state.unitId=p.get('unit');state.rawUnitId='';state.referenceId='';state.selectedAxiom=null;}
    if(p.has('source')){state.rawUnitId=p.get('source');state.unitId='';state.referenceId='';state.selectedAxiom=null;}
    if(work&&!state.connectionId&&p.has('focus')){
@@ -966,7 +982,7 @@ async function start(){
     if(field){const next=fieldReferenceState(field,adapter,state,{id:p.get('ref'),scope:p.get('scope')||'',workId:p.get('work')||''});if(!next)throw Error('This route is not included in the published reading.');state=next;}
     else{if(state.connectionId)state.connectionReferenceId=p.get('ref');else state.referenceId=p.get('ref');remember();}
    }
-   setLoadStatus();paint();signalLibraryCompanion(!state.connectionId&&adapter.workFor(state.workId),field?.title,index.nodes.get(p.get('focus')||p.get('ref')));
+   setLoadStatus();paint();searchPageReady({view,book:work?.slug||'',source:p.get('source')||''});signalLibraryCompanion(!state.connectionId&&adapter.workFor(state.workId),field?.title,index.nodes.get(p.get('focus')||p.get('ref')));
   }catch(error){if(request!==routeRequest)return;console.error(error);view='library';paint();signalLibraryCompanion();setLoadStatus(error.message||'This reading could not load.',()=>routeFromURL());}
  }
  function signalLibraryCompanion(work,fieldTitle,target){
@@ -1034,7 +1050,7 @@ async function start(){
   if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
   event.preventDefault();
   if(isManuscript()&&link.matches('[data-page=library]')&&studio.openLibrary())return;
-  if(location.hash)openReadingRoute('');else{view='library';paint();}
+  showReading('');
  }));
  function moveHistory(step){
   if(chamberStep(step))document.dispatchEvent(new CustomEvent('care:numo-history-step',{detail:{step}}));
@@ -1052,26 +1068,9 @@ async function start(){
   },
  });
  addEventListener('popstate',()=>workspaceHistory.observe());
- const settingsMenu=$('#workbench-settings'),roomsMenu=$('#workbench-rooms'),labels=$('#workbench-labels');
+ const settingsMenu=$('#workbench-settings'),roomsMenu=$('#workbench-rooms');
  const toolbarMenus=[libraryMenu,roomsMenu,settingsMenu];
  $('[data-numo-tools]').onclick=()=>numoWorkspace?.openTools();
- function setLabels(visible){
-  labels.checked=visible;
-  window.careToolbarLabelsVisible=visible;
-  document.documentElement.dataset.careToolbarLabels=String(visible);
-  try{localStorage.setItem('care-web-toolbar-labels-v1',String(visible));}catch{}
-  window.dispatchEvent(new CustomEvent('care-toolbar-labels-changed',{detail:{visible}}));
- }
- try{setLabels(localStorage.getItem('care-web-toolbar-labels-v1')==='true');}catch{setLabels(false);}
- labels.onchange=()=>setLabels(labels.checked);
- window.addEventListener('care-toolbar-labels-request',event=>setLabels(Boolean(event.detail?.visible)));
- const arrows=$('#workbench-arrows');
- try{arrows.checked=localStorage.getItem('care-slider-arrows-v1')!=='false';}catch{arrows.checked=true;}
- arrows.onchange=()=>{
-  try{localStorage.setItem('care-slider-arrows-v1',String(arrows.checked));}catch{}
-  window.dispatchEvent(new CustomEvent('care-slider-arrows-request',{detail:{visible:arrows.checked}}));
- };
- window.addEventListener('care-slider-arrows-changed',event=>{arrows.checked=Boolean(event.detail?.visible);});
  for(const menu of toolbarMenus){
   menu.addEventListener('toggle',()=>{
    if(!menu.open)return;

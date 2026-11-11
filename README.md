@@ -1,5 +1,9 @@
 # CARE Library Beta
 
+Build 20261111.24 brings the First drafts Binder shelf to account and browser drafts. Library and NUMO panels overlay the unchanged document in normal Studio and full writing view; opening them retains the current editor. Toolbar labels stay off and slider arrows stay on, and NUMO uses the ten-zone diagram icon.
+
+Searchable book, chapter and demon URLs progressively open the existing reader or Numogram at the requested destination. The production build generates these pages from the attested published collection and NUMO reference; it also creates canonical metadata, a sitemap and machine-readable research discovery. Book URLs remain compact, while individual chapter URLs carry bounded original text only when the existing library mode permits public access. No private drafts are used. Generated page directories and the research index are build products, not a second catalogue authority.
+
 This release adds an approved-account beta to the current CARE Library at https://carelibrary.org. Beta mode starts on: Discover is the public homepage, and the library, native reader, reading files, and covers require a server session. The owner can switch between this beta setup and an open library using Website settings. Requests for access collect a name and email and notify **willproudler@gmail.com**; submitting a request does not create an account.
 
 The current exported collection and reader are retained, including chunk loading, saved readings, translations, and the quick start guide. The request page uses the small “Join the beta” heading. Existing reading links keep their destination after login.
