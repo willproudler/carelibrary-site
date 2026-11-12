@@ -488,10 +488,15 @@ async def static_file(request):
     path = resource_path(root, resource)
     media_type = ("application/json" if suffix in {".json", ".jsonpart"}
                   else "text/javascript" if suffix in {".mjs", ".js"}
+                  else "text/markdown" if suffix == ".md"
                   else mimetypes.guess_type(str(path))[0] or "application/octet-stream")
     headers = {"Vary": "Cookie, Accept-Encoding"}
     if public and suffix == ".html":
         headers["Link"] = '</llms.txt>; rel="describedby"; type="text/markdown"'
+    if search and (suffix in {".html", ".md"} or suffix == ".json" and search.document_canonical):
+        links = [f'<{search.document_canonical or search.canonical}>; rel="canonical"']
+        links.extend(f'<{url}>; rel="alternate"; type="{kind}"' for url, kind in search.alternates)
+        headers["Link"] = ", ".join(filter(None, [headers.get("Link"), *links]))
     if not public:
         headers["X-Robots-Tag"] = "noindex"
     # The workspace companions follow the same access rules as the main Library.

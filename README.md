@@ -1,6 +1,10 @@
 # CARE Library Beta
 
-Build 20261112.25 gives published books compact author-and-title URLs such as `/platotimaeus` and `/spinozaethics`. Opening a book from the Library shows its short address in the browser; chapter links and previous longer book URLs keep working. Library panels also open correctly from book and chapter URLs in both Studio writing views.
+Build 20261112.26 gives every published saved CARE reading its own readable HTML page, plain Markdown and structured JSON packet. Book pages link to their whole-book reading and chapter, cluster and macro layers. Each version preserves saved claims, reading identities, references and language provenance; CARE analysis and saved machine translations are labelled separately from original author prose. A link opens the matching unit in the normal reader and works without JavaScript when the library is public.
+
+The production build regenerates reading pages, citation indexes, discovery links and readable book URLs from the attested export whenever books are published. Per-book detail indexes keep the main research index compact. Full CARE text follows the live beta/public access setting, including Markdown and JSON variants; private account and Studio data are excluded.
+
+Published books retain compact author-and-title URLs such as `/platotimaeus` and `/spinozaethics`. Opening a book from the Library shows its short address in the browser; chapter links and previous longer book URLs keep working. Library panels also open correctly from book and chapter URLs in both Studio writing views.
 
 The First drafts Binder shelf is available to account and browser drafts. Library and NUMO panels overlay the unchanged document in normal Studio and full writing view; opening them retains the current editor. Toolbar labels stay off and slider arrows stay on, and NUMO uses the ten-zone diagram icon.
 

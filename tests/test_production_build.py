@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import gzip
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -106,6 +107,37 @@ class ProductionBuildTests(unittest.TestCase):
                     production.copy_browser_files(site, dist)
                 self.assertEqual(list(dist.iterdir()), [dist / "previous.html"])
                 self.assertEqual((dist / "previous.html").read_text(), "last known build")
+
+    def test_only_registered_reading_markdown_is_staged(self):
+        site = self.site()
+        name = "books/timaeus-plato/readings/wb/timaeus-unit123/reading.md"
+        reading = site / name
+        reading.parent.mkdir(parents=True)
+        reading.write_text("# Saved CARE reading\n\nRecorded analysis.")
+        manifest = {"schema": "care-reading-search-pages/1", "pages": [{
+            "kind": "reading", "book_slug": "timaeus-plato", "layer_slug": "wb",
+            "unit_slug": "timaeus-unit123", "markdown_path": name}]}
+        (site / "books/readings-manifest.json").write_text(json.dumps(manifest))
+        production.copy_browser_files(site, site / "dist")
+        self.assertEqual((site / "dist" / name).read_bytes(), reading.read_bytes())
+        reading.write_text(reading.read_text() * 100)
+        production.copy_browser_files(site, site / "dist")
+        self.assertEqual(gzip.decompress((site / "dist" / (name + ".gz")).read_bytes()), reading.read_bytes())
+        private = site / "native/private-notes.md"
+        private.write_text("Unregistered private notes")
+        with self.assertRaisesRegex(ValueError, "Unrecognized browser asset"):
+            production.copy_browser_files(site, site / "dist")
+        self.assertFalse((site / "dist/native/private-notes.md").exists())
+
+    def test_reading_markdown_manifest_cannot_allow_an_arbitrary_path(self):
+        site = self.site()
+        (site / "books/readings-manifest.json").write_text(json.dumps({
+            "schema": "care-reading-search-pages/1", "pages": [{
+                "kind": "reading", "book_slug": "../../private", "layer_slug": "wb",
+                "unit_slug": "unit", "markdown_path": "private/notes.md"}]}))
+        with self.assertRaisesRegex(ValueError, "registered reading Markdown"):
+            production.copy_browser_files(site, site / "dist")
+        self.assertFalse((site / "dist").exists())
 
     def test_symlinked_root_files_assets_and_asset_directories_are_rejected(self):
         outside = self.root / "private.json"

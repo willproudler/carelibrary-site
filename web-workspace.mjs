@@ -247,7 +247,9 @@ export function readSearchPageRoute(document) {
     if(route?.view==='workspace'&&typeof route.book==='string'&&route.book){
       const sources=Array.isArray(route.sources)&&route.sources.every(id=>typeof id==='string'&&id)?[...route.sources]:[];
       return {view:'workspace',book:route.book,sources,
-        ...(typeof route.source==='string'&&sources.includes(route.source)?{source:route.source}:{})};
+        ...(typeof route.unit==='string'&&route.unit?{unit:route.unit}:
+          typeof route.source==='string'&&sources.includes(route.source)?{source:route.source}:{}),
+        ...(typeof route.ref==='string'&&route.ref?{ref:route.ref}:{})};
     }
     if(route?.view==='numogram')return {view:'numogram',
       ...(typeof route.demon==='string'?{demon:route.demon}:{})};
@@ -267,15 +269,37 @@ export function searchPageRouteParams(hash, initial) {
   const route=new URLSearchParams({view:initial.view});
   if(initial.book)route.set('book',initial.book);
   if(initial.source)route.set('source',initial.source);
+  if(initial.unit)route.set('unit',initial.unit);
+  if(initial.ref)route.set('ref',initial.ref);
   if(initial.demon)route.set('demon',initial.demon);
   const source=/^source-([1-9][0-9]*)$/.exec(raw);
   if(source){
     const identity=initial.sources?.[Number(source[1])-1];
-    if(identity)route.set('source',identity);
+    if(identity){route.delete('unit');route.delete('ref');route.set('source',identity);}
   }else if(raw.includes('=')){
+    if(params.has('source')){route.delete('unit');route.delete('ref');}
+    if(params.has('unit')){route.delete('source');route.delete('ref');}
+    if(params.has('ref')){route.delete('unit');route.delete('source');}
     for(const [key,value] of params)route.set(key,value);
   }
   return route;
+}
+
+// Resolve semantic reading pages against the loaded public edition, rather
+// than trusting a URL slug or guessing a chapter from a layer's display title.
+export function bookRouteUnitState(params,work,index,{focusToken,readingPage=false}={}) {
+  if(!params.has('unit'))return null;
+  const id=params.get('unit'),node=index.nodes.get(id);
+  const source=node?.kind==='source'&&node.layer==='SOURCE';
+  const care=node?.kind==='unit'&&['CH','CL','MC','WB'].includes(node.layer);
+  if(!work||node?.work?.id!==work.id||!source&&!care)throw Error('This reading is not included in the published book.');
+  if(params.has('ref')){
+    const ref=index.nodes.get(params.get('ref'));
+    if(ref?.work?.id!==work.id||ref.unit?.id!==id||!['claim','passage'].includes(ref.kind))throw Error('This reference is not included in the published reading.');
+  }
+  return {unitId:care?id:'',rawUnitId:source?id:'',referenceId:'',selectedAxiom:null,
+    outlineUnits:[],savedFocus:{work_id:work.id,unit_id:id,token:focusToken||'public-unit:'+id,
+      ...(readingPage?{reading_page:true}:{})}};
 }
 
 export function createSearchPageReady(document, window) {

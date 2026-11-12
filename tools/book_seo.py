@@ -207,6 +207,33 @@ def _source_text(source: dict) -> str:
                         if isinstance(paragraph, dict) and _text(paragraph.get("text")))
 
 
+def _source_markup(source: dict) -> str:
+    """Add passage anchors only for an exact ordered text reconstruction.
+
+    If saved passage wording differs from the canonical chapter or leaves an
+    unaccounted prose gap, retain the chapter verbatim without invented offsets.
+    """
+    text=_source_text(source)
+    paragraphs=[paragraph for paragraph in _rows(source.get('paragraphs'))
+                if isinstance(paragraph,dict) and isinstance(paragraph.get('id'),str)
+                and paragraph['id'] and isinstance(paragraph.get('text'),str) and paragraph['text']]
+    if not paragraphs:
+        return escape(text)
+    cursor=0;parts=[];seen=set()
+    for paragraph in paragraphs:
+        identity=paragraph['id'];value=paragraph['text']
+        position=text.find(value,cursor)
+        if identity in seen or position<0 or text[cursor:position].strip():
+            return escape(text)
+        seen.add(identity)
+        parts.append(escape(text[cursor:position]))
+        parts.append('<span id="'+escape('ref='+identity,quote=True)+'" data-passage-id="'+escape(identity,quote=True)+'">'+escape(value)+'</span>')
+        cursor=position+len(value)
+    if text[cursor:].strip():
+        return escape(text)
+    return ''.join(parts)+escape(text[cursor:])
+
+
 def _safe_external(value) -> str:
     if not isinstance(value, str):
         return ""
@@ -311,6 +338,15 @@ def _book_page(work: dict, slug: str, origin: str) -> str:
             '<dl>' + ''.join(facts) + '</dl>')
     body += ('<p class="notice">This page lists the published book and its source sections. '
              'Library access follows the website’s current beta setting; signing in may be required to open the text.</p>')
+    from reading_seo import LAYER_NAMES, LAYER_ORDER, layer_url, overview_url, unit_url
+    body += '<section aria-labelledby="care-readings"><h2 id="care-readings">Saved CARE readings</h2><p>Generated CARE analysis is separate from the author’s original text.</p>'
+    body += '<p><a href="' + escape(overview_url(slug), quote=True) + '">All saved CARE readings</a></p><ul>'
+    for unit in units:
+        if unit.get('layer') == 'WB' and isinstance(unit.get('id'), str) and unit['id']:
+            body += '<li><a href="' + escape(unit_url(slug, unit), quote=True) + '">Whole-book CARE summary</a></li>'
+    for layer in sorted((key for key in layers if key != 'WB'), key=lambda key: (LAYER_ORDER.get(key, 99), key)):
+        body += '<li><a href="' + escape(layer_url(slug, layer), quote=True) + '">' + escape(LAYER_NAMES.get(layer, layer)) + ' CARE readings</a></li>'
+    body += '</ul></section>'
     if chapter_links:
         body += '<section aria-labelledby="contents"><h2 id="contents">Source sections</h2><ol class="chapters">' + ''.join(chapter_links) + '</ol></section>'
     body += '</article>'
@@ -346,7 +382,7 @@ def _chapter_page(work: dict, book_slug: str, source: dict, chapter_slug: str, o
         body += ('<p class="notice">The text below is this section of the saved original edition. '
                  'CARE interpretations and generated readings are separate from the author’s prose.</p>'
                  f'<section class="source-chapter" id="source-{index + 1}"><h2>{escape(title)}</h2>'
-                 f'<div class="source-body">{escape(text)}</div></section>')
+                 f'<div class="source-body">{_source_markup(source)}</div></section>')
     else:
         body += ('<p class="notice">This is the published source-section entry. Opening the reading panes follows the '
                  'website’s current beta setting; signing in may be required.</p>')
@@ -453,6 +489,9 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         _write(temporary / "index.html", _shell(title="Books by title and author | CARE Library",
                description="Browse the published CARE Library books by title and author, with original source sections and available CARE readings.",
                canonical=origin + "/books/", body=body))
+        from reading_seo import build_into as build_readings
+        sitemap.extend(build_readings(source, temporary, library=library, library_sha256=digest,
+                                     books=entries, origin=origin, mapping=compact_mapping))
         _write(temporary / "manifest.json", json.dumps({"schema": SCHEMA, "source_sha256": digest,
                "metadata_public": True, "text_requires_public_library": True, "books": entries, "chapters": chapters}, ensure_ascii=False, indent=2) + "\n")
         if target.exists():

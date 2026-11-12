@@ -27,3 +27,14 @@ test('compact author-title books and chapters retain exact safe login returns',(
   assert.equal(postLoginDestination(path),'/library.html',path);
  }
 });
+
+test('saved CARE reading pages preserve safe login returns across every published layer',()=>{
+ for(const path of ['/platotimaeus/readings/',...['ch','cl','mc','wb'].map(layer=>'/platotimaeus/readings/'+layer+'/003-exact-saved-sheet/')]){
+  const destination=path+'?reading=1#ref=WB_EXACT%3AA1';
+  assert.equal(libraryDestination(destination),destination);
+  assert.equal(loginURL(destination),'/login.html?next='+encodeURIComponent(destination));
+ }
+ for(const path of ['/api/readings/wb/private/','/platotimaeus/readings/private/id/','/platotimaeus/readings/wb/id/another/','/platotimaeus/readings/wb/%2fother/','//elsewhere.test/platotimaeus/readings/']){
+  assert.equal(postLoginDestination(path),'/library.html');
+ }
+});

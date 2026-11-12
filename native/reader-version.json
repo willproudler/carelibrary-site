@@ -4,11 +4,12 @@
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
     "Offer only available saved translations and supported published shelf actions",
-    "Reuse shelf menus for published author browsing and private study sets"
+    "Reuse shelf menus for published author browsing and private study sets",
+    "Open explicitly linked saved CARE reading pages in their exact text pane, including from a saved Outline view"
   ],
   "assets": {
     "study-desk.css": "8d10c409cb5e32f117f34c86d10733e681e8cb9f6eb328443c422f9763106d0d",
-    "study-desk.mjs": "81ac13db117240e67cc689afbd2958efe42bce47c33b45a3e5ede1f8458f679b",
+    "study-desk.mjs": "fcb9923f969240fbf6aa5d555b598935ac3bcc93d6bbee0a863224c3e6562ac2",
     "reading-views.mjs": "d6185827c5f2e133ed12763347cddbbd65a2d09f96dbccc9807197482eb64e72"
   },
   "reading_presentation": "care-item-presentation/7",

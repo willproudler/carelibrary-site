@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import json
 import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT_FILES = """
 about.html auth.css auth.mjs boot.mjs book-routes.json brand-header.css care-about.mjs care-version.json
@@ -34,6 +35,33 @@ ASSET_EXTENSIONS = {
 }
 
 
+def reading_markdown_assets(source: Path) -> set[str]:
+    """Allow only Markdown registered by the attested reading-page builder."""
+    manifest = source / "books/readings-manifest.json"
+    if not manifest.exists():
+        return set()
+    if (manifest.is_symlink() or not manifest.resolve().is_relative_to(source.resolve())
+            or manifest.stat().st_size > 16 * 1024 * 1024):
+        raise ValueError("Invalid reading-page manifest.")
+    contents = json.loads(manifest.read_text(encoding="utf-8"))
+    if contents.get("schema") != "care-reading-search-pages/1" or not isinstance(contents.get("pages"), list):
+        raise ValueError("Invalid reading-page manifest.")
+    approved = set()
+    for entry in contents["pages"]:
+        if not isinstance(entry, dict) or entry.get("markdown_path") is None:
+            continue
+        parts = [entry.get(key) for key in ("book_slug", "layer_slug", "unit_slug")]
+        if (entry.get("kind") != "reading" or any(not isinstance(part, str) or not part
+                or part.startswith(".") or PurePosixPath(part).parts != (part,) or "\\" in part
+                or any(ord(char) < 32 for char in part) for part in parts)):
+            raise ValueError("Invalid registered reading Markdown.")
+        expected = f"books/{parts[0]}/readings/{parts[1]}/{parts[2]}/reading.md"
+        if entry["markdown_path"] != expected:
+            raise ValueError("Invalid registered reading Markdown.")
+        approved.add(expected)
+    return approved
+
+
 def copy_browser_files(source: Path, destination: Path) -> None:
     """Fail on links/unknown files instead of accidentally shipping private data."""
     source = source.resolve(strict=True)
@@ -43,6 +71,7 @@ def copy_browser_files(source: Path, destination: Path) -> None:
     if destination != source / "dist":
         raise ValueError("The production build must be staged in this checkout's dist directory.")
     paths = [source / name for name in ROOT_FILES]
+    reading_markdown = reading_markdown_assets(source)
     for name in ASSET_DIRECTORIES:
         directory = source / name
         if directory.is_symlink() or not directory.is_dir():
@@ -52,7 +81,7 @@ def copy_browser_files(source: Path, destination: Path) -> None:
             if path.is_symlink() or any(part.startswith(".") for part in relative.parts):
                 raise ValueError(f"Unsafe browser asset: {relative}")
             if path.is_file():
-                if path.suffix.lower() not in ASSET_EXTENSIONS:
+                if path.suffix.lower() not in ASSET_EXTENSIONS and relative.as_posix() not in reading_markdown:
                     raise ValueError(f"Unrecognized browser asset: {relative}")
                 paths.append(path)
     for path in paths:
@@ -65,6 +94,11 @@ def copy_browser_files(source: Path, destination: Path) -> None:
         target = destination / path.relative_to(source)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, target)
+        if path.relative_to(source).as_posix() in reading_markdown:
+            contents = path.read_bytes()
+            compressed = gzip.compress(contents, compresslevel=6, mtime=0)
+            if len(compressed) < len(contents):
+                target.with_name(target.name + ".gz").write_bytes(compressed)
 
 
 def stamp_browser_modules(destination: Path) -> None:

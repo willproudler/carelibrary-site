@@ -8,7 +8,7 @@ import mountReader from './native/study-desk.mjs?v=6270f2b8272ee079';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6270f2b8272ee079';
 import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=6270f2b8272ee079';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
-import {createTabMenus,createWorkspaceHistory,createBookAddressing,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
+import {createTabMenus,createWorkspaceHistory,createBookAddressing,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,bookRouteUnitState,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
 import {copyStudioLibraryReference,copyStudioSource,createStudioWorkspace} from './studio-workspace.mjs';
 import {bindWorkspaceBackHistory} from './native/workspace-history-menu.mjs';
 import {createNumoCompanion} from './native/numogram-companion.mjs';
@@ -998,7 +998,12 @@ async function start(){
    }else if(work){
     setLoadStatus('Opening '+work.title+'…');await Promise.all([loader.ensureWork(work.id),ensureViewer()]);if(request!==routeRequest)return;refreshAdapter();state=standaloneBookState(work.id,bookStates.get(work.id));view='workspace';
    }else{view=['laterals','corpuses'].includes(p.get('view'))?p.get('view'):'library';paint();signalLibraryCompanion();if(['library','laterals','corpuses'].includes(p.get('view')))searchPageReady({view});return;}
-   if(p.has('unit')&&p.get('unit')!==data.lateral.id){state.unitId=p.get('unit');state.rawUnitId='';state.referenceId='';state.selectedAxiom=null;}
+   if(p.has('unit')&&p.get('unit')!==data.lateral.id){
+    if(work&&!state.connectionId)state={...state,...bookRouteUnitState(p,adapter.workFor(work.id),index,{
+     focusToken:'public-unit:'+request,readingPage:currentSearchRoute()?.unit===p.get('unit'),
+    })};
+    else{state.unitId=p.get('unit');state.rawUnitId='';state.referenceId='';state.selectedAxiom=null;}
+   }
    if(p.has('source')){state.rawUnitId=p.get('source');state.unitId='';state.referenceId='';state.selectedAxiom=null;}
    if(work&&!state.connectionId&&p.has('focus')){
     const node=index.nodes.get(p.get('focus'));
@@ -1014,7 +1019,7 @@ async function start(){
     if(field){const next=fieldReferenceState(field,adapter,state,{id:p.get('ref'),scope:p.get('scope')||'',workId:p.get('work')||''});if(!next)throw Error('This route is not included in the published reading.');state=next;}
     else{if(state.connectionId)state.connectionReferenceId=p.get('ref');else state.referenceId=p.get('ref');remember();}
    }
-   setLoadStatus();paint();searchPageReady({view,book:work?.slug||'',source:p.get('source')||''});signalLibraryCompanion(!state.connectionId&&adapter.workFor(state.workId),field?.title,index.nodes.get(p.get('focus')||p.get('ref')));
+   setLoadStatus();paint();searchPageReady({view,book:work?.slug||'',source:p.get('source')||'',unit:p.get('unit')||'',ref:p.get('ref')||''});signalLibraryCompanion(!state.connectionId&&adapter.workFor(state.workId),field?.title,index.nodes.get(p.get('focus')||p.get('ref')));
   }catch(error){if(request!==routeRequest)return;console.error(error);view='library';paint();signalLibraryCompanion();setLoadStatus(error.message||'This reading could not load.',()=>routeFromURL());}
  }
  function signalLibraryCompanion(work,fieldTitle,target){

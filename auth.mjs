@@ -15,7 +15,8 @@ function safeDestination(value, paths, fragment) {
     const rootName=cleanPath.split('/')[1];
     const reserved=new Set(['api','assets','books','data','fonts','native','numogram','tools','tests','login','logout','register','settings','admin','account','health','static']);
     const compactBook=cleanPath.length<=500&&!reserved.has(rootName)&&/^\/[a-z0-9]{2,224}(?:\/(?:[\p{L}\p{N}][\p{L}\p{N}-]*\/)?)?$/u.test(cleanPath);
-    if (url.origin !== 'https://care.invalid' || (!paths.includes(url.pathname) && !searchPage && !compactBook) || url.username || url.password) return '/library.html';
+    const readingPage=cleanPath.length<=500&&!reserved.has(rootName)&&/^\/[a-z0-9]{2,224}\/readings\/(?:(?:ch|cl|mc|wb)\/[\p{L}\p{N}][\p{L}\p{N}-]*\/)?$/u.test(cleanPath);
+    if (url.origin !== 'https://care.invalid' || (!paths.includes(url.pathname) && !searchPage && !compactBook && !readingPage) || url.username || url.password) return '/library.html';
     return url.pathname + url.search + (fragment || url.hash);
   } catch { return '/library.html'; }
 }

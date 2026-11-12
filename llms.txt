@@ -2,7 +2,7 @@
 
 > A reading environment for tracing original texts, arguments and recorded connections, with an interactive Numogram and its attributed CCRU demon reference.
 
-The public research index lists the published books, exact source sections and all 45 demon records. Canonical book and chapter URLs open the existing source and CARE panes; demon URLs open the same NUMO instrument on that entry.
+The compact public research index lists published books and all 45 demon records. Each book's details_index links every exact original source section and saved CARE reading at CH, CL, MC and WB level. These research indexes contain navigation/citation metadata, not reading prose. Each saved unit's text_url (Markdown) and data_url (structured JSON packet) contain its complete saved interpretation and recorded evidence fields. Those editions, and readable HTML, require no JavaScript when the library is in public mode.
 
 Book and source metadata are public. Original source text follows the website’s current beta access setting. Private Studio drafts, account records and unpublished books are not listed.
 
@@ -10,27 +10,143 @@ Original author prose and saved AI-assisted CARE interpretations are separate. F
 
 ## Research entry points
 
-- [Machine-readable research index](https://carelibrary.org/research-index.json): Canonical URLs, authors, exact source IDs and public reference identities.
+- [Machine-readable research index](https://carelibrary.org/research-index.json): Canonical URLs, original authors, exact source IDs, saved CARE unit/layer IDs and plain-text reading URLs.
 - [Books by title and author](https://carelibrary.org/books/)
 - [Numogram](https://carelibrary.org/numogram/): The map, zones, currents, gates and linked demon records.
 - [Sitemap](https://carelibrary.org/sitemap.xml)
 
+## Reading and summarising a work
+
+- For a saved whole-book interpretation, use the WB link when one is listed beside the book. Start with its structured JSON packet for section/item fields and recorded connections, or Markdown for continuous reading. Both contain the complete saved reading without requiring the interface to run.
+- For the structure of the argument, follow MC (meta-cluster) and then CL (cluster) readings where available. For detailed chapter claims, use CH. The overview and per-book JSON list only levels actually saved for that work.
+- For an exact quotation or primary evidence, follow the original source-section URL. Keep original edition/language, any labelled saved machine-English translation, and generated CARE analysis distinct.
+- Existing reading pages retain unit IDs, claim IDs, section/item anchors and recorded source connections. Cite those recorded links after checking their contents; separate your new inference from the saved interpretation.
+
 ## Books
 
 - [A Treatise of Human Nature — David Hume](https://carelibrary.org/humetreatiseofhumannature)
+- [A Treatise of Human Nature — David Hume: saved CARE readings](https://carelibrary.org/humetreatiseofhumannature/readings/): Overview of available saved interpretations, grouped by level.
+- [A Treatise of Human Nature — David Hume: research details JSON](https://carelibrary.org/humetreatiseofhumannature/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [A Treatise of Human Nature — David Hume: whole-book CARE reading (WB)](https://carelibrary.org/humetreatiseofhumannature/readings/wb/a-treatise-of-human-nature-7e39db14de38/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [A Treatise of Human Nature — David Hume: WB plain text](https://carelibrary.org/humetreatiseofhumannature/readings/wb/a-treatise-of-human-nature-7e39db14de38/reading.md)
+- [A Treatise of Human Nature — David Hume: WB structured saved-reading JSON](https://carelibrary.org/humetreatiseofhumannature/readings/wb/a-treatise-of-human-nature-7e39db14de38/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [A Treatise of Human Nature — David Hume: Meta-cluster CARE readings (MC)](https://carelibrary.org/humetreatiseofhumannature/readings/mc/): 3 saved readings.
+- [A Treatise of Human Nature — David Hume: Cluster CARE readings (CL)](https://carelibrary.org/humetreatiseofhumannature/readings/cl/): 9 saved readings.
+- [A Treatise of Human Nature — David Hume: Chapter CARE readings (CH)](https://carelibrary.org/humetreatiseofhumannature/readings/ch/): 27 saved readings.
 - [Capital Volume 1 — Karl Marx](https://carelibrary.org/marxcapitalvolume1)
+- [Capital Volume 1 — Karl Marx: saved CARE readings](https://carelibrary.org/marxcapitalvolume1/readings/): Overview of available saved interpretations, grouped by level.
+- [Capital Volume 1 — Karl Marx: research details JSON](https://carelibrary.org/marxcapitalvolume1/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Capital Volume 1 — Karl Marx: whole-book CARE reading (WB)](https://carelibrary.org/marxcapitalvolume1/readings/wb/capital-volume-1-0f4abe970fea/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Capital Volume 1 — Karl Marx: WB plain text](https://carelibrary.org/marxcapitalvolume1/readings/wb/capital-volume-1-0f4abe970fea/reading.md)
+- [Capital Volume 1 — Karl Marx: WB structured saved-reading JSON](https://carelibrary.org/marxcapitalvolume1/readings/wb/capital-volume-1-0f4abe970fea/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Capital Volume 1 — Karl Marx: Meta-cluster CARE readings (MC)](https://carelibrary.org/marxcapitalvolume1/readings/mc/): 2 saved readings.
+- [Capital Volume 1 — Karl Marx: Cluster CARE readings (CL)](https://carelibrary.org/marxcapitalvolume1/readings/cl/): 8 saved readings.
+- [Capital Volume 1 — Karl Marx: Chapter CARE readings (CH)](https://carelibrary.org/marxcapitalvolume1/readings/ch/): 23 saved readings.
 - [Civilization and its Discontents — Sigmund Freud](https://carelibrary.org/freudcivilizationanditsdiscontents)
+- [Civilization and its Discontents — Sigmund Freud: saved CARE readings](https://carelibrary.org/freudcivilizationanditsdiscontents/readings/): Overview of available saved interpretations, grouped by level.
+- [Civilization and its Discontents — Sigmund Freud: research details JSON](https://carelibrary.org/freudcivilizationanditsdiscontents/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Civilization and its Discontents — Sigmund Freud: whole-book CARE reading (WB)](https://carelibrary.org/freudcivilizationanditsdiscontents/readings/wb/civilization-and-its-discontents-1930-ocr-review-55951bd44d68/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Civilization and its Discontents — Sigmund Freud: WB plain text](https://carelibrary.org/freudcivilizationanditsdiscontents/readings/wb/civilization-and-its-discontents-1930-ocr-review-55951bd44d68/reading.md)
+- [Civilization and its Discontents — Sigmund Freud: WB structured saved-reading JSON](https://carelibrary.org/freudcivilizationanditsdiscontents/readings/wb/civilization-and-its-discontents-1930-ocr-review-55951bd44d68/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Civilization and its Discontents — Sigmund Freud: Cluster CARE readings (CL)](https://carelibrary.org/freudcivilizationanditsdiscontents/readings/cl/): 3 saved readings.
+- [Civilization and its Discontents — Sigmund Freud: Chapter CARE readings (CH)](https://carelibrary.org/freudcivilizationanditsdiscontents/readings/ch/): 8 saved readings.
 - [Confessions — Augustine of Hippo](https://carelibrary.org/augustineconfessions)
+- [Confessions — Augustine of Hippo: saved CARE readings](https://carelibrary.org/augustineconfessions/readings/): Overview of available saved interpretations, grouped by level.
+- [Confessions — Augustine of Hippo: research details JSON](https://carelibrary.org/augustineconfessions/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Confessions — Augustine of Hippo: whole-book CARE reading (WB)](https://carelibrary.org/augustineconfessions/readings/wb/confessions-f7e2f5794d31/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Confessions — Augustine of Hippo: WB plain text](https://carelibrary.org/augustineconfessions/readings/wb/confessions-f7e2f5794d31/reading.md)
+- [Confessions — Augustine of Hippo: WB structured saved-reading JSON](https://carelibrary.org/augustineconfessions/readings/wb/confessions-f7e2f5794d31/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Confessions — Augustine of Hippo: Meta-cluster CARE readings (MC)](https://carelibrary.org/augustineconfessions/readings/mc/): 2 saved readings.
+- [Confessions — Augustine of Hippo: Cluster CARE readings (CL)](https://carelibrary.org/augustineconfessions/readings/cl/): 5 saved readings.
+- [Confessions — Augustine of Hippo: Chapter CARE readings (CH)](https://carelibrary.org/augustineconfessions/readings/ch/): 13 saved readings.
 - [Ethics — Baruch Spinoza](https://carelibrary.org/spinozaethics)
+- [Ethics — Baruch Spinoza: saved CARE readings](https://carelibrary.org/spinozaethics/readings/): Overview of available saved interpretations, grouped by level.
+- [Ethics — Baruch Spinoza: research details JSON](https://carelibrary.org/spinozaethics/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Ethics — Baruch Spinoza: whole-book CARE reading (WB)](https://carelibrary.org/spinozaethics/readings/wb/ethics-ea9659c899f3/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Ethics — Baruch Spinoza: WB plain text](https://carelibrary.org/spinozaethics/readings/wb/ethics-ea9659c899f3/reading.md)
+- [Ethics — Baruch Spinoza: WB structured saved-reading JSON](https://carelibrary.org/spinozaethics/readings/wb/ethics-ea9659c899f3/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Ethics — Baruch Spinoza: Meta-cluster CARE readings (MC)](https://carelibrary.org/spinozaethics/readings/mc/): 2 saved readings.
+- [Ethics — Baruch Spinoza: Cluster CARE readings (CL)](https://carelibrary.org/spinozaethics/readings/cl/): 7 saved readings.
+- [Ethics — Baruch Spinoza: Chapter CARE readings (CH)](https://carelibrary.org/spinozaethics/readings/ch/): 21 saved readings.
 - [Matter and Memory — Henri Bergson](https://carelibrary.org/bergsonmatterandmemory)
+- [Matter and Memory — Henri Bergson: saved CARE readings](https://carelibrary.org/bergsonmatterandmemory/readings/): Overview of available saved interpretations, grouped by level.
+- [Matter and Memory — Henri Bergson: research details JSON](https://carelibrary.org/bergsonmatterandmemory/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Matter and Memory — Henri Bergson: whole-book CARE reading (WB)](https://carelibrary.org/bergsonmatterandmemory/readings/wb/matter-and-memory-10152e02bbf9/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Matter and Memory — Henri Bergson: WB plain text](https://carelibrary.org/bergsonmatterandmemory/readings/wb/matter-and-memory-10152e02bbf9/reading.md)
+- [Matter and Memory — Henri Bergson: WB structured saved-reading JSON](https://carelibrary.org/bergsonmatterandmemory/readings/wb/matter-and-memory-10152e02bbf9/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Matter and Memory — Henri Bergson: Cluster CARE readings (CL)](https://carelibrary.org/bergsonmatterandmemory/readings/cl/): 2 saved readings.
+- [Matter and Memory — Henri Bergson: Chapter CARE readings (CH)](https://carelibrary.org/bergsonmatterandmemory/readings/ch/): 6 saved readings.
 - [Metaphysics — Aristotle](https://carelibrary.org/aristotlemetaphysics)
+- [Metaphysics — Aristotle: saved CARE readings](https://carelibrary.org/aristotlemetaphysics/readings/): Overview of available saved interpretations, grouped by level.
+- [Metaphysics — Aristotle: research details JSON](https://carelibrary.org/aristotlemetaphysics/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Metaphysics — Aristotle: whole-book CARE reading (WB)](https://carelibrary.org/aristotlemetaphysics/readings/wb/metaphysics-0c17fce12733/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Metaphysics — Aristotle: WB plain text](https://carelibrary.org/aristotlemetaphysics/readings/wb/metaphysics-0c17fce12733/reading.md)
+- [Metaphysics — Aristotle: WB structured saved-reading JSON](https://carelibrary.org/aristotlemetaphysics/readings/wb/metaphysics-0c17fce12733/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Metaphysics — Aristotle: Meta-cluster CARE readings (MC)](https://carelibrary.org/aristotlemetaphysics/readings/mc/): 2 saved readings.
+- [Metaphysics — Aristotle: Cluster CARE readings (CL)](https://carelibrary.org/aristotlemetaphysics/readings/cl/): 5 saved readings.
+- [Metaphysics — Aristotle: Chapter CARE readings (CH)](https://carelibrary.org/aristotlemetaphysics/readings/ch/): 14 saved readings.
 - [Monas Hieroglyphica — John Dee](https://carelibrary.org/deemonashieroglyphica)
+- [Monas Hieroglyphica — John Dee: saved CARE readings](https://carelibrary.org/deemonashieroglyphica/readings/): Overview of available saved interpretations, grouped by level.
+- [Monas Hieroglyphica — John Dee: research details JSON](https://carelibrary.org/deemonashieroglyphica/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Monas Hieroglyphica — John Dee: whole-book CARE reading (WB)](https://carelibrary.org/deemonashieroglyphica/readings/wb/the-hieroglyphic-monad-7b44f7a14374/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Monas Hieroglyphica — John Dee: WB plain text](https://carelibrary.org/deemonashieroglyphica/readings/wb/the-hieroglyphic-monad-7b44f7a14374/reading.md)
+- [Monas Hieroglyphica — John Dee: WB structured saved-reading JSON](https://carelibrary.org/deemonashieroglyphica/readings/wb/the-hieroglyphic-monad-7b44f7a14374/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Monas Hieroglyphica — John Dee: Meta-cluster CARE readings (MC)](https://carelibrary.org/deemonashieroglyphica/readings/mc/): 3 saved readings.
+- [Monas Hieroglyphica — John Dee: Cluster CARE readings (CL)](https://carelibrary.org/deemonashieroglyphica/readings/cl/): 9 saved readings.
+- [Monas Hieroglyphica — John Dee: Chapter CARE readings (CH)](https://carelibrary.org/deemonashieroglyphica/readings/ch/): 25 saved readings.
 - [On the Nature of Things — Lucretius](https://carelibrary.org/lucretiusonthenatureofthings)
+- [On the Nature of Things — Lucretius: saved CARE readings](https://carelibrary.org/lucretiusonthenatureofthings/readings/): Overview of available saved interpretations, grouped by level.
+- [On the Nature of Things — Lucretius: research details JSON](https://carelibrary.org/lucretiusonthenatureofthings/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [On the Nature of Things — Lucretius: whole-book CARE reading (WB)](https://carelibrary.org/lucretiusonthenatureofthings/readings/wb/on-the-nature-of-things-9f1d8904e19b/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [On the Nature of Things — Lucretius: WB plain text](https://carelibrary.org/lucretiusonthenatureofthings/readings/wb/on-the-nature-of-things-9f1d8904e19b/reading.md)
+- [On the Nature of Things — Lucretius: WB structured saved-reading JSON](https://carelibrary.org/lucretiusonthenatureofthings/readings/wb/on-the-nature-of-things-9f1d8904e19b/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [On the Nature of Things — Lucretius: Cluster CARE readings (CL)](https://carelibrary.org/lucretiusonthenatureofthings/readings/cl/): 2 saved readings.
+- [On the Nature of Things — Lucretius: Chapter CARE readings (CH)](https://carelibrary.org/lucretiusonthenatureofthings/readings/ch/): 6 saved readings.
 - [Science of Logic — Georg Wilhelm Friedrich Hegel](https://carelibrary.org/hegelscienceoflogic)
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: saved CARE readings](https://carelibrary.org/hegelscienceoflogic/readings/): Overview of available saved interpretations, grouped by level.
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: research details JSON](https://carelibrary.org/hegelscienceoflogic/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: whole-book CARE reading (WB)](https://carelibrary.org/hegelscienceoflogic/readings/wb/science-of-logic-c27a87042805/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: WB plain text](https://carelibrary.org/hegelscienceoflogic/readings/wb/science-of-logic-c27a87042805/reading.md)
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: WB structured saved-reading JSON](https://carelibrary.org/hegelscienceoflogic/readings/wb/science-of-logic-c27a87042805/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: Meta-cluster CARE readings (MC)](https://carelibrary.org/hegelscienceoflogic/readings/mc/): 20 saved readings.
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: Cluster CARE readings (CL)](https://carelibrary.org/hegelscienceoflogic/readings/cl/): 56 saved readings.
+- [Science of Logic — Georg Wilhelm Friedrich Hegel: Chapter CARE readings (CH)](https://carelibrary.org/hegelscienceoflogic/readings/ch/): 167 saved readings.
 - [Summa Theologiae · First Part — Thomas Aquinas](https://carelibrary.org/aquinassummatheologiaefirstpart)
+- [Summa Theologiae · First Part — Thomas Aquinas: saved CARE readings](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/): Overview of available saved interpretations, grouped by level.
+- [Summa Theologiae · First Part — Thomas Aquinas: research details JSON](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Summa Theologiae · First Part — Thomas Aquinas: whole-book CARE reading (WB)](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/wb/summa-theologiae-first-part-e8eebd9273e7/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Summa Theologiae · First Part — Thomas Aquinas: WB plain text](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/wb/summa-theologiae-first-part-e8eebd9273e7/reading.md)
+- [Summa Theologiae · First Part — Thomas Aquinas: WB structured saved-reading JSON](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/wb/summa-theologiae-first-part-e8eebd9273e7/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Summa Theologiae · First Part — Thomas Aquinas: Meta-cluster CARE readings (MC)](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/mc/): 13 saved readings.
+- [Summa Theologiae · First Part — Thomas Aquinas: Cluster CARE readings (CL)](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/cl/): 40 saved readings.
+- [Summa Theologiae · First Part — Thomas Aquinas: Chapter CARE readings (CH)](https://carelibrary.org/aquinassummatheologiaefirstpart/readings/ch/): 120 saved readings.
 - [The Critique of Pure Reason — Immanuel Kant](https://carelibrary.org/kantcritiqueofpurereason)
+- [The Critique of Pure Reason — Immanuel Kant: saved CARE readings](https://carelibrary.org/kantcritiqueofpurereason/readings/): Overview of available saved interpretations, grouped by level.
+- [The Critique of Pure Reason — Immanuel Kant: research details JSON](https://carelibrary.org/kantcritiqueofpurereason/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [The Critique of Pure Reason — Immanuel Kant: whole-book CARE reading (WB)](https://carelibrary.org/kantcritiqueofpurereason/readings/wb/the-critique-of-pure-reason-d79383466498/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [The Critique of Pure Reason — Immanuel Kant: WB plain text](https://carelibrary.org/kantcritiqueofpurereason/readings/wb/the-critique-of-pure-reason-d79383466498/reading.md)
+- [The Critique of Pure Reason — Immanuel Kant: WB structured saved-reading JSON](https://carelibrary.org/kantcritiqueofpurereason/readings/wb/the-critique-of-pure-reason-d79383466498/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [The Critique of Pure Reason — Immanuel Kant: Meta-cluster CARE readings (MC)](https://carelibrary.org/kantcritiqueofpurereason/readings/mc/): 10 saved readings.
+- [The Critique of Pure Reason — Immanuel Kant: Cluster CARE readings (CL)](https://carelibrary.org/kantcritiqueofpurereason/readings/cl/): 31 saved readings.
+- [The Critique of Pure Reason — Immanuel Kant: Chapter CARE readings (CH)](https://carelibrary.org/kantcritiqueofpurereason/readings/ch/): 93 saved readings.
 - [Thus Spoke Zarathustra — Friedrich Nietzsche](https://carelibrary.org/nietzschethusspokezarathustra)
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: saved CARE readings](https://carelibrary.org/nietzschethusspokezarathustra/readings/): Overview of available saved interpretations, grouped by level.
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: research details JSON](https://carelibrary.org/nietzschethusspokezarathustra/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: whole-book CARE reading (WB)](https://carelibrary.org/nietzschethusspokezarathustra/readings/wb/thus-spoke-zarathustra-9925e0daa0ad/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: WB plain text](https://carelibrary.org/nietzschethusspokezarathustra/readings/wb/thus-spoke-zarathustra-9925e0daa0ad/reading.md)
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: WB structured saved-reading JSON](https://carelibrary.org/nietzschethusspokezarathustra/readings/wb/thus-spoke-zarathustra-9925e0daa0ad/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: Meta-cluster CARE readings (MC)](https://carelibrary.org/nietzschethusspokezarathustra/readings/mc/): 22 saved readings.
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: Cluster CARE readings (CL)](https://carelibrary.org/nietzschethusspokezarathustra/readings/cl/): 61 saved readings.
+- [Thus Spoke Zarathustra — Friedrich Nietzsche: Chapter CARE readings (CH)](https://carelibrary.org/nietzschethusspokezarathustra/readings/ch/): 183 saved readings.
 - [Timaeus — Plato](https://carelibrary.org/platotimaeus)
+- [Timaeus — Plato: saved CARE readings](https://carelibrary.org/platotimaeus/readings/): Overview of available saved interpretations, grouped by level.
+- [Timaeus — Plato: research details JSON](https://carelibrary.org/platotimaeus/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Timaeus — Plato: whole-book CARE reading (WB)](https://carelibrary.org/platotimaeus/readings/wb/timaeus-7a9823dd313b/): Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose.
+- [Timaeus — Plato: WB plain text](https://carelibrary.org/platotimaeus/readings/wb/timaeus-7a9823dd313b/reading.md)
+- [Timaeus — Plato: WB structured saved-reading JSON](https://carelibrary.org/platotimaeus/readings/wb/timaeus-7a9823dd313b/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Timaeus — Plato: Meta-cluster CARE readings (MC)](https://carelibrary.org/platotimaeus/readings/mc/): 9 saved readings.
+- [Timaeus — Plato: Cluster CARE readings (CL)](https://carelibrary.org/platotimaeus/readings/cl/): 26 saved readings.
+- [Timaeus — Plato: Chapter CARE readings (CH)](https://carelibrary.org/platotimaeus/readings/ch/): 76 saved readings.
 
 ## Numogram demons
 

@@ -24,7 +24,7 @@ def _book(identity="WORK_ONE", title="A Book of Memory", author="Ada Example", r
             "edition": "Saved edition", "description": "An attested description of the book.",
             "language_code": "en", "language_name": "English", "source_url": "https://example.org/edition",
             "sources": [{"id": "RAW_" + identity, "title": "The First Chapter", "text": "Exact original source needle, preserved as saved.", "paragraphs": []}],
-            "units": [{"id": "WB_" + identity, "layer": "WB", "sections": [{"items": [{"text": "A generated interpretation is not original author prose."}]}]}]}
+            "units": [{"id": "WB_" + identity, "title":"Saved whole-book reading", "layer": "WB", "sections": [{"number":"1","name":"Argumental Spine","items": [{"id":"WB_"+identity+":A1","text": "A generated interpretation is not original author prose.","refs":[],"deep_refs":[],"passages":[]}]}]}]}
 
 
 def _publish(root: Path, works: list[dict], *, split=False):
@@ -94,7 +94,7 @@ class BookSearchPageTests(unittest.TestCase):
         self.assertNotIn('"datePublished"', metadata)
         self.assertTrue(manifest["text_requires_public_library"])
         self.assertEqual(self.root.joinpath("data/library.json").read_bytes(), original)
-        self.assertEqual(len(pages), 3)
+        self.assertEqual(len(pages), 6)
         self.assertNotIn("text_path", entry)
         self.assertIn("/books/a-book-of-memory-ada-example/",entry["aliases"])
         mapping=json.loads((self.root/"book-routes.json").read_text())

@@ -1522,7 +1522,7 @@ function applySavedPaneFocus(runtime){
   const unit=bookmarkablePane(runtime.data,unitId)
   if(!unit)return false
   const axiomId=String(request?.axiom_id||""),passageId=String(request?.passage_id||"")
-  if((axiomId||passageId)&&runtime.readerView==="outline")runtime.setReaderView?.("normal")
+  if((axiomId||passageId||request.reading_page===true)&&runtime.readerView==="outline")runtime.setReaderView?.("normal")
   const source=unit.type==="SOURCE",pane=runtime.root.querySelector(`[data-pane="${CSS.escape(source?"source":unitId)}"]`),strip=runtime.root.querySelector("[data-strip]")
   if(source&&String(runtime.data?.stack?.active_chapter?.raw_unit_id||"")!==unitId)return false
   // Do not consume a request before the reader has a measurable destination.

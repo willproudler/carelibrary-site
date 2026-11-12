@@ -72,7 +72,7 @@ test('returning to an initial semantic book or chapter restores its exact title 
  assert.ok(start>=0&&end>start);
  const paint=new Function('context','const {embedded,view,state,adapter,initialPathname,initialTitle,initialCanonical,initialSearchRoute,document,location,bookAddressing,roomTitles}=context;'+source.slice(start,end));
  const works={PLATO_TIMAEUS:{id:'PLATO_TIMAEUS',slug:'plato-timaeus',title:'Timaeus',author:'Plato'},HUME:{id:'HUME',slug:'hume',title:'Treatise',author:'David Hume'}};
- for(const initialPathname of ['/platotimaeus','/platotimaeus/003-introduction/']){
+ for(const initialPathname of ['/platotimaeus','/platotimaeus/003-introduction/','/platotimaeus/readings/wb/whole-book/']){
   const canonical={href:'https://carelibrary.org'+initialPathname};
   const context={embedded:false,view:'workspace',state:{workId:'PLATO_TIMAEUS'},adapter:{workFor:id=>works[id]},
    initialPathname,initialTitle:'Initial exact chapter or book title',initialCanonical:canonical.href,

@@ -13,7 +13,10 @@ from urllib.parse import urlsplit
 from numogram_seo import load_reference
 
 
-SCHEMA = "care-research-index/1"
+SCHEMA = "care-research-index/2"
+BOOK_SCHEMA = "care-book-research-index/1"
+CARE_LAYERS = {"WB": "Whole-book CARE reading", "MC": "Meta-cluster CARE readings",
+               "CL": "Cluster CARE readings", "CH": "Chapter CARE readings"}
 
 
 def _read_json(path: Path) -> dict:
@@ -96,8 +99,12 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
     origin = _origin(origin)
     books_path, numo_path = destination / "books/manifest.json", destination / "numogram/manifest.json"
     books_manifest, numo_manifest = _read_json(books_path), _read_json(numo_path)
-    if books_manifest.get("schema") != "care-book-search-pages/1" or numo_manifest.get("version") != 1:
-        raise ValueError("Expected the reviewed book and NUMO search manifests.")
+    readings_manifest = _read_json(destination / "books/readings-manifest.json")
+    if (books_manifest.get("schema") != "care-book-search-pages/1" or numo_manifest.get("version") != 1
+            or readings_manifest.get("schema") != "care-reading-search-pages/1"):
+        raise ValueError("Expected the reviewed book, CARE reading and NUMO search manifests.")
+    if readings_manifest.get("source_sha256") != books_manifest.get("source_sha256"):
+        raise ValueError("CARE readings and book metadata must describe the same published export.")
     books, chapters, demons = [], [], []
     book_by_id = {}
     for item in books_manifest.get("books", []):
@@ -127,6 +134,97 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
             if item.get(field):
                 record[field] = item[field]
         chapters.append(record)
+    care_readings, seen_readings, layer_indexes, detail_paths = [], set(), {}, {}
+    for item in readings_manifest.get("pages", []):
+        book = book_by_id.get(item.get("work_id"))
+        if not book:
+            raise ValueError("A CARE reading must belong to a published book.")
+        canonical = _url(item["url"], origin)
+        kind, layer = item.get("kind"), item.get("layer")
+        if kind == "overview":
+            if book.get("care_readings_url"):
+                raise ValueError("A book must have one CARE reading overview.")
+            book["care_readings_url"] = canonical
+            path = Path(item["path"])
+            index_path = path.with_name("index.json")
+            index_url = item["url"] + "index.json"
+            if (path.is_absolute() or path.parts[:1] != ("books",) or path.name != "index.html"
+                    or path.parent.name != "readings" or any(part in {".", ".."} for part in path.parts)
+                    or item.get("index_path") != index_path.as_posix() or item.get("index_url") != index_url):
+                raise ValueError("The per-book discovery index needs its exact registered metadata route.")
+            target = destination / index_path
+            if target.is_symlink() or not target.resolve().is_relative_to(destination):
+                raise ValueError("The per-book discovery index must remain inside the generated book directory.")
+            detail_paths[item["work_id"]] = target
+            book["details_index"] = _url(index_url, origin)
+        elif kind == "layer":
+            key = item["work_id"], layer
+            if layer not in CARE_LAYERS or key in layer_indexes:
+                raise ValueError("Invalid or duplicate published CARE layer.")
+            layer_indexes[key] = {"layer": layer, "label": CARE_LAYERS[layer], "url": canonical}
+        elif kind == "reading":
+            identity = item.get("unit_id")
+            key = item["work_id"], identity
+            if layer not in CARE_LAYERS or not isinstance(identity, str) or not identity or key in seen_readings:
+                raise ValueError("Invalid or duplicate saved CARE reading identity.")
+            seen_readings.add(key)
+            record = {"type": "saved_care_reading", "work_id": item["work_id"], "unit_id": identity,
+                      "layer": layer, "title": item["title"], "url": canonical, "book_url": book["url"],
+                      "content_origin": "saved_ai_assisted_interpretation",
+                      "citation": {"url": canonical, "care_unit_id": identity, "layer": layer,
+                                   "attribution": "CARE Library saved AI-assisted interpretation",
+                                   "of_work": book["title"], "work_author": book["author"]}}
+            for field in ("source_id", "revision", "content_sha256", "item_count", "section_count", "language", "language_name", "rendition_languages"):
+                if item.get(field) is not None and item.get(field) != "":
+                    record[field] = item[field]
+            text = item.get("markdown_url") or item.get("text_url")
+            if text:
+                record["text_url"] = _url(text, origin)
+                record["text_format"] = "text/markdown"
+            data = item.get("json_url") or item.get("packet_url")
+            if data:
+                record["data_url"] = _url(data, origin)
+                record["data_format"] = "application/json"
+                record["data_schema"] = "care-reading-packet/1"
+            care_readings.append(record)
+        else:
+            raise ValueError("Unknown published CARE reading page kind.")
+    for book in books:
+        saved = [item for item in care_readings if item["work_id"] == book["work_id"]]
+        if saved and not book.get("care_readings_url"):
+            raise ValueError("Saved CARE readings need a discoverable book overview.")
+        book["care_reading_count"] = len(saved)
+        book["care_layers"] = []
+        for layer in CARE_LAYERS:
+            layer_readings = [item for item in saved if item["layer"] == layer]
+            if not layer_readings:
+                continue
+            index = layer_indexes.get((book["work_id"], layer))
+            if not index:
+                raise ValueError("Saved CARE readings need a discoverable layer index.")
+            book["care_layers"].append({**index, "reading_count": len(layer_readings)})
+        whole = [item for item in saved if item["layer"] == "WB"]
+        if len(whole) == 1:
+            book["whole_book_reading_url"] = whole[0]["url"]
+            if whole[0].get("text_url"):
+                book["whole_book_reading_text_url"] = whole[0]["text_url"]
+            if whole[0].get("data_url"):
+                book["whole_book_reading_data_url"] = whole[0]["data_url"]
+        source_sections = [item for item in chapters if item["work_id"] == book["work_id"]]
+        book["source_section_count"] = len(source_sections)
+        if book["work_id"] not in detail_paths:
+            raise ValueError("Every published book needs a registered research details index.")
+        details = {
+            "schema": BOOK_SCHEMA, "url": book["details_index"], "book": book,
+            "scope": {"source_sections": len(source_sections), "care_readings": len(saved)},
+            "content_distinction": "Original source sections contain the named author's prose. Saved CARE readings are AI-assisted interpretations of that work, not wording authored by that author.",
+            "access": "This index contains public citation/navigation metadata, not reading prose. Full original text and saved CARE HTML, Markdown and JSON packets follow the website's current beta access setting.",
+            "provenance": {"book_export_sha256": books_manifest["source_sha256"]},
+            "source_sections": source_sections, "care_readings": saved,
+        }
+        detail_paths[book["work_id"]].parent.mkdir(parents=True, exist_ok=True)
+        detail_paths[book["work_id"]].write_text(
+            json.dumps(details, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n", encoding="utf-8")
     published = {item.get("demon_id"): item for item in numo_manifest.get("pages", []) if item.get("demon_id")}
     reference = load_reference(source)
     if set(published) != {item["id"] for item in reference}:
@@ -143,29 +241,49 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         "schema": SCHEMA, "name": "CARE Library and NUMO public research index", "url": origin + "/research-index.json",
         "links": {"guide": origin + "/llms.txt", "books": origin + "/books/", "numogram": origin + "/numogram/",
                   "sitemap": origin + "/sitemap.xml"},
-        "scope": {"books": len(books), "source_sections": len(chapters), "demons": len(demons)},
+        "scope": {"books": len(books), "source_sections": len(chapters), "care_readings": len(care_readings), "demons": len(demons)},
         "access": {"metadata": "public", "original_source_text": "Available on chapter pages when the library is in public mode; beta access rules still apply.",
+                   "saved_care_text": "Full saved CARE readings are readable without JavaScript as HTML, Markdown or structured JSON packets when the library is in public mode; beta access rules still apply.",
                    "private_studio_drafts": "not included"},
         "provenance": {"book_export_sha256": books_manifest.get("source_sha256", ""),
                        "numogram_reference_sha256": numo_manifest.get("public_reference_sha256", "")},
-        "citation_guidance": "Cite the canonical chapter URL and its recorded author, book, section and source_id. Original source prose and saved CARE interpretations are distinct. A recorded link is provenance, not proof of interpretive correctness.",
-        "books": books, "source_sections": chapters, "demons": demons,
+        "citation_guidance": "For original prose, cite the canonical chapter URL and its recorded author, book, section and source_id. For CARE analysis, cite the saved reading URL, care_unit_id and layer as a CARE Library AI-assisted interpretation of the named work; do not attribute its wording to the original author. A recorded link is provenance, not proof of interpretive correctness.",
+        "details_schema": BOOK_SCHEMA,
+        "details_guidance": "Each book's details_index lists all of its exact original source sections and saved CARE units. Follow the book's whole_book_reading_url or whole_book_reading_text_url for its WB interpretation, or its care_layers links for CH, CL and MC readings.",
+        "books": books, "demons": demons,
     }
     encoded = json.dumps(records, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
-    if len(encoded.encode()) > 2 * 1024 * 1024:
-        raise ValueError("The public discovery index must remain compact.")
     (destination / "research-index.json").write_text(encoded, encoding="utf-8")
     guide = ["# CARE Library and NUMO", "",
              "> A reading environment for tracing original texts, arguments and recorded connections, with an interactive Numogram and its attributed CCRU demon reference.", "",
-             "The public research index lists the published books, exact source sections and all 45 demon records. Canonical book and chapter URLs open the existing source and CARE panes; demon URLs open the same NUMO instrument on that entry.", "",
+             "The compact public research index lists published books and all 45 demon records. Each book's details_index links every exact original source section and saved CARE reading at CH, CL, MC and WB level. These research indexes contain navigation/citation metadata, not reading prose. Each saved unit's text_url (Markdown) and data_url (structured JSON packet) contain its complete saved interpretation and recorded evidence fields. Those editions, and readable HTML, require no JavaScript when the library is in public mode.", "",
              "Book and source metadata are public. Original source text follows the website’s current beta access setting. Private Studio drafts, account records and unpublished books are not listed.", "",
              "Original author prose and saved AI-assisted CARE interpretations are separate. For quotations, verify the original source section and cite its canonical URL, author, book title, section title and recorded source ID. Recorded links describe provenance, not proof of an interpretation. No page or index grants a new reuse licence.", "",
              "## Research entry points", "",
-             _link("Machine-readable research index", origin + "/research-index.json", "Canonical URLs, authors, exact source IDs and public reference identities."),
+             _link("Machine-readable research index", origin + "/research-index.json", "Canonical URLs, original authors, exact source IDs, saved CARE unit/layer IDs and plain-text reading URLs."),
              _link("Books by title and author", origin + "/books/"),
              _link("Numogram", origin + "/numogram/", "The map, zones, currents, gates and linked demon records."),
-             _link("Sitemap", origin + "/sitemap.xml"), "", "## Books", ""]
-    guide += [_link(book["title"] + " — " + book["author"], book["url"]) for book in books]
+             _link("Sitemap", origin + "/sitemap.xml"), "",
+             "## Reading and summarising a work", "",
+             "- For a saved whole-book interpretation, use the WB link when one is listed beside the book. Start with its structured JSON packet for section/item fields and recorded connections, or Markdown for continuous reading. Both contain the complete saved reading without requiring the interface to run.",
+             "- For the structure of the argument, follow MC (meta-cluster) and then CL (cluster) readings where available. For detailed chapter claims, use CH. The overview and per-book JSON list only levels actually saved for that work.",
+             "- For an exact quotation or primary evidence, follow the original source-section URL. Keep original edition/language, any labelled saved machine-English translation, and generated CARE analysis distinct.",
+             "- Existing reading pages retain unit IDs, claim IDs, section/item anchors and recorded source connections. Cite those recorded links after checking their contents; separate your new inference from the saved interpretation.", "", "## Books", ""]
+    for book in books:
+        label = book["title"] + " — " + book["author"]
+        guide.append(_link(label, book["url"]))
+        if book.get("care_readings_url"):
+            guide.append(_link(label + ": saved CARE readings", book["care_readings_url"], "Overview of available saved interpretations, grouped by level."))
+        guide.append(_link(label + ": research details JSON", book["details_index"], "All original source-section citations and saved CARE unit/layer identities for this book."))
+        if book.get("whole_book_reading_url"):
+            guide.append(_link(label + ": whole-book CARE reading (WB)", book["whole_book_reading_url"], "Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose."))
+        if book.get("whole_book_reading_text_url"):
+            guide.append(_link(label + ": WB plain text", book["whole_book_reading_text_url"]))
+        if book.get("whole_book_reading_data_url"):
+            guide.append(_link(label + ": WB structured saved-reading JSON", book["whole_book_reading_data_url"], "Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index."))
+        for layer in book["care_layers"]:
+            if layer["layer"] != "WB" or not book.get("whole_book_reading_url"):
+                guide.append(_link(label + ": " + layer["label"] + " (" + layer["layer"] + ")", layer["url"], str(layer["reading_count"]) + " saved readings."))
     guide += ["", "## Numogram demons", ""]
     guide += [_link(demon["name"], demon["url"], demon["demon_id"] + "; net-span " + "::".join(map(str, demon["net_span"]))) for demon in demons]
     guide += ["", "## Optional", "", _link("About CARE", origin + "/about.html"),
