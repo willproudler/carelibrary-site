@@ -3,8 +3,8 @@
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
-    "study-field.css": "b89010b4817cf6ca00541ae49e1cb9349d44f624de9fc1e0d9387a0a608b3650",
-    "study-field.mjs": "193553d156b93136ef4b4ccd06f2d4772fd286e6f3857cfecd1bc60546d37dec"
+    "study-field.css": "fc58e999de1dd4ff7d95dc5fe8b66da916f96fe45de1f3f52757b64593f265e9",
+    "study-field.mjs": "502e3d7e28259ffa92435e3c02b733a84990d3284712be6e4acf913541f00290"
   },
   "compatibility_changes": [
     "Apply public reading controls within embedded corpus book readers"

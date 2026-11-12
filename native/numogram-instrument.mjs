@@ -579,6 +579,9 @@ export function structureReviewPacket(world, id) {
 export default function ({parentElement, data, setTriggerValue}) {
   const root = parentElement.querySelector('.nl');
   if (!root || !data?.world) return;
+  const readySlot=Symbol.for('care.numo.ready-owner'),readyOwner=Symbol('numo-render');
+  root[readySlot]=readyOwner;
+  if(root.dataset)root.dataset.careNumoReady='false';
   const world = data.world, demons = world.demons || [], books = world.catalog_books || world.books || [], thinkers = world.catalog_thinkers || world.thinkers || [], hosts = world.hosts || [], runs = world.runs || [];
   const arithmeticOnly = world.arithmetic_only === true;
   const publicReference = data.public_reference === true;
@@ -1250,7 +1253,7 @@ export default function ({parentElement, data, setTriggerValue}) {
     const routeKey=selectedIds.join(',')+'|'+routes.map(r=>r.rite_id || r.id || r.code || r.zones?.join(',')).join('|');
     const animateRoute=routeKey!==activePenMap?.routeKey;
     const reuseInk=Boolean(reusablePen && paint.weights.every((weight,zone)=>weight===activePenMap?.paint.weights[zone]));
-    const boot=!state.instrument.booted && penMotion();
+    const boot=data.fast_entrance!==true && !state.instrument.booted && penMotion();
     state.instrument.booted=true;
     activePenMap={mapId,paint,routeKey,reuseInk};
     const ink=reuseInk?'':penStructure(xy,geo,paint,boot);
@@ -3943,6 +3946,22 @@ export default function ({parentElement, data, setTriggerValue}) {
   }
   render();
   if(data.open_tools)showHeaderTools();
+  let readyFrame=0;
+  const announceReady=()=>{
+    readyFrame=0;
+    if(root[readySlot]!==readyOwner || root.isConnected===false)return;
+    if(root.dataset)root.dataset.careNumoReady='true';
+    const EventType=frameWindow?.CustomEvent;
+    if(EventType)root.dispatchEvent?.(new EventType('care:numo-ready',{bubbles:true,composed:true,detail:{mode:state.mode}}));
+    if(data.companion && frameWindow?.parent && frameWindow.parent!==frameWindow){
+      try{frameWindow.parent.document.dispatchEvent(new frameWindow.parent.CustomEvent('care:numo-ready',{detail:{mode:state.mode,companion:true}}));}catch{}
+    }
+  };
+  // Signal only after the actual map/readout DOM and controls have mounted.
+  // The entrance veil can release on this real browser frame, with no timer or
+  // minimum wait added to an already ready instrument.
+  if(frameWindow?.requestAnimationFrame)readyFrame=frameWindow.requestAnimationFrame(announceReady);
+  else announceReady();
   if(data.companion && !publicReference && frameWindow?.parent!==frameWindow) {
     try {
       frameWindow.parent.document.dispatchEvent(new frameWindow.parent.CustomEvent(
@@ -3951,6 +3970,8 @@ export default function ({parentElement, data, setTriggerValue}) {
     } catch {}
   }
   return () => {
+    if(readyFrame)frameWindow?.cancelAnimationFrame?.(readyFrame);
+    if(root[readySlot]===readyOwner && root.dataset)root.dataset.careNumoReady='false';
     if(data.companion)root.ownerDocument.removeEventListener('care:numogram-companion-surface',companionSurface);
     if(headerAQ){
       frameWindow?.document?.removeEventListener?.('pointerdown',dismissHeaderTools);
