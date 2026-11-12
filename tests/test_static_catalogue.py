@@ -38,7 +38,7 @@ class StaticCatalogueTests(unittest.TestCase):
 
     def test_library_home_and_book_cards_expose_real_canonical_reading_links(self):
         expected={self.book['url'],self.book['care_overview_url'],*self.book['care_layer_urls'].values(),
-                  self.wb['url'],self.wb['markdown_url'],self.wb['json_url']}
+                  self.wb['url'],self.wb['markdown_url'],self.wb['json_url'],self.book['summary_text_url'],self.book['summary_data_url']}
         for path in (self.root/'library.html',self.root/'index.html',self.root/'books/index.html'):
             text=path.read_text();parsed=_Links(text)
             self.assertTrue(expected.issubset(set(parsed.links)),str(path))
@@ -74,6 +74,12 @@ class StaticCatalogueTests(unittest.TestCase):
         self.assertNotIn('<script>Foreign title</script>',html)
         book['url']='https://unreviewed.example/another-book'
         with self.assertRaises(ValueError):catalogue_fragment([book],self.readings)
+
+    def test_short_summary_links_are_not_advertised_for_zero_or_multiple_wb(self):
+        without=[entry for entry in self.readings if not(entry.get('kind')=='reading' and entry.get('layer')=='WB')]
+        self.assertNotIn('/summary.md',catalogue_fragment([self.book],without))
+        multiple=[*self.readings,{**self.wb,'unit_id':'WB_SECOND'}]
+        self.assertNotIn('/summary.md',catalogue_fragment([self.book],multiple))
 
 
 if __name__=='__main__':unittest.main()

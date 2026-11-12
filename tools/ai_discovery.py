@@ -157,6 +157,8 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                 raise ValueError("The per-book discovery index must remain inside the generated book directory.")
             detail_paths[item["work_id"]] = target
             book["details_index"] = _url(index_url, origin)
+            for field in ("summary_text_url","summary_data_url"):
+                if item.get(field):book[field]=_url(item[field],origin)
         elif kind == "layer":
             key = item["work_id"], layer
             if layer not in CARE_LAYERS or key in layer_indexes:
@@ -210,6 +212,9 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                 book["whole_book_reading_text_url"] = whole[0]["text_url"]
             if whole[0].get("data_url"):
                 book["whole_book_reading_data_url"] = whole[0]["data_url"]
+        else:
+            for field in ("summary_text_url","summary_data_url"):
+                book.pop(field,None)
         source_sections = [item for item in chapters if item["work_id"] == book["work_id"]]
         book["source_section_count"] = len(source_sections)
         if book["work_id"] not in detail_paths:
@@ -275,6 +280,10 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         if book.get("care_readings_url"):
             guide.append(_link(label + ": saved CARE readings", book["care_readings_url"], "Overview of available saved interpretations, grouped by level."))
         guide.append(_link(label + ": research details JSON", book["details_index"], "All original source-section citations and saved CARE unit/layer identities for this book."))
+        if book.get("summary_text_url"):
+            guide.append(_link(label + ": whole-book CARE summary — plain text",book["summary_text_url"],"Short stable address for the same saved WB text; canonical unit citation remains below."))
+        if book.get("summary_data_url"):
+            guide.append(_link(label + ": whole-book CARE summary — structured JSON",book["summary_data_url"],"The same saved CARE packet, with its exact unit citation and recorded evidence fields."))
         if book.get("whole_book_reading_url"):
             guide.append(_link(label + ": whole-book CARE reading (WB)", book["whole_book_reading_url"], "Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose."))
         if book.get("whole_book_reading_text_url"):

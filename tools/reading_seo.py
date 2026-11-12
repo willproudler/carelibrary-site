@@ -266,6 +266,12 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
         book['care_layer_urls'] = {layer: layer_url(book['route_slug'], layer) for layer in layers}
         book['care_readings_count'] = len(units)
         book['care_whole_book_urls'] = [unit_entries[unit['id']][3]['url'] for unit in groups.get('WB', [])]
+        for field in ('summary_text_url','summary_data_url'):
+            book.pop(field,None)
+        whole=groups.get('WB',[])
+        if len(whole)==1 and unit_entries[whole[0]['id']][3]['has_text']:
+            book['summary_text_url']=_book_url(book['route_slug'])+'/summary.md'
+            book['summary_data_url']=_book_url(book['route_slug'])+'/summary.json'
         default = next(iter(groups.get('WB') or units), None)
         base_route = {'view': 'workspace', 'book': work['slug'], 'sources': [section['id'] for section in _sources(work)]}
         if default:
@@ -276,7 +282,11 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                     'path': f"books/{book['slug']}/readings/index.html", 'has_text': False,
                     'index_path': f"books/{book['slug']}/readings/index.json", 'index_url': book['care_overview_url'] + 'index.json',
                     'unit_count': len(units), 'layers': {layer: len(groups[layer]) for layer in layers}}
+        for field in ('summary_text_url','summary_data_url'):
+            if book.get(field):overview[field]=book[field]
         body = '<article><p class="eyebrow">Saved generated CARE analysis</p><h1>CARE readings of ' + escape(work['title']) + '</h1><p>Source book by ' + escape(work['author']) + '. These are saved AI-assisted CARE readings, not the author’s original prose.</p>'
+        if book.get('summary_text_url'):
+            body+='<p><a href="'+escape(book['summary_text_url'],quote=True)+'">Whole-book CARE summary — plain text</a> · <a href="'+escape(book['summary_data_url'],quote=True)+'">Whole-book CARE summary — structured JSON</a></p>'
         body += '<p><a href="' + escape(_book_url(book['route_slug']), quote=True) + '">Book and original source sections</a></p><ul class="care-reading-units">'
         for layer in layers:
             body += '<li><a href="' + escape(layer_url(book['route_slug'], layer), quote=True) + '">' + escape(LAYER_NAMES.get(layer, layer)) + ' CARE readings</a> · ' + str(len(groups[layer])) + ' saved units</li>'
@@ -287,7 +297,7 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
         _write(books_directory / Path(overview['path']).relative_to('books'), _page(source, title=overview['title'] + ' | CARE Library', description='Saved whole-book, macro, cluster and chapter CARE readings of ' + work['title'] + ' by ' + work['author'] + '.', canonical=origin + overview['url'], body=body, route=base_route, mapping=mapping))
         index_entries.append(overview); sitemap.append({'loc': origin + overview['url']})
         for layer in layers:
-            entry = {**{key:value for key,value in overview.items() if key not in {'index_path','index_url','layers'}}, 'kind': 'layer', 'layer': layer, 'layer_slug': layer_slug(layer),
+            entry = {**{key:value for key,value in overview.items() if key not in {'index_path','index_url','layers','summary_text_url','summary_data_url'}}, 'kind': 'layer', 'layer': layer, 'layer_slug': layer_slug(layer),
                      'title': LAYER_NAMES.get(layer, layer) + ' CARE readings of ' + work['title'],
                      'url': layer_url(book['route_slug'], layer),
                      'path': f"books/{book['slug']}/readings/{layer_slug(layer)}/index.html", 'unit_count': len(groups[layer])}

@@ -166,6 +166,121 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get(self.reading["markdown_url"])).status_code, 404)
         self.assertEqual((await self.client.get(self.reading["json_url"])).status_code, 404)
 
+    async def test_short_summaries_serve_exact_saved_bytes_without_redirecting(self):
+        self.app.state.site_settings.update(False, 0)
+        for extension, long_key, alternate_key, media_type in (
+                ("md", "markdown_url", "json_url", "text/markdown"),
+                ("json", "json_url", "markdown_url", "application/json")):
+            short = f"/platotimaeus/summary.{extension}"
+            for encoding in ("identity", "gzip"):
+                options = {"Accept-Encoding": encoding}
+                response = await self.client.get(short, headers=options)
+                long = await self.client.get(self.reading[long_key], headers=options)
+                head = await self.client.head(short, headers=options)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(head.status_code, 200)
+                self.assertNotIn("location", response.headers)
+                self.assertEqual(response.content, long.content)
+                self.assertEqual(response.headers["content-type"], long.headers["content-type"])
+                self.assertTrue(response.headers["content-type"].startswith(media_type))
+                self.assertEqual(head.content, b"")
+                self.assertEqual(head.headers["content-length"], response.headers["content-length"])
+                self.assertEqual(response.headers["cache-control"], "no-store")
+                self.assertNotIn("x-robots-tag", response.headers)
+                self.assertIn(f'<{self.unit_url}>; rel="canonical"', response.headers["link"])
+                self.assertIn(f'<{self.reading[alternate_key]}>; rel="alternate"', response.headers["link"])
+                if encoding == "gzip":
+                    self.assertEqual(response.headers["content-encoding"], "gzip")
+                    self.assertEqual(head.headers["content-encoding"], "gzip")
+            queried = await self.client.get(short + "?download=1&download=2")
+            self.assertEqual(queried.status_code, 200)
+            self.assertEqual(queried.content, long.content)
+        # Existing representation/resource aliases still use their original
+        # canonical destinations, independently of these two direct shortcuts.
+        for path_key, url_key in (("markdown_path", "markdown_url"), ("json_path", "json_url")):
+            old = await self.client.get("/" + self.reading[path_key])
+            self.assertEqual(old.status_code, 308)
+            self.assertEqual(old.headers["location"], self.reading[url_key])
+
+    async def test_short_summary_access_follows_live_mode_for_anonymous_and_authenticated_readers(self):
+        anonymous = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url="https://care.example.test")
+        self.addAsyncCleanup(anonymous.aclose)
+        self.app.state.auth.add_user("reader@example.test", "Reader", "a sufficiently long test password")
+        login = await self.client.post("/api/login", json={"email": "reader@example.test", "password": "a sufficiently long test password"},
+                                       headers={"Origin": "https://care.example.test"})
+        self.assertEqual(login.status_code, 200)
+        for beta, revision in ((True, None), (False, 0), (True, 1), (False, 2)):
+            if revision is not None:
+                self.app.state.site_settings.update(beta, revision)
+            for client in (anonymous, self.client):
+                for extension in ("md", "json"):
+                    for method in ("GET", "HEAD"):
+                        response = await client.request(method, f"/platotimaeus/summary.{extension}?care_studio_embed=1&care_studio_embed=1",
+                                                        headers={"Accept-Encoding": "gzip"})
+                        self.assertEqual(response.status_code, 404 if beta else 200)
+                        self.assertEqual(response.headers["cache-control"], "no-store")
+                        if beta:
+                            self.assertNotIn(self.prose, response.text)
+            for path in ("/api/studio/drafts", "/api/studio/binder", "/api/site-settings"):
+                self.assertEqual((await anonymous.get(path)).status_code, 401, path)
+            self.assertEqual((await anonymous.get("/site-settings.html")).status_code, 303)
+
+    async def test_short_summary_requires_one_complete_validated_whole_book_reading(self):
+        self.app.state.site_settings.update(False, 0)
+        for path in ("/notapublishedbook/summary.md", "/platotimaeus/summary.txt", "/platotimaeus/summary.MD",
+                     "/platotimaeus/summary.md/", "/platotimaeus/summary.json/index.html", "/platotimaeus/readings/summary.md",
+                     f'/books/{self.reading["book_slug"]}/summary.json'):
+            self.assertEqual((await self.client.get(path)).status_code, 404, path)
+        variants = []
+        for changes in ({"has_text": False}, {"unit_id": "DIFFERENT_ID"}, {"work_id": "UNPUBLISHED_WORK"},
+                        {"markdown_path": "data/library.json"}, {"json_path": "data/library.json"}):
+            manifest = copy.deepcopy(self.manifest)
+            manifest["pages"][2].update(changes)
+            variants.append(manifest)
+        for fields in (("markdown_path", "markdown_url"), ("json_path", "json_url")):
+            manifest = copy.deepcopy(self.manifest)
+            for field in fields:
+                del manifest["pages"][2][field]
+            variants.append(manifest)
+        missing = copy.deepcopy(self.manifest)
+        missing["pages"].pop()
+        variants.append(missing)
+        stale = copy.deepcopy(self.manifest)
+        stale["source_sha256"] = "0" * 64
+        variants.append(stale)
+        duplicate = copy.deepcopy(self.manifest)
+        duplicate["pages"].append(copy.deepcopy(self.reading))
+        variants.append(duplicate)
+        # Even an incomplete second WB must not silently select the first one.
+        incomplete = copy.deepcopy(self.manifest)
+        incomplete["pages"].append({**self.reading, "unit_id": "SECOND_WB", "json_path": "data/library.json"})
+        variants.append(incomplete)
+        for manifest in variants:
+            self.write_manifest(manifest)
+            for extension in ("md", "json"):
+                response = await self.client.get(f"/platotimaeus/summary.{extension}")
+                self.assertEqual(response.status_code, 404, str(manifest["pages"][-1]))
+                self.assertNotIn(self.prose, response.text)
+        second = copy.deepcopy(self.reading)
+        second["unit_id"] = "SECOND_WB"
+        second["unit_slug"] = "second-" + hashlib.sha256(second["unit_id"].encode()).hexdigest()[:12]
+        second["url"] = self.canonical + "wb/" + second["unit_slug"] + "/"
+        folder = f'books/{second["book_slug"]}/readings/wb/{second["unit_slug"]}/'
+        for field, filename in (("path", "index.html"), ("text_path", "text.html"), ("markdown_path", "reading.md"), ("json_path", "reading.json")):
+            second[field] = folder + filename
+            path = self.web / second[field]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("Second saved WB reading")
+        second["markdown_url"] = second["url"] + "reading.md"
+        second["json_url"] = second["url"] + "reading.json"
+        ambiguous = copy.deepcopy(self.manifest)
+        ambiguous["pages"].append(second)
+        self.write_manifest(ambiguous)
+        self.assertEqual((await self.client.get(second["markdown_url"])).status_code, 200)
+        self.assertEqual((await self.client.get(self.reading["markdown_url"])).status_code, 200)
+        for extension in ("md", "json"):
+            self.assertEqual((await self.client.get(f"/platotimaeus/summary.{extension}")).status_code, 404)
+
     async def test_aliases_are_canonical_and_undeclared_files_never_become_public(self):
         for route in (self.unit_url.rstrip("/"), self.unit_url + "index.html", "/" + self.reading["path"]):
             response = await self.client.get(route)

@@ -34,6 +34,7 @@ class _ReadingRoute:
     json_path: str | None = None
     json_url: str | None = None
     document_canonical: str | None = None
+    shortcut: bool = False
 
 
 @lru_cache(maxsize=4)
@@ -171,6 +172,8 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
     if not isinstance(pages, list):
         return {}
     routes = {}
+    whole_book_counts = {}
+    whole_books = {}
     def register(path, entry):
         if path in routes and routes[path] != entry:
             routes[path] = None
@@ -183,6 +186,10 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
         identity = (item.get("work_id"), item.get("reader_slug"), route)
         if not _component(book_slug) or identities.get(book_slug) != identity:
             continue
+        whole_book = (item.get("kind") == "reading" and isinstance(item.get("layer"), str)
+                      and item["layer"].upper() == "WB")
+        if whole_book:
+            whole_book_counts[route] = whole_book_counts.get(route, 0) + 1
         canonical = item.get("url")
         if not isinstance(canonical, str):
             continue
@@ -227,6 +234,8 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
             continue
         entry = _ReadingRoute(resource, canonical, text, has_text, markdown_path=markdown,
                               markdown_url=markdown_url, json_path=json_path, json_url=json_url)
+        if whole_book:
+            whole_books[route] = entry
         aliases = {canonical, canonical.rstrip("/"), canonical + "index.html",
                    "/" + resource, "/" + folder, "/" + folder.rstrip("/")}
         for alias in aliases:
@@ -245,6 +254,16 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
             index_entry = _ReadingRoute(index_path, index_url, representation="index", document_canonical=canonical)
             register("/" + index_path, index_entry)
             register(index_url, index_entry)
+    for route, entry in whole_books.items():
+        # A summary is an exact alias of one saved whole-book reading. Incomplete
+        # or ambiguous WB declarations cannot select a fallback reading.
+        if (whole_book_counts[route] != 1 or not entry.has_text
+                or not entry.markdown_path or not entry.json_path
+                or routes.get(entry.markdown_url) != replace(entry, representation="markdown")
+                or routes.get(entry.json_url) != replace(entry, representation="json")):
+            continue
+        register(f"/{route}/summary.md", replace(entry, representation="markdown", shortcut=True))
+        register(f"/{route}/summary.json", replace(entry, representation="json", shortcut=True))
     return routes
 
 
@@ -293,7 +312,9 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
         return None
     decoded = unquote(request_path)
     components = decoded.strip("/").split("/")
-    if ((len(components) >= 2 and components[1] == "readings")
+    summary = (len(components) == 2 and components[1] in {"summary.md", "summary.json"}
+               and decoded == f"/{components[0]}/{components[1]}")
+    if (summary or (len(components) >= 2 and components[1] == "readings")
             or (first == "books" and len(components) >= 3 and components[2] == "readings")):
         entry = _reading_routes(root).get(decoded)
         if entry is None:
@@ -308,7 +329,7 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
             resource, canonical = ((entry.markdown_path, entry.markdown_url) if entry.representation == "markdown"
                                    else (entry.json_path, entry.json_url))
             links = ((entry.canonical, "text/html"),) + tuple(link for link in alternates if link[0] != canonical)
-            return SearchPage(resource, canonical, request_path != canonical,
+            return SearchPage(resource, canonical, not entry.shortcut and request_path != canonical,
                               document_canonical=entry.canonical, alternates=links)
         if entry.representation == "index":
             return SearchPage(entry.resource, entry.canonical, request_path != entry.canonical,

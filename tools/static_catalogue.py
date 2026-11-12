@@ -36,6 +36,9 @@ def catalogue_fragment(books: list[dict], reading_pages: list[dict], *, heading=
         for layer, url in (book.get('care_layer_urls') or {}).items():
             links.append('<a href="' + _href(url) + '">' + escape(layer_names.get(layer,layer)) + ' readings</a>')
         summaries = []
+        if len(whole[book['work_id']])==1 and book.get('summary_text_url') and book.get('summary_data_url'):
+            summaries.append('<p class="care-catalogue-links"><a href="'+_href(book['summary_text_url'])+'">Whole-book CARE summary — plain text</a>'
+                             '<a href="'+_href(book['summary_data_url'])+'">Structured whole-book summary</a></p>')
         for reading in whole[book['work_id']]:
             summaries.append('<p class="care-catalogue-links"><a href="' + _href(reading['url']) + '">Whole-book CARE summary</a>'
                              '<a href="' + _href(reading['markdown_url']) + '">Plain-text / Markdown</a>'

@@ -127,6 +127,29 @@ class ReadingSEOTests(unittest.TestCase):
         self.assertEqual(manifest['pages'][0]['kind'],'overview')
         self.assertEqual(manifest['pages'][0]['unit_count'],0)
 
+    def test_short_summary_links_require_one_exact_nonempty_wb_and_keep_unit_citations(self):
+        book=json.loads((self.root/'books/manifest.json').read_text())['books'][0]
+        overview=next(entry for entry in self.manifest['pages'] if entry['kind']=='overview')
+        self.assertEqual(book['summary_text_url'],'/platotimaeus/summary.md')
+        self.assertEqual(book['summary_data_url'],'/platotimaeus/summary.json')
+        html=(self.root/overview['path']).read_text()
+        self.assertIn('href="/platotimaeus/summary.md"',html)
+        self.assertIn('Whole-book CARE summary — plain text',html)
+        canonical=self.units['WB_TIM']['url']
+        packet=json.loads((self.root/self.units['WB_TIM']['json_path']).read_text())
+        self.assertEqual(packet['metadata']['canonical_url'],'https://carelibrary.org'+canonical)
+        for count in (0,2):
+            work=deepcopy(self.work)
+            if count==0:work['units']=[unit for unit in work['units'] if unit['layer']!='WB']
+            else:
+                other=deepcopy(work['units'][-1]);other.update(id='WB_OTHER',translations=[])
+                other['sections'][0]['items'][0]['id']='WB_OTHER:A1';work['units'].append(other)
+            _publish(self.root,[work]);seo.build(self.root)
+            book=json.loads((self.root/'books/manifest.json').read_text())['books'][0]
+            overview=next(entry for entry in json.loads((self.root/'books/readings-manifest.json').read_text())['pages'] if entry['kind']=='overview')
+            self.assertNotIn('summary_text_url',book);self.assertNotIn('summary_data_url',book)
+            self.assertNotIn('summary_text_url',overview);self.assertNotIn('/summary.md',(self.root/overview['path']).read_text())
+
     def test_source_passage_anchors_require_exact_reconstruction_without_duplicate_text(self):
         source={'text':'First source paragraph.\n\nSecond source paragraph.',
                 'paragraphs':[{'id':'RAW:P1','text':'First source paragraph.'},{'id':'RAW:P2','text':'Second source paragraph.'}]}

@@ -73,6 +73,24 @@ class DiscoveryTests(unittest.TestCase):
     def details(self):
         return json.loads((self.root / "books/book/readings/index.json").read_text())
 
+    def test_short_summary_addresses_are_additional_and_ambiguous_wb_omits_them(self):
+        overview=self.readings['pages'][0]
+        overview.update(summary_text_url='/adaauthoranoriginalbook/summary.md',summary_data_url='/adaauthoranoriginalbook/summary.json')
+        self.write_manifests();first=self.build();book=first['books'][0]
+        self.assertEqual(book['summary_text_url'],'https://carelibrary.org/adaauthoranoriginalbook/summary.md')
+        self.assertEqual(book['summary_data_url'],'https://carelibrary.org/adaauthoranoriginalbook/summary.json')
+        self.assertIn('/readings/wb/saved-reading/',book['whole_book_reading_url'])
+        guide=(self.root/'llms.txt').read_text();self.assertIn(book['summary_text_url'],guide);self.assertIn(book['whole_book_reading_text_url'],guide)
+        self.assertEqual(first,self.build())
+        duplicate=dict(next(item for item in self.readings['pages'] if item.get('unit_id')=='WB_SAVED_UNIT'))
+        duplicate.update(unit_id='WB_SECOND',url='/adaauthoranoriginalbook/readings/wb/other/')
+        self.readings['pages'].append(duplicate);self.write_manifests()
+        ambiguous=self.build()['books'][0]
+        self.assertNotIn('summary_text_url',ambiguous);self.assertNotIn('summary_data_url',ambiguous)
+        self.readings['pages']=[item for item in self.readings['pages'] if item.get('layer')!='WB'];self.write_manifests()
+        empty=self.build()['books'][0]
+        self.assertNotIn('summary_text_url',empty);self.assertNotIn('summary_data_url',empty)
+
     def test_canonical_titles_identities_and_citations_are_complete_without_prose(self):
         first = self.build()
         content = (self.root / "research-index.json").read_text()
