@@ -91,6 +91,21 @@ class DiscoveryTests(unittest.TestCase):
         empty=self.build()['books'][0]
         self.assertNotIn('summary_text_url',empty);self.assertNotIn('summary_data_url',empty)
 
+    def test_preferred_plain_text_is_advertised_first_with_positive_summary_guidance(self):
+        self.readings['pages'][0]['summary_plaintext_url']='/adaauthoranoriginalbook/summary.txt'
+        wb=next(item for item in self.readings['pages'] if item.get('unit_id')=='WB_SAVED_UNIT')
+        wb['plaintext_url']=wb['url']+'reading.txt';self.write_manifests()
+        result=self.build();book=result['books'][0]
+        self.assertEqual(book['summary_plaintext_url'],'https://carelibrary.org/adaauthoranoriginalbook/summary.txt')
+        reading=next(item for item in self.details()['care_readings'] if item['layer']=='WB')
+        self.assertEqual(reading['plain_text_url'],'https://carelibrary.org'+wb['plaintext_url'])
+        self.assertTrue(reading['text_url'].endswith('/reading.md'))
+        guide=(self.root/'llms.txt').read_text()
+        self.assertLess(guide.index('/summary.txt'),guide.index(wb['markdown_url']))
+        self.assertIn('central problem',guide);self.assertIn('concept connections',guide)
+        self.assertIn('three specific saved claims',guide);self.assertIn('compact source note',guide)
+        self.assertNotIn('not proof',guide);self.assertNotIn('No page or index grants',guide)
+
     def test_canonical_titles_identities_and_citations_are_complete_without_prose(self):
         first = self.build()
         content = (self.root / "research-index.json").read_text()

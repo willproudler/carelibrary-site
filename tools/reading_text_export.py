@@ -1,4 +1,4 @@
-"""Deterministic plain Markdown for saved CARE readings; no I/O or generation."""
+"""Deterministic readable text and packets for saved CARE readings; no I/O or generation."""
 from __future__ import annotations
 
 import json
@@ -9,6 +9,7 @@ from typing import Callable
 from urllib.parse import quote, unquote
 
 READING_TEXT_EXPORT_VERSION = "care-readable-text/1.1"
+PLAIN_TEXT_EXPORT_VERSION = "care-readable-plain-text/1"
 
 
 def rendition_anchor(rendition: dict, item_id: str) -> str:
@@ -56,6 +57,64 @@ def render_reading_packet(metadata: dict, renditions: list[dict],
 
 def _label(value) -> str:
     return re.sub(r"([\\`*\[\]<>])", r"\\\1", " ".join(str(value or "").split()))
+
+
+def render_reading_text(metadata: dict, renditions: list[dict],
+                        reference_url: Callable[[str], str] | None = None) -> str:
+    """A complete, compact reading of one saved rendition, without new prose.
+
+    Saved English leads in the caller's established order. Otherwise the
+    canonical rendition is used. Full evidence fields remain in the linked
+    packet; every selected section, item identity and wording is retained here.
+    Existing Markdown and JSON representations are unaffected.
+    """
+    if not renditions:
+        raise ValueError("A plain-text reading needs a saved rendition.")
+    english = [rendition for rendition in renditions
+               if str(rendition.get("language_code") or "").lower().replace("_", "-").split("-", 1)[0] == "en"]
+    selected = next(iter(english), None)
+    if selected is None:
+        selected = next((rendition for rendition in renditions
+                         if rendition.get("rendition_type") == "canonical"), renditions[0])
+
+    def label(value):
+        return " ".join(str(value or "").split())
+
+    book = label(metadata.get("book_title") or metadata.get("title") or metadata["unit_id"])
+    language = label(selected.get("language_name") or selected.get("language_code") or "Language not recorded")
+    if selected.get("rendition_type") == "canonical":
+        kind = "canonical CARE analysis"
+    elif selected.get("rendition_type") == "machine" or selected.get("review_status") == "machine":
+        kind = "saved machine translation of CARE analysis"
+    else:
+        kind = "saved CARE rendition"
+    lines = ["CARE reading of " + book]
+    if metadata.get("book_author"):
+        lines.append("Source author: " + label(metadata["book_author"]))
+    facts = [("Layer", metadata.get("layer")), ("Unit", metadata.get("unit_id")),
+             ("Revision", metadata.get("revision"))]
+    lines.append(" · ".join(name + ": " + label(value) for name, value in facts if value))
+    lines.append("Rendition: " + language + " · " + kind)
+    canonical = str(metadata.get("canonical_url") or "")
+    if canonical:
+        lines.append("Reading: " + canonical)
+    packet = str(metadata.get("json_url") or "")
+    if not packet and canonical.startswith(("https://", "http://")):
+        packet = canonical.rstrip("/") + "/reading.json"
+    if packet:
+        lines.append("Complete record: " + packet)
+    lines.append("")
+    for section in selected.get("sections", []):
+        title = " · ".join(label(section.get(key)) for key in ("number", "name")
+                           if section.get(key) not in (None, "")) or "Saved section"
+        lines += [title, ""]
+        for item in section.get("items", []):
+            identity = str(item["id"])
+            lines += ["[" + identity + "]", item["text"]]
+            if citation := _citation(metadata, selected, identity, reference_url):
+                lines.append("Citation: " + citation)
+            lines.append("")
+    return "\n".join(lines) + "\n"
 
 
 def render_reading_markdown(metadata: dict, renditions: list[dict],

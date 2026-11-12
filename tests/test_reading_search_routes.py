@@ -50,7 +50,8 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
                         "unit_slug": slug, "url": self.unit_url, "path": unit_path + "index.html",
                         "text_path": unit_path + "text.html", "has_text": True,
                         "markdown_path": unit_path + "reading.md", "markdown_url": self.unit_url + "reading.md",
-                        "json_path": unit_path + "reading.json", "json_url": self.unit_url + "reading.json"}
+                        "json_path": unit_path + "reading.json", "json_url": self.unit_url + "reading.json",
+                        "plaintext_path": unit_path + "reading.txt", "plaintext_url": self.unit_url + "reading.txt"}
         self.manifest = {"schema": "care-reading-search-pages/1", "source_sha256": books["source_sha256"],
                          "pages": [overview, layer, self.reading]}
         self.manifest_path = self.web / "books/readings-manifest.json"
@@ -63,9 +64,10 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         self.prose = "Saved CARE interpretation with its exact citation. " * 1200
         self.html = '<!doctype html><main><h1>CARE analysis</h1><p id="axiom-STABLE">' + self.prose + '</p></main>'
         self.markdown = "# CARE analysis\n\n" + self.prose + "\n"
+        self.plaintext = "Timaeus\n\n" + self.prose + "\n"
         self.packet = {"unit_id": unit, "canonical": self.unit_url, "text": self.prose}
         for name, text in ((self.reading["text_path"], self.html), (self.reading["markdown_path"], self.markdown),
-                           (self.reading["json_path"], json.dumps(self.packet))):
+                           (self.reading["json_path"], json.dumps(self.packet)), (self.reading["plaintext_path"], self.plaintext)):
             path = self.web / name
             path.write_text(text)
             Path(str(path) + ".gz").write_bytes(gzip.compress(text.encode()))
@@ -88,7 +90,8 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn(self.prose, browser.text)
                 self.assertEqual(browser.headers["cache-control"], "no-store")
             for route in ("/" + self.reading["text_path"], self.reading["markdown_url"], "/" + self.reading["markdown_path"],
-                          self.reading["json_url"], "/" + self.reading["json_path"]):
+                          self.reading["json_url"], "/" + self.reading["json_path"],
+                          self.reading["plaintext_url"], "/" + self.reading["plaintext_path"]):
                 self.assertEqual((await self.client.get(route)).status_code, 404, route)
         self.assertEqual((await self.client.get("/data/library.json")).status_code, 401)
         self.assertEqual((await self.client.get("/books/readings.css")).status_code, 200)
@@ -170,7 +173,8 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         self.app.state.site_settings.update(False, 0)
         for extension, long_key, alternate_key, media_type in (
                 ("md", "markdown_url", "json_url", "text/markdown"),
-                ("json", "json_url", "markdown_url", "application/json")):
+                ("json", "json_url", "markdown_url", "application/json"),
+                ("txt", "plaintext_url", "json_url", "text/plain")):
             short = f"/platotimaeus/summary.{extension}"
             for encoding in ("identity", "gzip"):
                 options = {"Accept-Encoding": encoding}
@@ -197,7 +201,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(queried.content, long.content)
         # Existing representation/resource aliases still use their original
         # canonical destinations, independently of these two direct shortcuts.
-        for path_key, url_key in (("markdown_path", "markdown_url"), ("json_path", "json_url")):
+        for path_key, url_key in (("markdown_path", "markdown_url"), ("json_path", "json_url"), ("plaintext_path", "plaintext_url")):
             old = await self.client.get("/" + self.reading[path_key])
             self.assertEqual(old.status_code, 308)
             self.assertEqual(old.headers["location"], self.reading[url_key])
@@ -213,7 +217,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
             if revision is not None:
                 self.app.state.site_settings.update(beta, revision)
             for client in (anonymous, self.client):
-                for extension in ("md", "json"):
+                for extension in ("md", "json", "txt"):
                     for method in ("GET", "HEAD"):
                         response = await client.request(method, f"/platotimaeus/summary.{extension}?care_studio_embed=1&care_studio_embed=1",
                                                         headers={"Accept-Encoding": "gzip"})
@@ -227,7 +231,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_short_summary_requires_one_complete_validated_whole_book_reading(self):
         self.app.state.site_settings.update(False, 0)
-        for path in ("/notapublishedbook/summary.md", "/platotimaeus/summary.txt", "/platotimaeus/summary.MD",
+        for path in ("/notapublishedbook/summary.md", "/platotimaeus/summary.text", "/platotimaeus/summary.MD",
                      "/platotimaeus/summary.md/", "/platotimaeus/summary.json/index.html", "/platotimaeus/readings/summary.md",
                      f'/books/{self.reading["book_slug"]}/summary.json'):
             self.assertEqual((await self.client.get(path)).status_code, 404, path)
@@ -257,7 +261,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         variants.append(incomplete)
         for manifest in variants:
             self.write_manifest(manifest)
-            for extension in ("md", "json"):
+            for extension in ("md", "json", "txt"):
                 response = await self.client.get(f"/platotimaeus/summary.{extension}")
                 self.assertEqual(response.status_code, 404, str(manifest["pages"][-1]))
                 self.assertNotIn(self.prose, response.text)
@@ -266,20 +270,55 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         second["unit_slug"] = "second-" + hashlib.sha256(second["unit_id"].encode()).hexdigest()[:12]
         second["url"] = self.canonical + "wb/" + second["unit_slug"] + "/"
         folder = f'books/{second["book_slug"]}/readings/wb/{second["unit_slug"]}/'
-        for field, filename in (("path", "index.html"), ("text_path", "text.html"), ("markdown_path", "reading.md"), ("json_path", "reading.json")):
+        for field, filename in (("path", "index.html"), ("text_path", "text.html"), ("markdown_path", "reading.md"),
+                                ("json_path", "reading.json"), ("plaintext_path", "reading.txt")):
             second[field] = folder + filename
             path = self.web / second[field]
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("Second saved WB reading")
         second["markdown_url"] = second["url"] + "reading.md"
         second["json_url"] = second["url"] + "reading.json"
+        second["plaintext_url"] = second["url"] + "reading.txt"
         ambiguous = copy.deepcopy(self.manifest)
         ambiguous["pages"].append(second)
         self.write_manifest(ambiguous)
         self.assertEqual((await self.client.get(second["markdown_url"])).status_code, 200)
         self.assertEqual((await self.client.get(self.reading["markdown_url"])).status_code, 200)
-        for extension in ("md", "json"):
+        for extension in ("md", "json", "txt"):
             self.assertEqual((await self.client.get(f"/platotimaeus/summary.{extension}")).status_code, 404)
+
+    async def test_plaintext_is_registered_exactly_with_gates_and_alternate_headers(self):
+        self.app.state.site_settings.update(False, 0)
+        for url in (self.unit_url, self.reading["markdown_url"], self.reading["json_url"], self.reading["plaintext_url"]):
+            response = await self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(f'<{self.reading["plaintext_url"]}>; rel="alternate"; type="text/plain"', response.headers["link"])
+        plain = await self.client.get(self.reading["plaintext_url"])
+        short = await self.client.get("/platotimaeus/summary.txt")
+        self.assertEqual(plain.content, self.plaintext.encode())
+        self.assertEqual(short.content, plain.content)
+        self.assertIn(f'<{self.unit_url}>; rel="canonical"', plain.headers["link"])
+        self.app.state.site_settings.update(True, 1)
+        for url in (self.reading["plaintext_url"], "/" + self.reading["plaintext_path"],
+                    "/" + self.reading["plaintext_path"] + ".gz", "/platotimaeus/summary.txt"):
+            self.assertEqual((await self.client.get(url)).status_code, 404)
+        self.app.state.site_settings.update(False, 2)
+        for changes in ({"plaintext_path": "private/notes.txt"}, {"plaintext_path": []},
+                        {"plaintext_url": "/api/session"}, {"plaintext_url": "https://other.example/reading.txt"}):
+            manifest = copy.deepcopy(self.manifest)
+            manifest["pages"][2].update(changes)
+            self.write_manifest(manifest)
+            for url in (self.reading["plaintext_url"], "/platotimaeus/summary.txt"):
+                self.assertEqual((await self.client.get(url)).status_code, 404, str(changes))
+        # Older valid registries retain their existing MD/JSON routes and do
+        # not fabricate a TXT edition from another representation.
+        old = copy.deepcopy(self.manifest)
+        del old["pages"][2]["plaintext_path"]
+        del old["pages"][2]["plaintext_url"]
+        self.write_manifest(old)
+        self.assertEqual((await self.client.get("/platotimaeus/summary.txt")).status_code, 404)
+        self.assertEqual((await self.client.get("/platotimaeus/summary.md")).status_code, 200)
+        self.assertEqual((await self.client.get("/platotimaeus/summary.json")).status_code, 200)
 
     async def test_aliases_are_canonical_and_undeclared_files_never_become_public(self):
         for route in (self.unit_url.rstrip("/"), self.unit_url + "index.html", "/" + self.reading["path"]):
@@ -291,7 +330,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         for name in ("private.md", "private.txt", "unit.json"):
             private.with_name(name).write_text("Unpublished material")
         for route in ("/books/readings-manifest.json", self.unit_url + "private.md", self.unit_url + "private.txt",
-                      self.unit_url + "reading.txt", self.unit_url + "unit.json", "/" + str(private.relative_to(self.web).with_name("private.md")),
+                      self.unit_url + "not-reading.txt", self.unit_url + "unit.json", "/" + str(private.relative_to(self.web).with_name("private.md")),
                       "/platotimaeus/readings/wb/not-a-unit/", "/platotimaeus/readings/wb/%2e%2e/text.html",
                       "/platotimaeus/readings/wb/%252e%252e/text.html"):
             self.assertEqual((await self.client.get(route)).status_code, 404, route)

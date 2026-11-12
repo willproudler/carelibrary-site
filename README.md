@@ -1,5 +1,7 @@
 # CARE Library Beta
 
+Build 20261112.29 adds a clean text/plain edition of every saved CARE unit and short whole-book addresses such as `/platotimaeus/summary.txt`. The complete preferred saved English rendition, or canonical rendition when no English is saved, is reproduced with sections, item identities and exact citation links. A compact source/rendition header keeps provenance available without repeated warning paragraphs. The reading guide now focuses on arguments, conceptual relationships and useful summaries. Full Markdown and structured JSON records remain available, and the existing public/Beta access setting applies to the new text files.
+
 Build 20261112.28 adds short whole-book CARE summary addresses such as `/platotimaeus/summary.md` and `/platotimaeus/summary.json`. These serve the exact saved reading when it has one unambiguous whole-book unit; canonical citations, revisions and language labels remain attached to that saved unit. The same public/Beta access rules apply. Book reading overviews, the catalogue and machine-readable discovery link directly to both formats.
 
 Build 20261112.27 makes the public catalogue crawlable and puts ordinary HTML links to every book, reading layer and whole-book HTML, Markdown and JSON edition in the main Library, Discover and books index. Static readers can reach the saved CARE text without running JavaScript. The catalogue follows the live public/Beta setting; private accounts, drafts and workspace companions keep their access protections and indexing exclusions.

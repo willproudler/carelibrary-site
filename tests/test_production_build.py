@@ -139,6 +139,39 @@ class ProductionBuildTests(unittest.TestCase):
             production.copy_browser_files(site, site / "dist")
         self.assertFalse((site / "dist").exists())
 
+    def test_only_registered_reading_plaintext_is_staged_and_compressed(self):
+        site = self.site()
+        self.assertNotIn(".txt", production.ASSET_EXTENSIONS)
+        name = "books/timaeus-plato/readings/wb/timaeus-unit123/reading.txt"
+        reading = site / name
+        reading.parent.mkdir(parents=True)
+        reading.write_text("Timaeus\n\nExact saved wording.\n" * 100)
+        manifest = {"schema": "care-reading-search-pages/1", "pages": [{
+            "kind": "reading", "book_slug": "timaeus-plato", "layer_slug": "wb",
+            "unit_slug": "timaeus-unit123", "plaintext_path": name}]}
+        (site / "books/readings-manifest.json").write_text(json.dumps(manifest))
+        production.copy_browser_files(site, site / "dist")
+        self.assertEqual((site / "dist" / name).read_bytes(), reading.read_bytes())
+        self.assertEqual(gzip.decompress((site / "dist" / (name + ".gz")).read_bytes()), reading.read_bytes())
+        private = site / "native/private-notes.txt"
+        private.write_text("Unregistered private notes")
+        with self.assertRaisesRegex(ValueError, "Unrecognized browser asset"):
+            production.copy_browser_files(site, site / "dist")
+        self.assertFalse((site / "dist/native/private-notes.txt").exists())
+        self.assertEqual((site / "dist" / name).read_bytes(), reading.read_bytes())
+
+    def test_plaintext_manifest_cannot_register_arbitrary_or_traversing_paths(self):
+        for changes in ({"plaintext_path": "private/notes.txt"}, {"book_slug": "../../private"},
+                        {"layer_slug": "../wb"}, {"unit_slug": "unit/../notes"}, {"kind": "overview"}):
+            site = self.site()
+            entry = {"kind": "reading", "book_slug": "timaeus-plato", "layer_slug": "wb", "unit_slug": "unit",
+                     "plaintext_path": "books/timaeus-plato/readings/wb/unit/reading.txt"}
+            entry.update(changes)
+            (site / "books/readings-manifest.json").write_text(json.dumps({"schema": "care-reading-search-pages/1", "pages": [entry]}))
+            with self.assertRaisesRegex(ValueError, "registered reading plain text"):
+                production.copy_browser_files(site, site / "dist")
+            self.assertFalse((site / "dist").exists())
+
     def test_symlinked_root_files_assets_and_asset_directories_are_rejected(self):
         outside = self.root / "private.json"
         outside.write_text("private content")

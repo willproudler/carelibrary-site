@@ -33,6 +33,8 @@ class _ReadingRoute:
     markdown_url: str | None = None
     json_path: str | None = None
     json_url: str | None = None
+    plaintext_path: str | None = None
+    plaintext_url: str | None = None
     document_canonical: str | None = None
     shortcut: bool = False
 
@@ -220,6 +222,7 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
         resource, text = item.get("path"), item.get("text_path")
         markdown, markdown_url = item.get("markdown_path"), item.get("markdown_url")
         json_path, json_url = item.get("json_path"), item.get("json_url")
+        plaintext, plaintext_url = item.get("plaintext_path"), item.get("plaintext_url")
         index_path, index_url = item.get("index_path"), item.get("index_url")
         has_text = item.get("has_text", False)
         if (resource != folder + "index.html" or not isinstance(has_text, bool)
@@ -229,11 +232,14 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
                 and (kind != "reading" or markdown != folder + "reading.md" or markdown_url != canonical + "reading.md")
                 or (json_path is not None or json_url is not None)
                 and (kind != "reading" or json_path != folder + "reading.json" or json_url != canonical + "reading.json")
+                or (plaintext is not None or plaintext_url is not None)
+                and (kind != "reading" or plaintext != folder + "reading.txt" or plaintext_url != canonical + "reading.txt")
                 or (index_path is not None or index_url is not None)
                 and (kind != "overview" or index_path != folder + "index.json" or index_url != canonical + "index.json")):
             continue
         entry = _ReadingRoute(resource, canonical, text, has_text, markdown_path=markdown,
-                              markdown_url=markdown_url, json_path=json_path, json_url=json_url)
+                              markdown_url=markdown_url, json_path=json_path, json_url=json_url,
+                              plaintext_path=plaintext, plaintext_url=plaintext_url)
         if whole_book:
             whole_books[route] = entry
         aliases = {canonical, canonical.rstrip("/"), canonical + "index.html",
@@ -250,6 +256,10 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
             json_entry = replace(entry, representation="json")
             register("/" + json_path, json_entry)
             register(json_url, json_entry)
+        if plaintext:
+            plaintext_entry = replace(entry, representation="plaintext")
+            register("/" + plaintext, plaintext_entry)
+            register(plaintext_url, plaintext_entry)
         if index_path:
             index_entry = _ReadingRoute(index_path, index_url, representation="index", document_canonical=canonical)
             register("/" + index_path, index_entry)
@@ -264,6 +274,8 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
             continue
         register(f"/{route}/summary.md", replace(entry, representation="markdown", shortcut=True))
         register(f"/{route}/summary.json", replace(entry, representation="json", shortcut=True))
+        if entry.plaintext_path and routes.get(entry.plaintext_url) == replace(entry, representation="plaintext"):
+            register(f"/{route}/summary.txt", replace(entry, representation="plaintext", shortcut=True))
     return routes
 
 
@@ -312,7 +324,7 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
         return None
     decoded = unquote(request_path)
     components = decoded.strip("/").split("/")
-    summary = (len(components) == 2 and components[1] in {"summary.md", "summary.json"}
+    summary = (len(components) == 2 and components[1] in {"summary.md", "summary.json", "summary.txt"}
                and decoded == f"/{components[0]}/{components[1]}")
     if (summary or (len(components) >= 2 and components[1] == "readings")
             or (first == "books" and len(components) >= 3 and components[2] == "readings")):
@@ -322,13 +334,16 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
         if entry.representation == "text":
             return SearchPage(entry.full_html, entry.canonical, True) if full_text and entry.has_text else None
         alternates = tuple((url, kind) for url, kind in (
-            (entry.markdown_url, "text/markdown"), (entry.json_url, "application/json")) if url and full_text and entry.has_text)
-        if entry.representation in {"markdown", "json"}:
+            (entry.plaintext_url, "text/plain"), (entry.markdown_url, "text/markdown"),
+            (entry.json_url, "application/json")) if url and full_text and entry.has_text)
+        if entry.representation in {"markdown", "json", "plaintext"}:
             if not full_text or not entry.has_text:
                 return None
-            resource, canonical = ((entry.markdown_path, entry.markdown_url) if entry.representation == "markdown"
-                                   else (entry.json_path, entry.json_url))
-            links = ((entry.canonical, "text/html"),) + tuple(link for link in alternates if link[0] != canonical)
+            resource, canonical = {"markdown": (entry.markdown_path, entry.markdown_url),
+                                   "json": (entry.json_path, entry.json_url),
+                                   "plaintext": (entry.plaintext_path, entry.plaintext_url)}[entry.representation]
+            links = ((entry.canonical, "text/html"),) + tuple(link for link in alternates
+                      if link[0] != canonical or entry.representation == "plaintext")
             return SearchPage(resource, canonical, not entry.shortcut and request_path != canonical,
                               document_canonical=entry.canonical, alternates=links)
         if entry.representation == "index":

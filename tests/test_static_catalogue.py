@@ -38,7 +38,7 @@ class StaticCatalogueTests(unittest.TestCase):
 
     def test_library_home_and_book_cards_expose_real_canonical_reading_links(self):
         expected={self.book['url'],self.book['care_overview_url'],*self.book['care_layer_urls'].values(),
-                  self.wb['url'],self.wb['markdown_url'],self.wb['json_url'],self.book['summary_text_url'],self.book['summary_data_url']}
+                  self.wb['url'],self.wb['markdown_url'],self.wb['json_url'],self.wb['plaintext_url'],self.book['summary_plaintext_url'],self.book['summary_text_url'],self.book['summary_data_url']}
         for path in (self.root/'library.html',self.root/'index.html',self.root/'books/index.html'):
             text=path.read_text();parsed=_Links(text)
             self.assertTrue(expected.issubset(set(parsed.links)),str(path))

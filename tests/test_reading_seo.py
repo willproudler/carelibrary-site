@@ -90,7 +90,8 @@ class ReadingSEOTests(unittest.TestCase):
         self.assertLess(full.index(english),full.index('Canonical saved CARE rendition'))
         self.assertIn('Saved machine translation of CARE analysis',visible)
         self.assertIn('Recorded review status: machine',visible)
-        self.assertIn('not prose written by Plato',visible)
+        self.assertIn('saved AI-assisted CARE analysis of the source book',visible)
+        self.assertNotIn('They do not establish independent verification',visible)
         self.assertNotIn('<script>not executable</script>',full)
         self.assertEqual(len(parsed.ids),len(set(parsed.ids)))
         self.assertIn('ref=WB_TIM:A1',parsed.ids)
@@ -110,6 +111,23 @@ class ReadingSEOTests(unittest.TestCase):
         source_packet=json.loads((self.root/self.units['CH_TIM']['json_path']).read_text())
         self.assertEqual(source_packet['renditions'][0]['sections'][0]['items'][0]['passages'][0],
                          {'id':'RAW_TIM:P0001','trace_type':'Composite','confidence':'high','alignment_provenance':'frozen-grounding'})
+
+    def test_preferred_txt_is_complete_english_first_and_canonical_fallback(self):
+        entry=self.units['WB_TIM'];text=(self.root/entry['plaintext_path']).read_text()
+        english=self.work['units'][-1]['translations'][0]['sections'][0]['items'][0]['text']
+        self.assertIn(english,text);self.assertNotIn('Saved canonical Greek CARE wording',text)
+        self.assertIn('[WB_TIM:A1]',text);self.assertIn('Saved section',text)
+        self.assertIn('rendition=SAVED_ENGLISH_WB_TIM',text)
+        self.assertNotIn('Recorded passage alignments',text)
+        self.assertNotIn('independent verification',text)
+        fallback=(self.root/self.units['CH_TIM']['plaintext_path']).read_text()
+        self.assertIn(self.work['units'][0]['sections'][0]['items'][0]['text'],fallback)
+        self.assertEqual(entry['plaintext_url'],entry['url']+'reading.txt')
+        book=json.loads((self.root/'books/manifest.json').read_text())['books'][0]
+        self.assertEqual(book['summary_plaintext_url'],'/platotimaeus/summary.txt')
+        overview=next(item for item in self.manifest['pages'] if item['kind']=='overview')
+        html=(self.root/overview['path']).read_text()
+        self.assertLess(html.index('/summary.txt'),html.index('/summary.md'))
 
     def test_saved_translation_pin_identity_and_links_are_validated(self):
         unit=deepcopy(self.work['units'][-1]);unit['translations'][0]['source_sha256']='wrong'
@@ -148,6 +166,7 @@ class ReadingSEOTests(unittest.TestCase):
             book=json.loads((self.root/'books/manifest.json').read_text())['books'][0]
             overview=next(entry for entry in json.loads((self.root/'books/readings-manifest.json').read_text())['pages'] if entry['kind']=='overview')
             self.assertNotIn('summary_text_url',book);self.assertNotIn('summary_data_url',book)
+            self.assertNotIn('summary_plaintext_url',book)
             self.assertNotIn('summary_text_url',overview);self.assertNotIn('/summary.md',(self.root/overview['path']).read_text())
 
     def test_source_passage_anchors_require_exact_reconstruction_without_duplicate_text(self):
@@ -175,12 +194,14 @@ class ReadingNoJSAccessTests(unittest.IsolatedAsyncioTestCase):
     async def test_ai_can_read_saved_english_wb_without_js_only_when_public(self):
         phrase='Saved English whole-book CARE thesis that an AI can read directly.'
         self.assertNotIn(phrase,(await self.client.get(self.entry['url'])).text)
-        for key in ('markdown_url','json_url'):
+        for key in ('plaintext_url','markdown_url','json_url'):
             self.assertEqual((await self.client.get(self.entry[key])).status_code,404)
         self.app.state.site_settings.update(False,0)
         response=await self.client.get(self.entry['url']);self.assertEqual(response.status_code,200,response.text)
         self.assertIn(phrase,' '.join(_Extract(response.text).parts))
         self.assertIn('"unit":"WB_TIM"',response.text)
+        plain=await self.client.get(self.entry['plaintext_url']);self.assertEqual(plain.status_code,200,plain.text)
+        self.assertIn(phrase,plain.text);self.assertTrue(plain.headers['content-type'].startswith('text/plain'))
         md=await self.client.get(self.entry['markdown_url']);self.assertEqual(md.status_code,200,md.text)
         self.assertIn(phrase,md.text)
         packet=await self.client.get(self.entry['json_url']);self.assertEqual(packet.status_code,200,packet.text)
@@ -188,7 +209,7 @@ class ReadingNoJSAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(phrase,json.dumps(packet.json(),ensure_ascii=False))
         self.app.state.site_settings.update(True,1)
         self.assertNotIn(phrase,(await self.client.get(self.entry['url'])).text)
-        for key in ('markdown_url','json_url'):
+        for key in ('plaintext_url','markdown_url','json_url'):
             self.assertEqual((await self.client.get(self.entry[key])).status_code,404)
 
 

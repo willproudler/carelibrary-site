@@ -35,8 +35,8 @@ ASSET_EXTENSIONS = {
 }
 
 
-def reading_markdown_assets(source: Path) -> set[str]:
-    """Allow only Markdown registered by the attested reading-page builder."""
+def reading_text_assets(source: Path) -> set[str]:
+    """Allow only text editions registered by the attested reading-page builder."""
     manifest = source / "books/readings-manifest.json"
     if not manifest.exists():
         return set()
@@ -48,18 +48,26 @@ def reading_markdown_assets(source: Path) -> set[str]:
         raise ValueError("Invalid reading-page manifest.")
     approved = set()
     for entry in contents["pages"]:
-        if not isinstance(entry, dict) or entry.get("markdown_path") is None:
+        if not isinstance(entry, dict):
             continue
-        parts = [entry.get(key) for key in ("book_slug", "layer_slug", "unit_slug")]
-        if (entry.get("kind") != "reading" or any(not isinstance(part, str) or not part
-                or part.startswith(".") or PurePosixPath(part).parts != (part,) or "\\" in part
-                or any(ord(char) < 32 for char in part) for part in parts)):
-            raise ValueError("Invalid registered reading Markdown.")
-        expected = f"books/{parts[0]}/readings/{parts[1]}/{parts[2]}/reading.md"
-        if entry["markdown_path"] != expected:
-            raise ValueError("Invalid registered reading Markdown.")
-        approved.add(expected)
+        for field, filename, label in (("markdown_path", "reading.md", "Markdown"),
+                                       ("plaintext_path", "reading.txt", "plain text")):
+            if entry.get(field) is None:
+                continue
+            parts = [entry.get(key) for key in ("book_slug", "layer_slug", "unit_slug")]
+            if (entry.get("kind") != "reading" or any(not isinstance(part, str) or not part
+                    or part.startswith(".") or PurePosixPath(part).parts != (part,) or "\\" in part
+                    or any(ord(char) < 32 for char in part) for part in parts)):
+                raise ValueError(f"Invalid registered reading {label}.")
+            expected = f"books/{parts[0]}/readings/{parts[1]}/{parts[2]}/{filename}"
+            if entry[field] != expected:
+                raise ValueError(f"Invalid registered reading {label}.")
+            approved.add(expected)
     return approved
+
+
+def reading_markdown_assets(source: Path) -> set[str]:
+    return {name for name in reading_text_assets(source) if name.endswith(".md")}
 
 
 def copy_browser_files(source: Path, destination: Path) -> None:
@@ -71,7 +79,7 @@ def copy_browser_files(source: Path, destination: Path) -> None:
     if destination != source / "dist":
         raise ValueError("The production build must be staged in this checkout's dist directory.")
     paths = [source / name for name in ROOT_FILES]
-    reading_markdown = reading_markdown_assets(source)
+    reading_text = reading_text_assets(source)
     for name in ASSET_DIRECTORIES:
         directory = source / name
         if directory.is_symlink() or not directory.is_dir():
@@ -81,7 +89,7 @@ def copy_browser_files(source: Path, destination: Path) -> None:
             if path.is_symlink() or any(part.startswith(".") for part in relative.parts):
                 raise ValueError(f"Unsafe browser asset: {relative}")
             if path.is_file():
-                if path.suffix.lower() not in ASSET_EXTENSIONS and relative.as_posix() not in reading_markdown:
+                if path.suffix.lower() not in ASSET_EXTENSIONS and relative.as_posix() not in reading_text:
                     raise ValueError(f"Unrecognized browser asset: {relative}")
                 paths.append(path)
     for path in paths:
@@ -94,7 +102,7 @@ def copy_browser_files(source: Path, destination: Path) -> None:
         target = destination / path.relative_to(source)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, target)
-        if path.relative_to(source).as_posix() in reading_markdown:
+        if path.relative_to(source).as_posix() in reading_text:
             contents = path.read_bytes()
             compressed = gzip.compress(contents, compresslevel=6, mtime=0)
             if len(compressed) < len(contents):

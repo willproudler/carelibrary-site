@@ -157,7 +157,7 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                 raise ValueError("The per-book discovery index must remain inside the generated book directory.")
             detail_paths[item["work_id"]] = target
             book["details_index"] = _url(index_url, origin)
-            for field in ("summary_text_url","summary_data_url"):
+            for field in ("summary_text_url","summary_data_url","summary_plaintext_url"):
                 if item.get(field):book[field]=_url(item[field],origin)
         elif kind == "layer":
             key = item["work_id"], layer
@@ -180,6 +180,9 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                 if item.get(field) is not None and item.get(field) != "":
                     record[field] = item[field]
             text = item.get("markdown_url") or item.get("text_url")
+            if item.get('plaintext_url'):
+                record['plain_text_url']=_url(item['plaintext_url'],origin)
+                record['plain_text_format']='text/plain'
             if text:
                 record["text_url"] = _url(text, origin)
                 record["text_format"] = "text/markdown"
@@ -212,8 +215,10 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                 book["whole_book_reading_text_url"] = whole[0]["text_url"]
             if whole[0].get("data_url"):
                 book["whole_book_reading_data_url"] = whole[0]["data_url"]
+            if whole[0].get('plain_text_url'):
+                book['whole_book_reading_plain_text_url']=whole[0]['plain_text_url']
         else:
-            for field in ("summary_text_url","summary_data_url"):
+            for field in ("summary_text_url","summary_data_url","summary_plaintext_url"):
                 book.pop(field,None)
         source_sections = [item for item in chapters if item["work_id"] == book["work_id"]]
         book["source_section_count"] = len(source_sections)
@@ -222,7 +227,7 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         details = {
             "schema": BOOK_SCHEMA, "url": book["details_index"], "book": book,
             "scope": {"source_sections": len(source_sections), "care_readings": len(saved)},
-            "content_distinction": "Original source sections contain the named author's prose. Saved CARE readings are AI-assisted interpretations of that work, not wording authored by that author.",
+            "content_distinction": "Original source sections and saved AI-assisted CARE readings are separately identified editions.",
             "access": "This index contains public citation/navigation metadata, not reading prose. Full original text and saved CARE HTML, Markdown and JSON packets follow the website's current beta access setting.",
             "provenance": {"book_export_sha256": books_manifest["source_sha256"]},
             "source_sections": source_sections, "care_readings": saved,
@@ -248,46 +253,48 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                   "sitemap": origin + "/sitemap.xml"},
         "scope": {"books": len(books), "source_sections": len(chapters), "care_readings": len(care_readings), "demons": len(demons)},
         "access": {"metadata": "public", "original_source_text": "Available on chapter pages when the library is in public mode; beta access rules still apply.",
-                   "saved_care_text": "Full saved CARE readings are readable without JavaScript as HTML, Markdown or structured JSON packets when the library is in public mode; beta access rules still apply.",
+                   "saved_care_text": "Preferred plain text, HTML and full Markdown/JSON reading records are available in public mode.",
                    "private_studio_drafts": "not included"},
         "provenance": {"book_export_sha256": books_manifest.get("source_sha256", ""),
                        "numogram_reference_sha256": numo_manifest.get("public_reference_sha256", "")},
-        "citation_guidance": "For original prose, cite the canonical chapter URL and its recorded author, book, section and source_id. For CARE analysis, cite the saved reading URL, care_unit_id and layer as a CARE Library AI-assisted interpretation of the named work; do not attribute its wording to the original author. A recorded link is provenance, not proof of interpretive correctness.",
+        "citation_guidance": "Cite original-source quotations with source-section URLs and CARE analysis with canonical saved-reading URLs and unit/claim IDs. Keep edition and saved-rendition details in a compact source note.",
         "details_schema": BOOK_SCHEMA,
-        "details_guidance": "Each book's details_index lists all of its exact original source sections and saved CARE units. Follow the book's whole_book_reading_url or whole_book_reading_text_url for its WB interpretation, or its care_layers links for CH, CL and MC readings.",
+        "details_guidance": "Read the WB plain-text edition for the whole argument, MC/CL for its structure and CH for chapter detail. Each book's details_index supplies exact source and claim citations.",
         "books": books, "demons": demons,
     }
     encoded = json.dumps(records, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
     (destination / "research-index.json").write_text(encoded, encoding="utf-8")
     guide = ["# CARE Library and NUMO", "",
              "> A reading environment for tracing original texts, arguments and recorded connections, with an interactive Numogram and its attributed CCRU demon reference.", "",
-             "The compact public research index lists published books and all 45 demon records. Each book's details_index links every exact original source section and saved CARE reading at CH, CL, MC and WB level. These research indexes contain navigation/citation metadata, not reading prose. Each saved unit's text_url (Markdown) and data_url (structured JSON packet) contain its complete saved interpretation and recorded evidence fields. Those editions, and readable HTML, require no JavaScript when the library is in public mode.", "",
-             "Book and source metadata are public. Original source text follows the website’s current beta access setting. Private Studio drafts, account records and unpublished books are not listed.", "",
-             "Original author prose and saved AI-assisted CARE interpretations are separate. For quotations, verify the original source section and cite its canonical URL, author, book title, section title and recorded source ID. Recorded links describe provenance, not proof of an interpretation. No page or index grants a new reuse licence.", "",
+             "Start with a book's preferred plain-text CARE reading for its argument. It contains the complete saved English rendition where available, otherwise the canonical saved rendition, with section headings, claim IDs and citation links. Markdown and structured JSON retain the full multilingual reading record and source connections.", "",
+             "AI-assisted CARE interpretations are separate editions from the original source texts. Edition and rendition details belong in a short source note. Plain text and readable HTML require no JavaScript in public mode; the indexes supply navigation and citation metadata.", "",
              "## Research entry points", "",
              _link("Machine-readable research index", origin + "/research-index.json", "Canonical URLs, original authors, exact source IDs, saved CARE unit/layer IDs and plain-text reading URLs."),
              _link("Books by title and author", origin + "/books/"),
              _link("Numogram", origin + "/numogram/", "The map, zones, currents, gates and linked demon records."),
              _link("Sitemap", origin + "/sitemap.xml"), "",
              "## Reading and summarising a work", "",
-             "- For a saved whole-book interpretation, use the WB link when one is listed beside the book. Start with its structured JSON packet for section/item fields and recorded connections, or Markdown for continuous reading. Both contain the complete saved reading without requiring the interface to run.",
-             "- For the structure of the argument, follow MC (meta-cluster) and then CL (cluster) readings where available. For detailed chapter claims, use CH. The overview and per-book JSON list only levels actually saved for that work.",
-             "- For an exact quotation or primary evidence, follow the original source-section URL. Keep original edition/language, any labelled saved machine-English translation, and generated CARE analysis distinct.",
-             "- Existing reading pages retain unit IDs, claim IDs, section/item anchors and recorded source connections. Cite those recorded links after checking their contents; separate your new inference from the saved interpretation.", "", "## Books", ""]
+             "- Read WB for the central problem, thesis, key moves, concept connections, tensions and open questions. Use the preferred plain-text edition for continuous reading.",
+             "- Read MC (macro/metacluster) and CL (cluster) for the argument's organisation; use CH for detailed chapter claims and distinctions.",
+             "- Follow original source sections for quotations. Cite around three specific saved claims where they help substantiate the intellectual summary.",
+             "- Present the summary directly, then add a compact source note with the edition and saved rendition. The Markdown and JSON records provide the full technical evidence trail when needed.", "", "## Books", ""]
     for book in books:
         label = book["title"] + " — " + book["author"]
         guide.append(_link(label, book["url"]))
+        preferred=book.get('summary_plaintext_url') or book.get('whole_book_reading_plain_text_url')
+        if preferred:
+            guide.append(_link(label+': whole-book CARE summary — preferred plain text',preferred,'Complete preferred saved rendition with section headings and exact claim citations.'))
         if book.get("care_readings_url"):
             guide.append(_link(label + ": saved CARE readings", book["care_readings_url"], "Overview of available saved interpretations, grouped by level."))
         guide.append(_link(label + ": research details JSON", book["details_index"], "All original source-section citations and saved CARE unit/layer identities for this book."))
         if book.get("summary_text_url"):
-            guide.append(_link(label + ": whole-book CARE summary — plain text",book["summary_text_url"],"Short stable address for the same saved WB text; canonical unit citation remains below."))
+            guide.append(_link(label + ": whole-book CARE summary — full Markdown record",book["summary_text_url"],"Complete multilingual record and saved source connections."))
         if book.get("summary_data_url"):
             guide.append(_link(label + ": whole-book CARE summary — structured JSON",book["summary_data_url"],"The same saved CARE packet, with its exact unit citation and recorded evidence fields."))
         if book.get("whole_book_reading_url"):
-            guide.append(_link(label + ": whole-book CARE reading (WB)", book["whole_book_reading_url"], "Start here for the saved whole-book interpretation; its wording is CARE analysis, not the author's prose."))
+            guide.append(_link(label + ": whole-book CARE reading (WB)", book["whole_book_reading_url"], "Saved whole-book interpretation in the reading interface."))
         if book.get("whole_book_reading_text_url"):
-            guide.append(_link(label + ": WB plain text", book["whole_book_reading_text_url"]))
+            guide.append(_link(label + ": WB full Markdown record", book["whole_book_reading_text_url"]))
         if book.get("whole_book_reading_data_url"):
             guide.append(_link(label + ": WB structured saved-reading JSON", book["whole_book_reading_data_url"], "Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index."))
         for layer in book["care_layers"]:

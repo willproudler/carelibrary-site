@@ -500,7 +500,7 @@ async def static_file(request):
         headers["Link"] = '</llms.txt>; rel="describedby"; type="text/markdown"'
     if relative == "library.html":
         headers["Link"] = ", ".join(filter(None, [headers.get("Link"), '</library.html>; rel="canonical"']))
-    if search and (suffix in {".html", ".md"} or suffix == ".json" and search.document_canonical):
+    if search and (suffix in {".html", ".md", ".txt"} or suffix == ".json" and search.document_canonical):
         links = [f'<{search.document_canonical or search.canonical}>; rel="canonical"']
         links.extend(f'<{url}>; rel="alternate"; type="{kind}"' for url, kind in search.alternates)
         headers["Link"] = ", ".join(filter(None, [headers.get("Link"), *links]))

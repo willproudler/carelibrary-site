@@ -17,7 +17,7 @@ from urllib.parse import quote, unquote, urlencode
 from book_seo import (_book_url, _chapter_slugs, _chapter_url, _digest, _jsonld,
                       _origin, _rows, _shell, _sources, _text, _with_book_routes,
                       _write, book_routes, book_slugs, load_attested_library)
-from reading_text_export import render_reading_markdown, render_reading_packet, rendition_anchor
+from reading_text_export import render_reading_markdown, render_reading_packet, render_reading_text, rendition_anchor
 from seo_shell import embed_library
 
 SCHEMA = "care-reading-search-pages/1"
@@ -166,11 +166,13 @@ def _render_renditions(saved: list[dict], references: dict[str, str]) -> str:
     return ''.join(output)
 
 
-def _page(source: Path, *, title: str, description: str, canonical: str, body: str, route: dict, mapping: dict, structured: dict | None = None, markdown_url: str = '', json_url: str = '') -> str:
+def _page(source: Path, *, title: str, description: str, canonical: str, body: str, route: dict, mapping: dict, structured: dict | None = None, plaintext_url: str = '', markdown_url: str = '', json_url: str = '') -> str:
     encoded = json.dumps(structured, ensure_ascii=False, separators=(",", ":")).replace('<', '\\u003c') if structured else ''
     html = _shell(title=title, description=description, canonical=canonical, body=body, structured=encoded)
     html = html.replace('<meta property="og:type" content="book">', '<meta property="og:type" content="article">')
     extra = '<link rel="stylesheet" href="/books/readings.css">'
+    if plaintext_url:
+        extra += '<link rel="alternate" type="text/plain" href="' + escape(plaintext_url, quote=True) + '">'
     if markdown_url:
         extra += '<link rel="alternate" type="text/markdown" href="' + escape(markdown_url, quote=True) + '">'
     if json_url:
@@ -181,13 +183,14 @@ def _page(source: Path, *, title: str, description: str, canonical: str, body: s
 
 def _unit_header(work: dict, unit: dict, entry: dict, references: dict[str, str], origin: str) -> str:
     layer_name = LAYER_NAMES.get(unit['layer'], unit['layer'])
-    body = ('<article><p class="eyebrow">Saved generated CARE analysis · ' + escape(unit['layer']) + '</p>'
+    body = ('<article><p class="eyebrow">Saved CARE reading · ' + escape(unit['layer']) + '</p>'
             '<p><a href="' + escape(_book_url(entry['route_slug']), quote=True) + '">' + escape(work['title']) + '</a> by ' + escape(work['author']) + ' — author of the source book</p>'
             '<h1>' + escape(_text(unit.get('title')) or unit['id']) + '</h1>'
-            '<p class="intro">' + escape(layer_name) + ' CARE reading. This is saved AI-assisted analysis of the source book, not prose written by ' + escape(work['author']) + '.</p>'
-            '<div class="actions"><a class="button" href="' + escape(overview_url(entry['route_slug']), quote=True) + '">All CARE readings</a>'
+            '<p class="intro">' + escape(layer_name) + ' reading: saved AI-assisted CARE analysis of the source book.</p>'
+            '<div class="actions"><a class="button" href="' + escape(entry['plaintext_url'], quote=True) + '">Plain-text reading</a>'
+            '<a class="button" href="' + escape(overview_url(entry['route_slug']), quote=True) + '">All CARE readings</a>'
             '<a class="button" href="' + escape(layer_url(entry['route_slug'], unit['layer']), quote=True) + '">' + escape(layer_name) + ' readings</a>'
-            '<a class="button" href="' + escape(entry['markdown_url'], quote=True) + '">Plain-text / Markdown reading</a></div>')
+            '<a class="button" href="' + escape(entry['markdown_url'], quote=True) + '">Full Markdown record</a></div>')
     body += '<p><a href="' + escape(entry['json_url'], quote=True) + '">Structured machine-readable CARE packet</a></p>'
     facts = [('Book', work['title']), ('Author of source book', work['author']), ('CARE layer', unit['layer']), ('Work ID', work['id']),
              ('Saved unit ID', unit['id']), ('Saved revision', _text(unit.get('revision'))), ('Reading content SHA-256', _text(unit.get('sha256')))]
@@ -198,7 +201,6 @@ def _unit_header(work: dict, unit: dict, entry: dict, references: dict[str, str]
     parents = _rows(unit.get('parents'))
     if parents:
         body += '<p class="care-reading-meta">Recorded parent units: ' + '; '.join(_link(str(identity), references) for identity in parents) + '</p>'
-    body += '<p class="notice">Saved source connections and confidence labels are reproduced as recorded. They do not establish independent verification. Full saved prose and the Markdown version follow the website’s current library access setting.</p>'
     return body
 
 
@@ -237,6 +239,7 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                      'layer': unit['layer'], 'layer_slug': layer_slug(unit['layer']), 'url': url,
                      'path': folder + 'index.html', 'text_path': folder + 'text.html', 'has_text': bool(items),
                      'markdown_path': folder + 'reading.md', 'markdown_url': url + 'reading.md',
+                     'plaintext_path': folder + 'reading.txt', 'plaintext_url': url + 'reading.txt',
                      'json_path': folder + 'reading.json', 'json_url': url + 'reading.json',
                      'item_count': len(items), 'section_count': len(_rows(unit.get('sections'))),
                      'language': _text(saved[0].get('language_code')), 'language_name': _text(saved[0].get('language_name')),
@@ -266,12 +269,13 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
         book['care_layer_urls'] = {layer: layer_url(book['route_slug'], layer) for layer in layers}
         book['care_readings_count'] = len(units)
         book['care_whole_book_urls'] = [unit_entries[unit['id']][3]['url'] for unit in groups.get('WB', [])]
-        for field in ('summary_text_url','summary_data_url'):
+        for field in ('summary_text_url','summary_data_url','summary_plaintext_url'):
             book.pop(field,None)
         whole=groups.get('WB',[])
         if len(whole)==1 and unit_entries[whole[0]['id']][3]['has_text']:
             book['summary_text_url']=_book_url(book['route_slug'])+'/summary.md'
             book['summary_data_url']=_book_url(book['route_slug'])+'/summary.json'
+            book['summary_plaintext_url']=_book_url(book['route_slug'])+'/summary.txt'
         default = next(iter(groups.get('WB') or units), None)
         base_route = {'view': 'workspace', 'book': work['slug'], 'sources': [section['id'] for section in _sources(work)]}
         if default:
@@ -282,22 +286,22 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                     'path': f"books/{book['slug']}/readings/index.html", 'has_text': False,
                     'index_path': f"books/{book['slug']}/readings/index.json", 'index_url': book['care_overview_url'] + 'index.json',
                     'unit_count': len(units), 'layers': {layer: len(groups[layer]) for layer in layers}}
-        for field in ('summary_text_url','summary_data_url'):
+        for field in ('summary_text_url','summary_data_url','summary_plaintext_url'):
             if book.get(field):overview[field]=book[field]
-        body = '<article><p class="eyebrow">Saved generated CARE analysis</p><h1>CARE readings of ' + escape(work['title']) + '</h1><p>Source book by ' + escape(work['author']) + '. These are saved AI-assisted CARE readings, not the author’s original prose.</p>'
+        body = '<article><p class="eyebrow">Saved CARE analysis</p><h1>CARE readings of ' + escape(work['title']) + '</h1><p>Source book by ' + escape(work['author']) + '. Explore its saved AI-assisted CARE readings.</p>'
         if book.get('summary_text_url'):
-            body+='<p><a href="'+escape(book['summary_text_url'],quote=True)+'">Whole-book CARE summary — plain text</a> · <a href="'+escape(book['summary_data_url'],quote=True)+'">Whole-book CARE summary — structured JSON</a></p>'
+            body+='<p><a href="'+escape(book['summary_plaintext_url'],quote=True)+'">Whole-book CARE summary — plain text</a> · <a href="'+escape(book['summary_text_url'],quote=True)+'">Full Markdown record</a> · <a href="'+escape(book['summary_data_url'],quote=True)+'">Structured JSON record</a></p>'
         body += '<p><a href="' + escape(_book_url(book['route_slug']), quote=True) + '">Book and original source sections</a></p><ul class="care-reading-units">'
         for layer in layers:
             body += '<li><a href="' + escape(layer_url(book['route_slug'], layer), quote=True) + '">' + escape(LAYER_NAMES.get(layer, layer)) + ' CARE readings</a> · ' + str(len(groups[layer])) + ' saved units</li>'
         body += '</ul>'
         for unit in groups.get('WB', []):
             body += '<p><a href="' + escape(unit_entries[unit['id']][3]['url'], quote=True) + '">Whole-book CARE summary: ' + escape(_text(unit.get('title')) or unit['id']) + '</a></p>'
-        body += '<p class="notice">Reading pages retain the complete saved sections, item IDs, revisions and recorded source connections. Saved translations are identified separately from the canonical CARE rendition. Reading prose follows the current beta/public access setting.</p></article>'
+        body += '<p>Read the preferred saved text directly, or use Markdown and JSON for the complete multilingual record, revisions and source connections.</p></article>'
         _write(books_directory / Path(overview['path']).relative_to('books'), _page(source, title=overview['title'] + ' | CARE Library', description='Saved whole-book, macro, cluster and chapter CARE readings of ' + work['title'] + ' by ' + work['author'] + '.', canonical=origin + overview['url'], body=body, route=base_route, mapping=mapping))
         index_entries.append(overview); sitemap.append({'loc': origin + overview['url']})
         for layer in layers:
-            entry = {**{key:value for key,value in overview.items() if key not in {'index_path','index_url','layers','summary_text_url','summary_data_url'}}, 'kind': 'layer', 'layer': layer, 'layer_slug': layer_slug(layer),
+            entry = {**{key:value for key,value in overview.items() if key not in {'index_path','index_url','layers','summary_text_url','summary_data_url','summary_plaintext_url'}}, 'kind': 'layer', 'layer': layer, 'layer_slug': layer_slug(layer),
                      'title': LAYER_NAMES.get(layer, layer) + ' CARE readings of ' + work['title'],
                      'url': layer_url(book['route_slug'], layer),
                      'path': f"books/{book['slug']}/readings/{layer_slug(layer)}/index.html", 'unit_count': len(groups[layer])}
@@ -318,7 +322,7 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                     'source_id': entry.get('source_id',''), 'context': (unit.get('identity') or {}).get('context','') if isinstance(unit.get('identity'),dict) else ''}
         route = {'view': 'workspace', 'book': work['slug'], 'unit': unit['id'], 'sources': [section['id'] for section in _sources(work)]}
         header = _unit_header(work, unit, entry, references, origin)
-        description = 'Saved generated ' + LAYER_NAMES.get(unit['layer'], unit['layer']) + ' CARE analysis of ' + work['title'] + ' by ' + work['author'] + ', unit ' + unit['id'] + '. Not original author prose.'
+        description = 'Saved ' + LAYER_NAMES.get(unit['layer'], unit['layer']) + ' CARE analysis of ' + work['title'] + ' by ' + work['author'] + ', unit ' + unit['id'] + '.'
         structured = {'@context': 'https://schema.org', '@type': 'Article', '@id': canonical + '#care-reading', 'headline': entry['title'],
                       'url': canonical, 'description': description, 'creator': {'@type': 'Organization', 'name': 'CARE'},
                       'inLanguage': entry['language'] or 'und', 'identifier': unit['id'],
@@ -326,9 +330,11 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                                     'author': {'@type': 'Person', 'name': work['author']}, 'url': origin + _book_url(book['route_slug'])}}
         meta_body = header + '<h2>Saved sections</h2><ol>' + ''.join('<li>' + escape(str(section.get('number') or '') + ' · ' + str(section.get('name') or 'Saved section')) + '</li>' for section in _rows(saved[0].get('sections'))) + '</ol></article>'
         full_body = header + _render_renditions(saved, references) + '</article>'
-        kwargs = dict(source=source, title=work['title'] + ' — ' + LAYER_NAMES.get(unit['layer'], unit['layer']) + ' CARE reading: ' + entry['title'] + ' | CARE Library', description=description, canonical=canonical, route=route, mapping=mapping, structured=structured, markdown_url=origin + entry['markdown_url'], json_url=origin + entry['json_url'])
+        kwargs = dict(source=source, title=work['title'] + ' — ' + LAYER_NAMES.get(unit['layer'], unit['layer']) + ' CARE reading: ' + entry['title'] + ' | CARE Library', description=description, canonical=canonical, route=route, mapping=mapping, structured=structured, plaintext_url=origin + entry['plaintext_url'], markdown_url=origin + entry['markdown_url'], json_url=origin + entry['json_url'])
         _write(books_directory / Path(entry['path']).relative_to('books'), _page(body=meta_body, **kwargs))
         _write(books_directory / Path(entry['text_path']).relative_to('books'), _page(body=full_body, **kwargs))
+        plaintext=render_reading_text(metadata,saved,reference_url=lambda identity:references.get(identity,''))
+        _write(books_directory/Path(entry['plaintext_path']).relative_to('books'),plaintext)
         markdown = render_reading_markdown(metadata, saved, reference_url=lambda identity: references.get(identity, ''))
         _write(books_directory / Path(entry['markdown_path']).relative_to('books'), markdown)
         packet = render_reading_packet(metadata, saved, reference_url=lambda identity: references.get(identity, ''))

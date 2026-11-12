@@ -36,19 +36,22 @@ def catalogue_fragment(books: list[dict], reading_pages: list[dict], *, heading=
         for layer, url in (book.get('care_layer_urls') or {}).items():
             links.append('<a href="' + _href(url) + '">' + escape(layer_names.get(layer,layer)) + ' readings</a>')
         summaries = []
+        if len(whole[book['work_id']])==1 and book.get('summary_plaintext_url'):
+            summaries.append('<p class="care-catalogue-links"><a href="'+_href(book['summary_plaintext_url'])+'">Whole-book CARE summary — plain text</a></p>')
         if len(whole[book['work_id']])==1 and book.get('summary_text_url') and book.get('summary_data_url'):
-            summaries.append('<p class="care-catalogue-links"><a href="'+_href(book['summary_text_url'])+'">Whole-book CARE summary — plain text</a>'
+            summaries.append('<p class="care-catalogue-links"><a href="'+_href(book['summary_text_url'])+'">Full Markdown record</a>'
                              '<a href="'+_href(book['summary_data_url'])+'">Structured whole-book summary</a></p>')
         for reading in whole[book['work_id']]:
             summaries.append('<p class="care-catalogue-links"><a href="' + _href(reading['url']) + '">Whole-book CARE summary</a>'
-                             '<a href="' + _href(reading['markdown_url']) + '">Plain-text / Markdown</a>'
+                             + ('<a href="'+_href(reading['plaintext_url'])+'">Plain text</a>' if reading.get('plaintext_url') else '')
+                             + '<a href="' + _href(reading['markdown_url']) + '">Markdown</a>'
                              '<a href="' + _href(reading['json_url']) + '">Structured CARE packet</a></p>')
         cards.append('<li><article><h3><a href="' + _href(book['url']) + '">' + escape(book['title']) + '</a></h3>'
                      '<p>by ' + escape(book['author']) + '</p><nav class="care-catalogue-links" aria-label="' + escape(book['title']+' reading links',quote=True) + '">'
                      + ''.join(links) + '</nav>' + ''.join(summaries) + '</article></li>')
     return (START + '<section class="care-static-catalogue" id="care-published-catalogue" aria-labelledby="care-published-catalogue-title">'
             f'<h{level} id="care-published-catalogue-title">' + escape(heading) + f'</h{level}>'
-            '<p>Open a book’s original source or its saved CARE analysis. Whole-book summaries, chapter, cluster and macro readings have direct HTML links; saved reading text is also available as Markdown and structured CARE packets. The interactive panes remain available, and text access follows the library’s current beta setting.</p>'
+            '<p>Open a book’s original source or its saved CARE analysis. Whole-book summaries, chapter, cluster and macro readings have direct HTML and plain-text links; Markdown and structured CARE packets retain the full reading record. The interactive panes remain available.</p>'
             '<ul class="care-catalogue-grid">' + ''.join(cards) + '</ul>'
             '<p><a href="/research-index.json">Machine-readable research index</a> · <a href="/llms.txt">Reading and citation guide</a> · <a href="/numogram/">NUMO reference</a></p></section>' + END)
 
