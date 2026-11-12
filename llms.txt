@@ -17,20 +17,20 @@ Original author prose and saved AI-assisted CARE interpretations are separate. F
 
 ## Books
 
-- [A Treatise of Human Nature — David Hume](https://carelibrary.org/books/a-treatise-of-human-nature-david-hume/)
-- [Capital Volume 1 — Karl Marx](https://carelibrary.org/books/capital-volume-1-karl-marx/)
-- [Civilization and its Discontents — Sigmund Freud](https://carelibrary.org/books/civilization-and-its-discontents-sigmund-freud/)
-- [Confessions — Augustine of Hippo](https://carelibrary.org/books/confessions-augustine-of-hippo/)
-- [Ethics — Baruch Spinoza](https://carelibrary.org/books/ethics-baruch-spinoza/)
-- [Matter and Memory — Henri Bergson](https://carelibrary.org/books/matter-and-memory-henri-bergson/)
-- [Metaphysics — Aristotle](https://carelibrary.org/books/metaphysics-aristotle/)
-- [Monas Hieroglyphica — John Dee](https://carelibrary.org/books/monas-hieroglyphica-john-dee/)
-- [On the Nature of Things — Lucretius](https://carelibrary.org/books/on-the-nature-of-things-lucretius/)
-- [Science of Logic — Georg Wilhelm Friedrich Hegel](https://carelibrary.org/books/science-of-logic-georg-wilhelm-friedrich-hegel/)
-- [Summa Theologiae · First Part — Thomas Aquinas](https://carelibrary.org/books/summa-theologiae-first-part-thomas-aquinas/)
-- [The Critique of Pure Reason — Immanuel Kant](https://carelibrary.org/books/the-critique-of-pure-reason-immanuel-kant/)
-- [Thus Spoke Zarathustra — Friedrich Nietzsche](https://carelibrary.org/books/thus-spoke-zarathustra-friedrich-nietzsche/)
-- [Timaeus — Plato](https://carelibrary.org/books/timaeus-plato/)
+- [A Treatise of Human Nature — David Hume](https://carelibrary.org/humetreatiseofhumannature)
+- [Capital Volume 1 — Karl Marx](https://carelibrary.org/marxcapitalvolume1)
+- [Civilization and its Discontents — Sigmund Freud](https://carelibrary.org/freudcivilizationanditsdiscontents)
+- [Confessions — Augustine of Hippo](https://carelibrary.org/augustineconfessions)
+- [Ethics — Baruch Spinoza](https://carelibrary.org/spinozaethics)
+- [Matter and Memory — Henri Bergson](https://carelibrary.org/bergsonmatterandmemory)
+- [Metaphysics — Aristotle](https://carelibrary.org/aristotlemetaphysics)
+- [Monas Hieroglyphica — John Dee](https://carelibrary.org/deemonashieroglyphica)
+- [On the Nature of Things — Lucretius](https://carelibrary.org/lucretiusonthenatureofthings)
+- [Science of Logic — Georg Wilhelm Friedrich Hegel](https://carelibrary.org/hegelscienceoflogic)
+- [Summa Theologiae · First Part — Thomas Aquinas](https://carelibrary.org/aquinassummatheologiaefirstpart)
+- [The Critique of Pure Reason — Immanuel Kant](https://carelibrary.org/kantcritiqueofpurereason)
+- [Thus Spoke Zarathustra — Friedrich Nietzsche](https://carelibrary.org/nietzschethusspokezarathustra)
+- [Timaeus — Plato](https://carelibrary.org/platotimaeus)
 
 ## Numogram demons
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import json
 from pathlib import Path
+import re
 from urllib.parse import unquote
 
 
@@ -39,66 +40,116 @@ def _read(root: Path, name: str) -> dict:
         return {}
 
 
+def _component(value) -> bool:
+    return (isinstance(value,str) and bool(value) and not value.startswith(".") and len(value)<=240
+            and "/" not in value and "\\" not in value and not any(ord(char)<32 or ord(char)==127 for char in value))
+
+
+@lru_cache(maxsize=4)
+def _book_index(name: str, stamp: tuple) -> dict:
+    """Compile exact book/chapter aliases once per generated manifest revision."""
+    catalogue=_manifest(name,stamp)
+    if catalogue.get("schema") != "care-book-search-pages/1":
+        return {}
+    routes={}
+    def register(path,entry):
+        # An ambiguous/corrupt manifest must never choose an arbitrary owner.
+        if path in routes and routes[path]!=entry:
+            routes[path]=None
+        else:
+            routes[path]=entry
+    for kind in ("books","chapters"):
+        items=catalogue.get(kind,[])
+        if not isinstance(items,list):
+            continue
+        for item in items:
+            if not isinstance(item,dict):
+                continue
+            slug=item.get("slug")
+            if not _component(slug):
+                continue
+            if kind=="books":
+                folder=f"books/{slug}/"
+            else:
+                book_slug=item.get("book_slug")
+                if not _component(book_slug):
+                    continue
+                folder=f"books/{book_slug}/{slug}/"
+            resource,canonical=item.get("path"),item.get("url")
+            if not isinstance(canonical,str) or resource!=folder+"index.html":
+                continue
+            decoded=unquote(canonical)
+            route_slug=item.get("route_slug")
+            if route_slug is None:
+                # Earlier deployments remain readable during the upgrade.
+                if decoded!="/"+folder:
+                    continue
+            elif (not isinstance(route_slug,str) or not re.fullmatch(r"[a-z0-9]{1,224}",route_slug)
+                  or decoded!=(f"/{route_slug}" if kind=="books" else f"/{route_slug}/{slug}/")):
+                continue
+            text=item.get("text_path") if kind=="chapters" else None
+            if kind=="chapters" and text!=folder+"text.html":
+                continue
+            legacy="/"+folder
+            aliases={legacy,legacy.rstrip("/"),"/"+resource,
+                     decoded.rstrip("/"),decoded.rstrip("/")+"/",decoded.rstrip("/")+"/index.html"}
+            declared=item.get("aliases",[])
+            if not isinstance(declared,list) or any(not isinstance(alias,str) or unquote(alias) not in aliases for alias in declared):
+                continue
+            entry=(resource,text,canonical,decoded,bool(item.get("has_text")),False)
+            for alias in aliases:
+                register(alias,entry)
+            if text:
+                register("/"+text,(resource,text,canonical,decoded,bool(item.get("has_text")),True))
+    return routes
+
+
+def _book_routes(root: Path) -> dict:
+    path=root/"books/manifest.json"
+    try:
+        stat=path.stat()
+        if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+            return {}
+        stamp=(stat.st_dev,stat.st_ino,stat.st_mtime_ns,stat.st_ctime_ns,stat.st_size)
+        return _book_index(str(path),stamp)
+    except OSError:
+        return {}
+
+
 def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage | None:
     """Only generated reference routes become public, never a directory prefix."""
     if (not request_path.startswith("/") or "\\" in request_path or "//" in request_path
             or any(part in {".",".."} or part.startswith(".") for part in request_path.split("/") if part)):
         return None
-    if not request_path.startswith(("/books", "/numogram")):
-        return None
     if request_path in {"/numogram/numogram.css","/books/books.css"}:
         return SearchPage(request_path[1:],request_path)
-    numogram=_read(root,"numogram/manifest.json")
-    for item in numogram.get("pages",[]):
-        if not isinstance(item,dict):
-            continue
-        canonical, resource=item.get("url"),item.get("path")
-        if (not isinstance(canonical,str) or not canonical.startswith("/numogram/")
-                or not isinstance(resource,str) or resource != canonical[1:]+"index.html"):
-            continue
-        aliases={canonical.rstrip("/"),canonical,canonical+"index.html"}
-        if request_path in aliases:
-            return SearchPage(resource,canonical,request_path!=canonical)
+    if request_path=="/book-routes.json":
+        return SearchPage("book-routes.json",request_path) if _read(root,"book-routes.json").get("schema")=="care-book-routes/1" else None
+    if request_path.startswith("/numogram"):
+        numogram=_read(root,"numogram/manifest.json")
+        for item in numogram.get("pages",[]):
+            if not isinstance(item,dict):
+                continue
+            canonical, resource=item.get("url"),item.get("path")
+            if (not isinstance(canonical,str) or not canonical.startswith("/numogram/")
+                    or not isinstance(resource,str) or resource != canonical[1:]+"index.html"):
+                continue
+            aliases={canonical.rstrip("/"),canonical,canonical+"index.html"}
+            if request_path in aliases:
+                return SearchPage(resource,canonical,request_path!=canonical)
+        return None
     if request_path in {"/books","/books/","/books/index.html"} and (root/"books/index.html").is_file():
         return SearchPage("books/index.html","/books/",request_path!="/books/")
-    catalogue=_read(root,"books/manifest.json")
-    if catalogue.get("schema") != "care-book-search-pages/1":
+    first=request_path.strip("/").split("/",1)[0]
+    if first in {"api","assets","data","native","search","server","tools","dist"}:
         return None
-    for item in catalogue.get("books",[]):
-        if not isinstance(item,dict):
-            continue
-        canonical,resource=item.get("url"),item.get("path")
-        if not all(isinstance(value,str) for value in (canonical,resource)):
-            continue
-        # The generator may percent-encode non-Latin book names. Compare the
-        # server-decoded path but keep the published canonical in redirects.
-        decoded=unquote(canonical)
-        slug=item.get("slug")
-        if (not isinstance(slug,str) or any(part in {"", ".", ".."} for part in slug.split("/"))
-                or "/" in slug or "\\" in slug or resource != f"books/{slug}/index.html"
-                or decoded != f"/books/{slug}/"):
-            continue
-        if request_path in {decoded,decoded.rstrip("/"),"/"+resource}:
-            # Opening a whole book always transfers its compact catalogue
-            # shell. Original text has separate, bounded chapter URLs.
-            return SearchPage(resource,canonical,request_path!=decoded)
-    for item in catalogue.get("chapters",[]):
-        if not isinstance(item,dict):
-            continue
-        canonical,resource,text=item.get("url"),item.get("path"),item.get("text_path")
-        if not all(isinstance(value,str) for value in (canonical,resource,text)):
-            continue
-        book_slug,slug=item.get("book_slug"),item.get("slug")
-        if any(not isinstance(value,str) or not value or value.startswith(".")
-               or "/" in value or "\\" in value for value in (book_slug,slug)):
-            continue
-        folder=f"books/{book_slug}/{slug}/"
-        decoded=unquote(canonical)
-        if resource!=folder+"index.html" or text!=folder+"text.html" or decoded!="/"+folder:
-            continue
-        if request_path=="/"+text:
-            return SearchPage(text,canonical,True) if full_text and item.get("has_text") else None
-        if request_path in {decoded,decoded.rstrip("/"),"/"+resource}:
-            selected=text if full_text and item.get("has_text") else resource
-            return SearchPage(selected,canonical,request_path!=decoded)
-    return None
+    if first!="books" and not re.fullmatch(r"[a-z0-9]+",first):
+        return None
+    entry=_book_routes(root).get(unquote(request_path))
+    if entry is None:
+        return None
+    resource,text,canonical,decoded,has_text,direct_text=entry
+    if direct_text:
+        return SearchPage(text,canonical,True) if full_text and has_text else None
+    selected=text if text and full_text and has_text else resource
+    return SearchPage(selected,canonical,request_path!=decoded)

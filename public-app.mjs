@@ -8,7 +8,7 @@ import mountReader from './native/study-desk.mjs?v=6270f2b8272ee079';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=6270f2b8272ee079';
 import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=6270f2b8272ee079';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
-import {createTabMenus,createWorkspaceHistory,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
+import {createTabMenus,createWorkspaceHistory,createBookAddressing,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
 import {copyStudioLibraryReference,copyStudioSource,createStudioWorkspace} from './studio-workspace.mjs';
 import {bindWorkspaceBackHistory} from './native/workspace-history-menu.mjs';
 import {createNumoCompanion} from './native/numogram-companion.mjs';
@@ -32,6 +32,8 @@ function notice(message){const el=$('#notice');el.textContent=message;el.hidden=
 
 async function start(){
  const initialSearchRoute=readSearchPageRoute(document);
+ const initialPathname=location.pathname,initialTitle=document.title,initialCanonical=document.querySelector('link[rel="canonical"]')?.href;
+ const bookAddressing=createBookAddressing(document);
  const searchPageReady=createSearchPageReady(document,window);
  const companionRequest=new URLSearchParams(location.search);
  const companionId=companionRequest.get('care_studio_request');
@@ -40,6 +42,11 @@ async function start(){
  const readingSplitCompanion=libraryCompanion&&companionRequest.get('care_tab_split')==='1';
  const documentSplitCompanion=embedded&&companionRequest.get('care_studio_split_document')==='1';
  const citationCompanion=embedded&&!readingSplitCompanion&&!documentSplitCompanion;
+ const addressKey=()=>location.pathname+location.search+location.hash;
+ let routedAddress='',paintedAddress='';
+ function currentSearchRoute(){return location.pathname===initialPathname&&initialSearchRoute?initialSearchRoute:bookAddressing.route(location.pathname);}
+ function readingAddress(destination){return bookAddressing.href(destination,{pathname:location.pathname,search:location.search,embedded});}
+ function replaceWorkspaceAddress(destination){workspaceHistory.replace(destination);routedAddress=addressKey();}
  const copyStudioPacket=(packet,tryNative)=>copyStudioSource(window,packet,tryNative);
  const splitDraftId=documentSplitCompanion?companionRequest.get('care_studio_split_draft')||'':'';
  const libraryMenu=$('#workbench-library-menu'),libraryMenuTrigger=libraryMenu.querySelector('summary');
@@ -243,10 +250,10 @@ async function start(){
  }catch{}
  const studySets=mountStudySets(setsHost,{onOpenBook(id){
   const work=adapter.workFor(id);
-  if(work)location.hash='book='+encodeURIComponent(work.slug);
+  if(work)openReadingRoute('#book='+encodeURIComponent(work.slug));
  }});
  studySets.update({accountKey:account,books});
- function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return '#'+p;}
+ function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return readingAddress('#'+p);}
  function referenceRows(ids){
   const favourites=new Set(saved.favourites);
   return [...ids].flatMap(id=>{
@@ -316,7 +323,7 @@ async function start(){
   opened=reconcileReadings(opened,keyNow,inTab);
   if(tabSplit&&(!inTab||tabSplit.primary!==keyNow||!opened.includes(tabSplit.key)||
     (tabSplit.kind==='write'&&!studio.besideOpen)||(tabSplit.kind!=='write'&&studio.besideOpen)))closeTabSplit();
-  if(tabSplit)tabSplit.primaryHash=location.hash;
+  if(tabSplit){tabSplit.primaryHash=location.hash;tabSplit.primaryAddress=addressKey();}
   if(splitChoice&&!opened.includes(splitChoice))cancelSplitChoice();
   if(!libraryCompanion&&!documentSplitCompanion)try{sessionStorage.setItem(storageKey(tabStorageKey),JSON.stringify(opened.filter(key=>!manuscriptTabs.has(key)).slice(-30)));}catch{}
   tabStrip.hidden=libraryCompanion||documentSplitCompanion||!opened.length;
@@ -342,7 +349,7 @@ async function start(){
   $('[data-numo-tools]').hidden=view!=='numogram';
   const markup=opened.map(key=>{
    const {document,work,isSaved,isNumo,kind,style,title,href}=tabDetails(key),active=inTab&&keyNow===key;
-   return `<span class="open-tab ${active?'active':''}" data-tab-key="${esc(key)}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${esc(href)}" draggable="false" aria-keyshortcuts="Shift+F10"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span>${document?`<small data-tab-role>${style.label}</small>`:''}</a>${!work&&!document&&!isSaved&&!isNumo?`<button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button>`:''}<button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
+   return `<span class="open-tab ${active?'active':''}" data-tab-key="${esc(key)}" data-kind="${esc(kind)}" style="--workspace-accent:${style.color}"><a href="${esc(readingAddress(href))}" draggable="false" aria-keyshortcuts="Shift+F10"${active?' aria-current="page"':''} title="${esc(style.label+' · '+title)}">${style.icon?`<svg class="reading-kind" viewBox="0 0 24 24" aria-hidden="true">${style.icon}</svg>`:''}<span>${esc(title)}</span>${document?`<small data-tab-role>${style.label}</small>`:''}</a>${!work&&!document&&!isSaved&&!isNumo?`<button data-reading-menu="${esc(key)}" aria-label="Options for ${esc(title)}" aria-haspopup="menu" aria-expanded="false">⌄</button>`:''}<button data-close-book="${esc(key)}" aria-label="Close ${esc(title)}">×</button></span>`;
   }).join('');
   if(tabRail.dataset.tabMarkup!==markup){
    tabRail.innerHTML=markup;
@@ -384,7 +391,7 @@ async function start(){
   if(isManuscript())studio.hide();
   if(key===SAVED_READING_ID){if(location.hash==='#view=saved')routeFromURL();else location.hash='view=saved';return;}
   if(key===numoTabId){location.hash='view=numogram';return;}
-  if(!key){const home=initialSearchRoute?'#view=library':'';if(location.hash!==home)openReadingRoute(home);else{view='library';paint();}return;}
+  if(!key){openReadingRoute(embedded?'#view=library':'/library.html');return;}
   const work=adapter.workFor(key);
   if(work)state=standaloneBookState(work.id,bookStates.get(work.id));
   else if(fieldFor(key))state={workId:(data.works[0]?.id||''),...bookStates.get(key),connectionId:key};
@@ -418,10 +425,17 @@ async function start(){
   showReading(workId);
  }
  function openReadingRoute(destination){
+  const address=readingAddress(destination);
   if(libraryCompanion){
-   workspaceHistory.replace(destination||'#');
+   replaceWorkspaceAddress(address||'#');
    void routeFromURL();
-  }else location.hash=destination;
+  }else{
+   const target=new URL(address,location.href);
+   if(target.origin!==location.origin)return;
+   if(target.pathname===location.pathname&&target.search===location.search){
+    if(target.hash===location.hash)void routeFromURL();else location.hash=target.hash;
+   }else{workspaceHistory.push(address);void routeFromURL();}
+  }
  }
  function readingFragment(key,tab){
   const reading=bookStates.get(key),params=new URLSearchParams(tab.href.slice(1));
@@ -493,7 +507,7 @@ async function start(){
  function openTabSplit(key){
   const primary=currentKey(),tab=tabDetails(key);
   if(!canPairTabs(primary,key))return;
-  const split={primary,key,primaryHash:location.hash};
+  const split={primary,key,primaryHash:location.hash,primaryAddress:addressKey()};
   if(tab.isNumo&&isManuscript()&&openNumoCompanion()){
    tabSplit={...split,kind:'numo'};
   }else if(view==='workspace'&&tab.document?.mode==='studio'&&studio.canWriteBeside){
@@ -605,7 +619,7 @@ async function start(){
   if(field){if(state.fieldReference){p.set('ref',state.fieldReference.id);if(state.fieldReference.source_pane)p.set('scope',state.fieldReference.source_pane);else if(state.fieldReference.work_id)p.set('work',state.fieldReference.work_id);}}
   else if(state.connectionReferenceId||state.referenceId)p.set('ref',state.connectionReferenceId||state.referenceId);
   else if(state.unitId)p.set('unit',state.unitId);else if(state.rawUnitId)p.set('source',state.rawUnitId);
-  workspaceHistory.replace('#'+p);
+  replaceWorkspaceAddress(readingAddress('#'+p));
   studio.syncBesideRoute();
  }
  function paintViewer(){
@@ -632,6 +646,18 @@ async function start(){
   return request?reference=>copyStudioLibraryReference(window,reference,request):null;
  }
  function paint(){
+  paintedAddress=addressKey();
+  if(!embedded){
+   const work=view==='workspace'&&!state.connectionId&&adapter.workFor(state.workId);
+   const sameSearchPage=location.pathname===initialPathname&&initialSearchRoute&&
+    (work?.slug===initialSearchRoute.book||view==='numogram'&&initialSearchRoute.view==='numogram');
+   document.title=sameSearchPage?initialTitle:work?[work.title,work.author].filter(Boolean).join(' — ')+' · CARE Library':(roomTitles[view]||'CARE Library')+(roomTitles[view]?' · CARE Library':'');
+   const canonical=document.querySelector('link[rel="canonical"]');
+   if(canonical){
+    if(sameSearchPage&&initialCanonical)canonical.href=initialCanonical;
+    else if(!sameSearchPage)canonical.href=new URL(work?bookAddressing.book(work.id)?.url||'/library.html':'/library.html',location.origin).href;
+   }
+  }
   closeReadingMenu();
   const visiting=view==='workspace'&&!state.connectionId?state.workId:'';
   if(!visiting)lastVisitedBook='';
@@ -699,7 +725,7 @@ async function start(){
    ['CARE version',work.version_label],
    ['Available panes',[(work.sources.length?'Source':''),...layers].filter(Boolean).join(' · ')],
   ].filter(([,value])=>value);
-  const destination='#book='+encodeURIComponent(work.slug);
+  const destination=readingAddress('#book='+encodeURIComponent(work.slug));
   const source=typeof work.source_url==='string'&&/^https?:\/\//i.test(work.source_url)?work.source_url:'';
   dialog.innerHTML=`<div class="dialog-heading"><h2 id="book-info-title">${esc(work.title)}</h2><button type="button" aria-label="Close book info">×</button></div>
    <div class="book-info-overview"><div>${work.cover_url?`<img src="${esc(work.cover_url)}" alt="">`:''}</div>
@@ -711,7 +737,7 @@ async function start(){
   dialog.querySelector('.book-info-actions a').onclick=()=>dialog.close();
   const copy=dialog.querySelector('[data-copy-book-link]');
   copy.onclick=async()=>{
-   const url=new URL('/library.html'+destination,location.origin);
+   const url=new URL(destination,location.href);
    try{await navigator.clipboard.writeText(url.href);copy.textContent='Link copied';}
    catch{
     const input=document.createElement('input');input.readOnly=true;input.value=url.href;input.setAttribute('aria-label','Beta link');
@@ -876,16 +902,22 @@ async function start(){
   }});
  }
  async function routeFromURL(resumed=false,splitResumed=false){
-  const destination=location.hash;
-  if(!splitResumed&&tabSplit&&destination!==tabSplit.primaryHash&&guardTabSplit(
-   ()=>{if(location.hash===destination)routeFromURL(resumed,true);},
-   ()=>workspaceHistory.replace(tabSplit?.primaryHash||'#')))return;
+  routedAddress=addressKey();
+  const destination=addressKey(),previousAddress=paintedAddress;
+  if(!splitResumed&&tabSplit&&destination!==tabSplit.primaryAddress&&guardTabSplit(
+   ()=>{if(addressKey()===destination)routeFromURL(resumed,true);},
+   ()=>replaceWorkspaceAddress(tabSplit?.primaryAddress||'/library.html')))return;
   if(resumed!==true&&(isManuscript()||studio.besideOpen)&&studio.deferNavigation(destination,
-   ()=>{if(location.hash===destination)routeFromURL(true,splitResumed);},
-   previous=>workspaceHistory.replace(previous)))return;
+   ()=>{if(addressKey()===destination)routeFromURL(true,splitResumed);},
+   previous=>replaceWorkspaceAddress(previousAddress||readingAddress(previous))))return;
   workspaceHistory.observe();
   const request=++routeRequest;saveState();setLoadStatus();
-  const p=searchPageRouteParams(location.hash,initialSearchRoute),field=fieldFor(p.get('field')),lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
+  const p=searchPageRouteParams(location.hash,currentSearchRoute()),field=fieldFor(p.get('field')),lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
+  if(!embedded){
+   const originalSemantic=location.pathname===initialPathname&&initialSearchRoute&&
+    !['view','book','field','lateral','compare'].some(key=>new URLSearchParams(location.hash.slice(1)).has(key));
+   if(!originalSemantic)replaceWorkspaceAddress(readingAddress('#'+p));
+  }
   try{
    const nextView=p.get('view');
    if(documentSplitCompanion&&(!['studio','reader'].includes(nextView)||p.get('draft')!==splitDraftId)){
@@ -1001,7 +1033,7 @@ async function start(){
   const active=hasActiveTab()?currentKey():'';
   element.innerHTML=(active?`<button type="button" role="menuitem" class="tab-list-options" data-active-tab-options><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5h17v13h-17zm8.5 0v13"/></svg>Tab options…</button>`:'')+opened.map(key=>{
    const {title,href,style}=tabDetails(key);
-   return `<a role="menuitem" href="${esc(href)}">${esc(title)} <small>${esc(style.label)}</small></a>`;
+   return `<a role="menuitem" href="${esc(readingAddress(href))}">${esc(title)} <small>${esc(style.label)}</small></a>`;
   }).join('');
   element.onclick=event=>{
    if(event.target.closest('[data-active-tab-options]'))openReadingMenu(active,anchor);
@@ -1067,7 +1099,8 @@ async function start(){
    else workspaceHistory.move(row.offset);
   },
  });
- addEventListener('popstate',()=>workspaceHistory.observe());
+ const routeChanged=()=>{if(addressKey()!==routedAddress)void routeFromURL();};
+ addEventListener('popstate',routeChanged);
  const settingsMenu=$('#workbench-settings'),roomsMenu=$('#workbench-rooms');
  const toolbarMenus=[libraryMenu,roomsMenu,settingsMenu];
  $('[data-numo-tools]').onclick=()=>numoWorkspace?.openTools();
@@ -1164,6 +1197,18 @@ async function start(){
  });
  document.querySelectorAll('[data-close-dialog]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
  document.querySelectorAll('dialog').forEach(dialog=>{dialog.addEventListener('click',e=>{if(e.target.closest('.result'))dialog.close();if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});});
- addEventListener('hashchange',routeFromURL);routeFromURL();
+ document.addEventListener('click',event=>{
+  if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+  const link=event.composedPath().find(node=>node?.localName==='a');
+  if(!link||link.target||link.hasAttribute('download'))return;
+  const target=new URL(link.href,location.href);
+  if(target.origin!==location.origin)return;
+  const params=new URLSearchParams(target.hash.slice(1));
+  const workspaceRoute=['book','view','field','lateral','compare','source','unit','ref','focus'].some(key=>params.has(key));
+  const bookPath=bookAddressing.route(target.pathname);
+  if(!(bookPath&&(!target.hash||workspaceRoute)||target.pathname==='/library.html'&&workspaceRoute))return;
+  event.preventDefault();openReadingRoute(target.pathname+target.search+target.hash);
+ });
+ addEventListener('hashchange',routeChanged);routeFromURL();
 }
 start().catch(error=>{const host=$('#reader');host.textContent=error.message||'CARE Library could not load.';host.classList.add('loading');const retry=document.createElement('button');retry.textContent='Try again';retry.onclick=()=>location.reload();host.append(document.createElement('br'),retry);});

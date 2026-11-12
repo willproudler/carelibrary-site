@@ -10,6 +10,7 @@ dist/
 /books/
 /numogram/
 /research-index.json
+/book-routes.json
 /search/
 .venv/
 .env

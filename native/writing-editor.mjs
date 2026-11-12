@@ -10249,11 +10249,9 @@ function renderLayout(runtime, immediate = false) {
 }
 
 function libraryBase() {
-  const base = new URL(window.location.href);
-  base.pathname = base.pathname.replace(/\/writing-studio\/?$/, "/");
-  base.search = "";
-  base.hash = "";
-  return base;
+  // Studio can remain on a clean book/chapter URL. The embedded Library must
+  // always use its app entry point, which also enables the companion handshake.
+  return new URL("/library.html", window.location.href);
 }
 
 function libraryFrameLocation(frame, request) {

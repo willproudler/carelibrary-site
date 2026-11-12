@@ -1,6 +1,8 @@
 # CARE Library Beta
 
-Build 20261111.24 brings the First drafts Binder shelf to account and browser drafts. Library and NUMO panels overlay the unchanged document in normal Studio and full writing view; opening them retains the current editor. Toolbar labels stay off and slider arrows stay on, and NUMO uses the ten-zone diagram icon.
+Build 20261112.25 gives published books compact author-and-title URLs such as `/platotimaeus` and `/spinozaethics`. Opening a book from the Library shows its short address in the browser; chapter links and previous longer book URLs keep working. Library panels also open correctly from book and chapter URLs in both Studio writing views.
+
+The First drafts Binder shelf is available to account and browser drafts. Library and NUMO panels overlay the unchanged document in normal Studio and full writing view; opening them retains the current editor. Toolbar labels stay off and slider arrows stay on, and NUMO uses the ten-zone diagram icon.
 
 Searchable book, chapter and demon URLs progressively open the existing reader or Numogram at the requested destination. The production build generates these pages from the attested published collection and NUMO reference; it also creates canonical metadata, a sitemap and machine-readable research discovery. Book URLs remain compact, while individual chapter URLs carry bounded original text only when the existing library mode permits public access. No private drafts are used. Generated page directories and the research index are build products, not a second catalogue authority.
 

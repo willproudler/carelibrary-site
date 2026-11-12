@@ -16,3 +16,14 @@ test('search return URLs retain the same-origin boundary and clean paths', () =>
     assert.equal(postLoginDestination(path), '/library.html');
   }
 });
+
+test('compact author-title books and chapters retain exact safe login returns',()=>{
+ for(const path of ['/platotimaeus','/platotimaeus/','/humetreatiseofhumannature','/platotimaeus/003-introduction/']){
+  const target=path+'?reading=1#source=RAW_TIM%3A002';
+  assert.equal(libraryDestination(target),target);
+  assert.equal(loginURL(target),'/login.html?next='+encodeURIComponent(target));
+ }
+ for(const path of ['/api','/admin','/logout','/data','/platotimaeus/../../api','/platotimaeus/%2fother/','//evil.test/platotimaeus','/platotimaeus/chapter/third/']){
+  assert.equal(postLoginDestination(path),'/library.html',path);
+ }
+});

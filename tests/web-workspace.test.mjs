@@ -239,7 +239,7 @@ test('search fallback takeover is announced once only after the actual view moun
  assert.equal(events,1);
  const source=readFileSync(new URL('../public-app.mjs',import.meta.url),'utf8');
  assert.match(source,/setLoadStatus\(\);paint\(\);searchPageReady\(/);
- assert.match(source,/searchPageRouteParams\(location.hash,initialSearchRoute\)/);
+ assert.match(source,/searchPageRouteParams\(location.hash,currentSearchRoute\(\)\)/);
 });
 
 

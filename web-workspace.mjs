@@ -68,6 +68,45 @@ export function manuscriptHash(mode, draftId = '') {
   return '#' + route;
 }
 
+// Generated alongside the public book pages. Reuse the exact route assigned to
+// each work; author/title spellings and collision rules belong to the exporter.
+export function createBookAddressing(document) {
+  const byBook=new Map(),byPath=new Map();
+  try {
+    const value=JSON.parse(document.querySelector('#care-book-routes')?.textContent||'null');
+    if(value?.schema==='care-book-routes/1'&&Array.isArray(value.books))for(const entry of value.books){
+      if(typeof entry.work_id!=='string'||typeof entry.reader_slug!=='string'||!/^\/[a-z0-9]{2,224}$/.test(entry.url||''))continue;
+      const route={view:'workspace',book:entry.reader_slug,url:entry.url};
+      byBook.set(entry.work_id,route);byBook.set(entry.reader_slug,route);
+      for(const path of [entry.url,entry.url+'/',...(Array.isArray(entry.aliases)?entry.aliases:[])]){
+        if(typeof path==='string'&&/^\/(?!\/)[^?#\\]*$/.test(path))byPath.set(path,route);
+      }
+    }
+  } catch { /* An older export still has fully functional hash-based readings. */ }
+  return {
+    route(pathname){return byPath.get(pathname)||null;},
+    book(id){return byBook.get(id)||null;},
+    href(destination,{pathname='/library.html',search='',embedded=false}={}){
+      const target=new URL(destination||'#','https://care.invalid'+pathname+search);
+      if(target.origin!=='https://care.invalid')return destination;
+      const params=new URLSearchParams(target.hash.slice(1));
+      const nonBookRoom=['field','lateral','compare'].some(key=>params.has(key))||params.has('view')&&params.get('view')!=='workspace';
+      const route=!nonBookRoom&&(params.has('book')?byBook.get(params.get('book')):byPath.get(target.pathname));
+      if(embedded){
+        if(route&&!params.has('book'))params.set('book',route.book);
+        return '#'+params;
+      }
+      if(route){
+        params.delete('book');if(params.get('view')==='workspace')params.delete('view');
+        return route.url+target.search+(params.size?'#'+params:'');
+      }
+      // Hash workspace links must leave the previous book's semantic pathname.
+      if(String(destination).startsWith('#'))return '/library.html'+target.search+(params.size?'#'+params:'');
+      return destination;
+    },
+  };
+}
+
 const menuIcons = {
   book:'M5 2.5h7l3 3v12H5zm7 0v4h3M7.5 10h5m-5 3h5',
   navigate:'M3 10h14M13 6l4 4-4 4M7 6l-4 4 4 4',
@@ -145,21 +184,22 @@ export function createTabMenus(host, {compactAnchor, beforeOpen = () => {}} = {}
 // replace the browser's forward branch and Back still works with bookmarks.
 export function createWorkspaceHistory(history, windowLocation, onChange) {
   const session = Math.random().toString(36).slice(2);
-  let cursor = 0, end = 0, lastHash = windowLocation.hash;
+  const address=()=>String(windowLocation.pathname||'')+String(windowLocation.search||'')+windowLocation.hash;
+  let cursor = 0, end = 0, lastAddress = address();
   const visits = new Map();
   const stamp = () => history.replaceState({...history.state, careWorkspace: {session, cursor}}, '');
   stamp();
   function remember(metadata = {}) {
     const entry = history.state?.careWorkspace;
     if (entry?.session !== session || entry.cursor !== cursor) return;
-    const hash = windowLocation.hash, previous = visits.get(cursor);
-    visits.set(cursor, {...(previous?.hash === hash ? previous : {}), ...metadata, hash});
-    lastHash = hash;
+    const hash = windowLocation.hash, url=address(), previous = visits.get(cursor);
+    visits.set(cursor, {...(previous?.url === url ? previous : {}), ...metadata, hash, url});
+    lastAddress = url;
   }
   function observe() {
     const entry = history.state?.careWorkspace;
     if (entry?.session === session) cursor = entry.cursor;
-    else if (windowLocation.hash !== lastHash) {
+    else if (address() !== lastAddress) {
       for (const index of visits.keys()) if (index > cursor) visits.delete(index);
       end = ++cursor;
       stamp();
@@ -186,6 +226,10 @@ export function createWorkspaceHistory(history, windowLocation, onChange) {
     replace(url) {
       history.replaceState(history.state, '', url);
       remember();
+    },
+    push(url) {
+      history.pushState(null, '', url);
+      observe();
     },
     move(step) {
       if (validOffset(step)) history.go(step);

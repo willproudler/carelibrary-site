@@ -67,6 +67,8 @@ class BookSearchPageTests(unittest.TestCase):
         entry, = manifest["books"]
         chapter, = manifest["chapters"]
         self.assertEqual(entry["slug"], "a-book-of-memory-ada-example")
+        self.assertEqual(entry["route_slug"], "examplebookofmemory")
+        self.assertEqual(entry["url"], "/examplebookofmemory")
         self.assertEqual(entry["reader_slug"], "existing-book")
         metadata = (self.root / entry["path"]).read_text()
         chapter_metadata = (self.root / chapter["path"]).read_text()
@@ -78,7 +80,7 @@ class BookSearchPageTests(unittest.TestCase):
         self.assertNotIn("A generated interpretation", full)
         self.assertIn('href="/library.html#book=existing-book&amp;source=RAW_WORK_ONE"', full)
         self.assertIn("The First Chapter", metadata)
-        self.assertIn('href="/books/a-book-of-memory-ada-example/001-the-first-chapter/"', metadata)
+        self.assertIn('href="/examplebookofmemory/001-the-first-chapter/"', metadata)
         self.assertIn('id="existing-native-reader"', metadata)
         self.assertIn("library-boot.mjs", metadata)
         self.assertIn('id="care-search-route"', metadata)
@@ -86,7 +88,7 @@ class BookSearchPageTests(unittest.TestCase):
         self.assertIn('"sources":["RAW_WORK_ONE"]', metadata.replace(" ", ""))
         self.assertIn('"source":"RAW_WORK_ONE"', chapter_metadata.replace(" ", ""))
         self.assertIn('id="care-search-content"', metadata)
-        self.assertIn('href="https://carelibrary.org/books/a-book-of-memory-ada-example/"', metadata)
+        self.assertIn('href="https://carelibrary.org/examplebookofmemory"', metadata)
         self.assertIn('"@type":"Book"', metadata)
         self.assertIn('"@type":"Chapter"', chapter_metadata)
         self.assertNotIn('"datePublished"', metadata)
@@ -94,6 +96,12 @@ class BookSearchPageTests(unittest.TestCase):
         self.assertEqual(self.root.joinpath("data/library.json").read_bytes(), original)
         self.assertEqual(len(pages), 3)
         self.assertNotIn("text_path", entry)
+        self.assertIn("/books/a-book-of-memory-ada-example/",entry["aliases"])
+        mapping=json.loads((self.root/"book-routes.json").read_text())
+        self.assertEqual(mapping["books"][0]["url"],"/examplebookofmemory")
+        self.assertNotIn("chapters",mapping)
+        self.assertIn('id="care-book-routes"',metadata)
+        self.assertEqual((self.root/"library.html").read_text().count('id="care-book-routes"'),1)
         self.assertFalse((self.root / "books" / entry["slug"] / "text.html").exists())
         self.assertFalse((self.root / "books/private-draft.txt").exists())
         css = (self.root / "books/books.css").read_text()
@@ -109,6 +117,27 @@ class BookSearchPageTests(unittest.TestCase):
         self.assertNotEqual(slugs["W1"], slugs["W2"])
         self.assertTrue(slugs["W1"].startswith("memoire-et-matiere-henri-bergson-"))
         self.assertEqual(slugs["W3"], "論語-孔子")
+
+    def test_compact_root_routes_are_author_first_ascii_and_collision_safe(self):
+        works=[_book("PLATO","Timaeus","Plato","plato"),
+               _book("KANT","The Critique of Pure Reason","Immanuel Kant","kant"),
+               _book("AUGUSTINE","Confessions","Augustine of Hippo","augustine"),
+               _book("FRENCH","Mémoire et matière","Henri Bergson","bergson")]
+        routes=seo.book_routes(works)
+        self.assertEqual(routes["PLATO"],"platotimaeus")
+        self.assertEqual(routes["KANT"],"kantcritiqueofpurereason")
+        self.assertEqual(routes["AUGUSTINE"],"augustineconfessions")
+        self.assertEqual(routes["FRENCH"],"bergsonmemoireetmatiere")
+        self.assertEqual(routes,seo.book_routes(list(reversed(works))))
+        suffix=hashlib.sha256(b"A").hexdigest()[:10]
+        collisions=[_book("A","Same","X","a"),_book("B","Same","X","b"),
+                    _book("C","Same"+suffix,"X","c"),_book("RESERVED","i","ap","reserved")]
+        collision_routes=seo.book_routes(collisions)
+        self.assertEqual(len(set(collision_routes.values())),4)
+        self.assertEqual(collision_routes["C"],"xsame"+suffix)
+        self.assertNotEqual(collision_routes["A"],collision_routes["C"])
+        self.assertNotEqual(collision_routes["RESERVED"],"api")
+        self.assertTrue(all(value.isascii() and value.isalnum() and value==value.lower() for value in collision_routes.values()))
 
     def test_changed_or_missing_split_bytes_never_fall_back_to_an_old_library(self):
         works = [_book()]
@@ -181,6 +210,17 @@ class BookSearchPageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not generated"):
             seo.build(self.root)
         self.assertEqual(note.read_text(), "Personal notes")
+
+    def test_identical_rebuild_keeps_library_and_generated_page_bytes_identical(self):
+        _publish(self.root,[_book()])
+        seo.build(self.root)
+        manifest=json.loads((self.root/"books/manifest.json").read_text())
+        paths=[self.root/"library.html",self.root/"book-routes.json",
+               self.root/manifest["books"][0]["path"],self.root/manifest["chapters"][0]["text_path"]]
+        previous={path:path.read_bytes() for path in paths}
+        seo.build(self.root)
+        for path in paths:
+            self.assertEqual(path.read_bytes(),previous[path],str(path))
 
 
 if __name__ == "__main__":

@@ -116,11 +116,13 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         if not book:
             raise ValueError("A source section must belong to a published book.")
         title = item.get("title") or _page_metadata(destination, item["path"])["title"]
+        canonical = _url(item["url"], origin)
         record = {"type": "original_source_section", "work_id": item["work_id"],
                   "source_id": item["source_id"], "title": title,
-                  "book_url": book["url"], "url": _url(item["url"], origin),
+                  "book_url": book["url"], "url": canonical,
                   "citation": {"author": book["author"], "book": book["title"],
-                               "section": title, "source_id": item["source_id"]}}
+                               "section": title, "source_id": item["source_id"],
+                               "url": canonical, "book_url": book["url"]}}
         for field in ("source_language", "source_language_name"):
             if item.get(field):
                 record[field] = item[field]

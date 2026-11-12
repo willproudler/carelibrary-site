@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT_FILES = """
-about.html auth.css auth.mjs boot.mjs brand-header.css care-about.mjs care-version.json
+about.html auth.css auth.mjs boot.mjs book-routes.json brand-header.css care-about.mjs care-version.json
 discover-atlas.css discover-atlas.mjs discover-book-picker.mjs
 discover-experiments.css discover-experiments.mjs discover-field-reader.mjs
 discover-reader.mjs discover-reference-viewer.mjs discover.css

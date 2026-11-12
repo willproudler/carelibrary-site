@@ -122,6 +122,58 @@ def book_slugs(works: list[dict]) -> dict[str, str]:
             for identity, base in bases.items()}
 
 
+_RESERVED_ROOTS = frozenset({
+    "api", "assets", "data", "native", "numogram", "books", "search", "server", "tools", "dist",
+    "login", "logout", "library", "studio", "reader", "about", "index", "welcome", "requestaccess",
+    "sitesettings", "robots", "sitemap", "favicon", "researchindex", "health", "healthz", "readyz", "auth", "admin",
+})
+
+
+def _compact_ascii(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().casefold()
+    return re.sub(r"[^a-z0-9]", "", normalized)
+
+
+def _author_key(value: str) -> str:
+    name = " ".join(value.split())
+    # These traditional names have a place of attribution, not a family name.
+    # Other multi-part credited names use their final surname/mononym.
+    if re.search(r"\s+of\s+", name, re.I):
+        name = re.split(r"\s+of\s+", name, maxsplit=1, flags=re.I)[0]
+    words = name.split()
+    return _compact_ascii(words[-1]) if words else ""
+
+
+def book_routes(works: list[dict]) -> dict[str, str]:
+    """Deterministic compact root addresses; the manifest is the shared mapping.
+
+    Author surname/mononym comes first, followed by the book title without an
+    initial English article. Collisions and reserved roots gain a stable suffix,
+    rather than depending on catalogue order.
+    """
+    bases = {work["id"]: (_author_key(work["author"]) + _compact_ascii(
+        re.sub(r"^(?:the|an|a)\s+", "", work["title"].strip(), count=1, flags=re.I)))[:160] or "book"
+        for work in works}
+    counts = Counter(bases.values())
+    reserved = set(bases.values()) | set(_RESERVED_ROOTS)
+    assigned = {}
+    for identity in sorted(bases):
+        base = bases[identity]
+        if counts[base] == 1 and base not in _RESERVED_ROOTS and base != "book":
+            assigned[identity] = base
+            continue
+        digest = _digest(identity.encode())
+        width = 10
+        candidate = base + digest[:width]
+        while candidate in reserved or candidate in assigned.values():
+            width += 2
+            if width > len(digest):
+                raise ValueError("Unable to assign unique compact book addresses.")
+            candidate = base + digest[:width]
+        assigned[identity] = candidate
+    return assigned
+
+
 def _origin(value: str) -> str:
     if not isinstance(value, str) or any(ord(char) <= 32 for char in value):
         raise ValueError("Book canonical URLs require an explicit HTTPS origin.")
@@ -178,11 +230,18 @@ def _chapter_slugs(work: dict) -> dict[str, str]:
 
 
 def _book_url(slug: str) -> str:
-    return "/books/" + quote(slug, safe="-") + "/"
+    return "/" + slug
 
 
 def _chapter_url(book_slug: str, chapter_slug: str) -> str:
-    return _book_url(book_slug) + quote(chapter_slug, safe="-") + "/"
+    return _book_url(book_slug) + "/" + quote(chapter_slug, safe="-") + "/"
+
+
+def _aliases(resource: str, canonical: str) -> list[str]:
+    legacy = "/" + resource.removesuffix("index.html")
+    candidates = {legacy, legacy.rstrip("/"), "/" + resource,
+                  canonical.rstrip("/"), canonical.rstrip("/") + "/", canonical.rstrip("/") + "/index.html"}
+    return sorted(candidates - {canonical})
 
 
 def _jsonld(work: dict, canonical: str, description: str) -> str:
@@ -309,6 +368,13 @@ def _write(path: Path, contents: str) -> None:
     path.write_text(contents, encoding="utf-8")
 
 
+def _with_book_routes(document: str, mapping: dict) -> str:
+    encoded=json.dumps(mapping,ensure_ascii=False,separators=(",", ":"),allow_nan=False).replace("<","\\u003c")
+    document=re.sub(r'<script\b[^>]*\bid=["\']care-book-routes["\'][^>]*>.*?</script>[ \t]*(?:\r?\n)?',"",document,flags=re.I|re.S)
+    script='<script id="care-book-routes" type="application/json">'+encoded+'</script>'
+    return re.sub(r"</head>",lambda _:script+"</head>",document,count=1,flags=re.I)
+
+
 def _scoped_css() -> str:
     def prefix(match):
         selector = match[0]
@@ -330,6 +396,12 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
     library, digest = load_attested_library(source)
     works = library["works"]
     slugs = book_slugs(works)
+    routes = book_routes(works)
+    compact_mapping={"schema":"care-book-routes/1","books":[{
+        "work_id":work["id"],"reader_slug":work["slug"],"route_slug":routes[work["id"]],
+        "url":_book_url(routes[work["id"]]),
+        "aliases":_aliases(f'books/{slugs[work["id"]]}/index.html',_book_url(routes[work["id"]]))}
+        for work in sorted(works,key=lambda item:item["id"])]}
     target = destination / "books"
     if target.is_symlink():
         raise ValueError("Book search output must not replace a symbolic link.")
@@ -348,11 +420,13 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         from seo_shell import embed_library
         for work in sorted(works, key=lambda item: (item["title"].casefold(), item["author"].casefold(), item["id"])):
             slug = slugs[work["id"]]
-            url = _book_url(slug)
+            route_slug = routes[work["id"]]
+            url = _book_url(route_slug)
             route = {"book": work["slug"], "view": "workspace", "sources": [source["id"] for source in _sources(work)]}
-            _write(temporary / slug / "index.html", embed_library(source, _book_page(work, slug, origin), route))
-            entries.append({"slug": slug, "work_id": work["id"], "reader_slug": work["slug"], "url": url,
-                            "path": f"books/{slug}/index.html", "chapter_count": len(_sources(work)),
+            _write(temporary / slug / "index.html", _with_book_routes(embed_library(source, _book_page(work, route_slug, origin), route),compact_mapping))
+            resource = f"books/{slug}/index.html"
+            entries.append({"slug": slug, "route_slug": route_slug, "work_id": work["id"], "reader_slug": work["slug"], "url": url,
+                            "path": resource, "aliases": _aliases(resource, url), "chapter_count": len(_sources(work)),
                             "title": work["title"], "author": work["author"], "year": _text(work.get("year")),
                             "edition": _text(work.get("edition")), "language": _text(work.get("language_code")),
                             "language_name": _text(work.get("language_name"))})
@@ -360,14 +434,15 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
             chapter_slugs = _chapter_slugs(work)
             for source_index, section in enumerate(_sources(work), 1):
                 chapter_slug = chapter_slugs[section["id"]]
-                chapter_url = _chapter_url(slug, chapter_slug)
+                chapter_url = _chapter_url(route_slug, chapter_slug)
                 chapter_route = {**route, "source": section["id"]}
                 prefix = f"books/{slug}/{chapter_slug}"
-                _write(temporary / slug / chapter_slug / "index.html", embed_library(source, _chapter_page(work, slug, section, chapter_slug, origin, include_text=False), chapter_route))
-                _write(temporary / slug / chapter_slug / "text.html", embed_library(source, _chapter_page(work, slug, section, chapter_slug, origin, include_text=True), chapter_route))
-                chapters.append({"book_slug": slug, "slug": chapter_slug, "work_id": work["id"], "reader_slug": work["slug"],
+                _write(temporary / slug / chapter_slug / "index.html", _with_book_routes(embed_library(source, _chapter_page(work, route_slug, section, chapter_slug, origin, include_text=False), chapter_route),compact_mapping))
+                _write(temporary / slug / chapter_slug / "text.html", _with_book_routes(embed_library(source, _chapter_page(work, route_slug, section, chapter_slug, origin, include_text=True), chapter_route),compact_mapping))
+                chapters.append({"book_slug": slug, "route_slug": route_slug, "slug": chapter_slug, "work_id": work["id"], "reader_slug": work["slug"],
                                  "source_id": section["id"], "source_order": source_index, "url": chapter_url,
                                  "path": prefix + "/index.html", "text_path": prefix + "/text.html",
+                                 "aliases": _aliases(prefix + "/index.html", chapter_url),
                                  "has_text": bool(_source_text(section)), "title": _text(section.get("title")),
                                  "source_language": _text(section.get("language_code")) or _text(work.get("language_code")),
                                  "source_language_name": _text(section.get("language_name")) or _text(work.get("language_name"))})
@@ -386,6 +461,10 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         temporary.rename(target)
         if old:
             shutil.rmtree(old)
+        _write(destination/"book-routes.json",json.dumps(compact_mapping,ensure_ascii=False,separators=(",", ":"))+"\n")
+        library_page=destination/"library.html"
+        if library_page.is_file() and not library_page.is_symlink():
+            _write(library_page,_with_book_routes(library_page.read_text(encoding="utf-8"),compact_mapping))
         return sitemap
     except Exception:
         if old and old.exists() and not target.exists():

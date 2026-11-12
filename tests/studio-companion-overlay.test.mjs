@@ -118,6 +118,55 @@ function nativeFunction(source, name) {
   return source.slice(start, next < 0 ? source.length : next);
 }
 
+test('the native Library companion opens its app entry from clean book and chapter URLs', () => {
+  const source = readFileSync(new URL('../native/writing-editor.mjs', import.meta.url), 'utf8');
+  for (const path of [
+    '/library.html#view=studio&draft=saved-draft',
+    '/books/a-treatise-of-human-nature-david-hume/001-introduction/#view=studio&draft=saved-draft',
+    '/a-treatise-of-human-nature/001-introduction/?from=search#view=studio&draft=saved-draft',
+  ]) {
+    const window = {location: new URL(path, 'https://care.example')};
+    const functions = new Function('window', nativeFunction(source, 'libraryBase') + '\n' +
+      nativeFunction(source, 'libraryFrameLocation') + '\nreturn {libraryBase, libraryFrameLocation};')(window);
+    const url = functions.libraryBase();
+    assert.equal(url.href, 'https://care.example/library.html');
+    url.searchParams.set('view', 'library');
+    url.searchParams.set('care_studio_embed', '1');
+    url.searchParams.set('care_studio_request', 'saved-request');
+    url.searchParams.set('care_studio_pane_reading', '1');
+    const frame = {contentWindow: {location: url}};
+    assert.equal(functions.libraryFrameLocation(frame, 'saved-request')?.view, 'library');
+    assert.equal(functions.libraryFrameLocation(frame, 'another-request'), null);
+    frame.contentWindow.location = new URL(url.href.replace('care.example', 'other.example'));
+    assert.equal(functions.libraryFrameLocation(frame, 'saved-request'), null);
+    assert.equal(window.location.href, new URL(path, 'https://care.example').href, 'Opening a companion preserves the draft route');
+  }
+});
+
+test('the Library ready handshake reveals only the requested same-origin companion', () => {
+  const source = readFileSync(new URL('../native/writing-editor.mjs', import.meta.url), 'utf8');
+  const child = {}, frame = {contentWindow: child, removeAttribute() {}}, previous = {remove() {this.removed = true;}};
+  const dock = {request: 'saved-request'}, pending = {dock, frame};
+  const runtime = {libraryRequest: dock.request, libraryFrameRequest: '', libraryPending: pending,
+    libraryFrame: previous, libraryLoading: {hidden: false}};
+  const handle = new Function('window', 'paintLibraryDockHeading', 'updateWritingSearchWork', 'paintResults', 'paintDraftReview',
+    nativeFunction(source, 'finishLibraryFrame') + '\n' + nativeFunction(source, 'handleLibraryFrameMessage') +
+    '\nreturn handleLibraryFrameMessage;')({location: {origin: 'https://care.example'}}, () => {}, () => {}, () => {}, () => {});
+  const ready = {type: 'care-studio-reader-ready', request: dock.request};
+  handle(runtime, {origin: 'https://other.example', source: child, data: ready});
+  handle(runtime, {origin: 'https://care.example', source: {}, data: ready});
+  handle(runtime, {origin: 'https://care.example', source: child, data: {...ready, request: 'another-request'}});
+  assert.equal(runtime.libraryFrame, previous);
+  assert.equal(runtime.libraryLoading.hidden, false);
+  handle(runtime, {origin: 'https://care.example', source: child, data: ready});
+  assert.equal(runtime.libraryFrame, frame);
+  assert.equal(runtime.libraryFrameRequest, dock.request);
+  assert.equal(runtime.libraryPending, null);
+  assert.equal(runtime.libraryLoading.hidden, true);
+  assert.equal(previous.removed, true);
+  assert.equal(frame.inert, false);
+});
+
 test('the actual native Library action preserves fullscreen, draft and scroll while opening its frame', () => {
   const source = readFileSync(new URL('../native/writing-editor.mjs', import.meta.url), 'utf8');
   const actions = [], doc = new Element(); doc.defaultView = {CustomEvent: class {constructor(type, {detail}) {this.type = type; this.detail = detail;}}};
