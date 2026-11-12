@@ -1,8 +1,8 @@
 /* Small, read-only previews of the existing Lateral and Corpus environments.
  * Claims come from the same sealed public export as the embedded reader.
  * The corpus sketch contains bibliographic metadata, never private CARE prose. */
-import {publicReadingText} from './native/reading-views.mjs?v=d39edb0c911bc4f6';
-import {loadPublicField} from './public-fields.mjs?v=6cf412efd199d4bd';
+import {publicReadingText} from './native/reading-views.mjs?v=50de91fb5e017b4c';
+import {loadPublicField} from './public-fields.mjs?v=dc9690a677c43a62';
 import {loadLibrary} from './library-loader.mjs';
 export const LATERAL_SAMPLES = Object.freeze([
   {label:'Agreement', id:'XR_KPR_THN:DRT-01', explanation:'Find ideas both books share. This comparison finds that both Hume and Kant place limits on what we can know.'},

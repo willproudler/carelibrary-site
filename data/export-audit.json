@@ -2,7 +2,7 @@
   "works": [
     {
       "slug": "kant",
-      "seal": "SAVED_0C313586826C58D7566B4ACB",
+      "seal": "SEAL_B337_4647AB2D5F259E23DBB3",
       "sections": 93,
       "units": 135,
       "items": 12224
@@ -115,8 +115,8 @@
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 121684194,
-  "sha256": "0a6479ec87742b7e2d73f6e662b64cad5e84a967437f7cc92b005bd8eb967d91",
+  "bytes": 121687559,
+  "sha256": "11f0210c23e37aba0e84c190f086b363f42d3e98b83e23e5537189058798d94e",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",

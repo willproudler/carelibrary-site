@@ -1,5 +1,5 @@
 /* Discover uses the shipped field reader for published comparisons. */
-import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=6cf412efd199d4bd';
+import {fieldPayload,fieldReference,loadPublicField} from './public-fields.mjs?v=dc9690a677c43a62';
 
 const copy = value => structuredClone(value);
 
@@ -103,9 +103,9 @@ export async function mountDiscoverField({host,field,adapter,fetcher,onStatus,on
     };
     const [loaded,{default:mountField},css,scope]=await Promise.all([
       loadPublicField(field,(path,options)=>fetchFile(new URL(path,import.meta.url),options)),
-      import('./native/study-field.mjs?v=6cf412efd199d4bd'),
-      readText('./native/study-field.css?v=6cf412efd199d4bd'),
-      readText('./native/public-scope.css?v=6cf412efd199d4bd'),
+      import('./native/study-field.mjs?v=dc9690a677c43a62'),
+      readText('./native/study-field.css?v=dc9690a677c43a62'),
+      readText('./native/public-scope.css?v=dc9690a677c43a62'),
     ]);
     const controller=createDiscoverFieldController(loaded,adapter);
     const shadow=host.shadowRoot||host.attachShadow({mode:'open'});
