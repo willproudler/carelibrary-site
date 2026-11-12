@@ -470,6 +470,11 @@ async def static_file(request):
                  and (reading_companion != document_companion)
                  and len(companion_id) == 1
                  and bool(re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", companion_id[0])))
+    # Crawlability follows the live catalogue mode; it must not grant access.
+    # Embedded workspace instances retain one canonical catalogue document.
+    catalogue_public = (relative == "library.html" and not configuration["beta_enabled"]
+                        and not any(key.startswith("care_studio_") for key in request.query_params))
+    crawlable = public or catalogue_public
     if not configuration["beta_enabled"] and relative == "index.html":
         destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
         return json_response({"location": destination}, 303, {"Location": destination})
@@ -491,13 +496,15 @@ async def static_file(request):
                   else "text/markdown" if suffix == ".md"
                   else mimetypes.guess_type(str(path))[0] or "application/octet-stream")
     headers = {"Vary": "Cookie, Accept-Encoding"}
-    if public and suffix == ".html":
+    if crawlable and suffix == ".html":
         headers["Link"] = '</llms.txt>; rel="describedby"; type="text/markdown"'
+    if relative == "library.html":
+        headers["Link"] = ", ".join(filter(None, [headers.get("Link"), '</library.html>; rel="canonical"']))
     if search and (suffix in {".html", ".md"} or suffix == ".json" and search.document_canonical):
         links = [f'<{search.document_canonical or search.canonical}>; rel="canonical"']
         links.extend(f'<{url}>; rel="alternate"; type="{kind}"' for url, kind in search.alternates)
         headers["Link"] = ", ".join(filter(None, [headers.get("Link"), *links]))
-    if not public:
+    if not crawlable:
         headers["X-Robots-Tag"] = "noindex"
     # The workspace companions follow the same access rules as the main Library.
     # The draft, login and settings endpoints retain the anti-framing headers.

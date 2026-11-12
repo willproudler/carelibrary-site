@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import re
 
+from static_catalogue import strip_catalogue
+
 
 def scope_stylesheet(css: str, scope: str = "#care-search-content") -> str:
     """Scope generated reference styles without affecting the live reader.
@@ -54,7 +56,7 @@ def embed_library(source: Path, reference_html: str, route: dict) -> str:
     redirects or duplicate hidden article copies. The reference remains usable
     when scripts, network access or authentication are unavailable.
     """
-    library = (Path(source) / "library.html").read_text(encoding="utf-8")
+    library = strip_catalogue((Path(source) / "library.html").read_text(encoding="utf-8"))
     reference_head = re.search(r"<head[^>]*>(.*?)</head>",reference_html,re.S|re.I)
     reference_body = re.search(r"<body[^>]*>(.*?)</body>",reference_html,re.S|re.I)
     library_head = re.search(r"<head[^>]*>(.*?)</head>",library,re.S|re.I)

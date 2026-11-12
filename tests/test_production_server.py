@@ -284,6 +284,64 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(httpx.URL(closed.headers["location"]).path, "/login.html")
         self.assertEqual(closed.headers["x-frame-options"], "DENY")
 
+    async def test_only_the_live_public_catalogue_is_crawlable_for_get_head_and_gzip(self):
+        from server.app import PUBLIC_FILES
+        self.assertNotIn("library.html", PUBLIC_FILES)
+        page = self.web / "library.html"
+        Path(str(page) + ".gz").write_bytes(gzip.compress(page.read_bytes()))
+        for method in ("GET", "HEAD"):
+            private = await self.client.request(method, "/library.html")
+            self.assertEqual(private.status_code, 303)
+            self.assertEqual(httpx.URL(private.headers["location"]).path, "/login.html")
+        await asyncio.to_thread(self.app.state.site_settings.update, False, 0)
+        with patch.object(self.app.state.auth, "session", side_effect=AssertionError("Public catalogue requested a session")):
+            for method in ("GET", "HEAD"):
+                for encoding in ("identity", "gzip"):
+                    public = await self.client.request(method, "/library.html", headers={"Accept-Encoding": encoding})
+                    self.assertEqual(public.status_code, 200)
+                    self.assertNotIn("x-robots-tag", public.headers)
+                    self.assertIn('</llms.txt>; rel="describedby"', public.headers["link"])
+                    self.assertIn('</library.html>; rel="canonical"', public.headers["link"])
+                    self.assert_no_store(public)
+                    if encoding == "gzip":
+                        self.assertEqual(public.headers["content-encoding"], "gzip")
+                    if method == "GET":
+                        self.assertEqual(public.text, self.files["library.html"])
+                    else:
+                        self.assertEqual(public.content, b"")
+        # Crawl permission belongs only to the catalogue. It cannot expose the
+        # owner settings, account APIs, or make private renderer pages indexable.
+        for path, expected in (("/site-settings.html", 303), ("/api/site-settings", 401),
+                               ("/api/studio/drafts", 401), ("/api/studio/binder", 401)):
+            self.assertEqual((await self.client.get(path)).status_code, expected, path)
+        renderer = await self.client.get("/native/reference-viewer.html")
+        self.assertEqual(renderer.headers["x-robots-tag"], "noindex")
+        query = "?care_studio_embed=1&care_studio_pane_reading=1&care_studio_request=companion-token"
+        for suffix in (query, query + "&care_studio_request=duplicate"):
+            companion = await self.client.get("/library.html" + suffix)
+            self.assertEqual(companion.status_code, 200)
+            self.assertEqual(companion.headers["x-robots-tag"], "noindex")
+            self.assertIn('</library.html>; rel="canonical"', companion.headers["link"])
+            self.assertNotIn('rel="describedby"', companion.headers["link"])
+        await asyncio.to_thread(self.app.state.site_settings.update, True, 1)
+        for method in ("GET", "HEAD"):
+            for encoding in ("identity", "gzip"):
+                denied = await self.client.request(method, "/library.html", headers={"Accept-Encoding": encoding})
+                self.assertEqual(denied.status_code, 303)
+                self.assertNotIn(self.files["library.html"], denied.text)
+        logged_in = self.new_client()
+        await self.authenticated(client=logged_in)
+        for method in ("GET", "HEAD"):
+            private = await logged_in.request(method, "/library.html", headers={"Accept-Encoding": "gzip"})
+            self.assertEqual(private.status_code, 200)
+            self.assertEqual(private.headers["x-robots-tag"], "noindex")
+            self.assertNotIn('rel="describedby"', private.headers["link"])
+        await asyncio.to_thread(self.app.state.site_settings.update, False, 2)
+        reopened = await self.client.get("/library.html", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(reopened.status_code, 200)
+        self.assertNotIn("x-robots-tag", reopened.headers)
+        self.assertIn('rel="describedby"', reopened.headers["link"])
+
     async def test_password_hashes_record_production_parameters_and_database_is_private(self):
         await self.add_user()
         with sqlite3.connect(self.database) as db:

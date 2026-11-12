@@ -449,7 +449,7 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
     temporary = Path(tempfile.mkdtemp(prefix=".book-search-build-", dir=destination))
     old = None
     try:
-        entries, chapters, sitemap, cards = [], [], [{"loc": origin + "/books/"}], []
+        entries, chapters, sitemap = [], [], [{"loc": origin + "/books/"}]
         _write(temporary / "books.css", _scoped_css())
         # Import only the shared site-shell builder. It supplies the existing
         # CARE reader DOM/assets and keeps the static reference as fallback.
@@ -483,15 +483,16 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                                  "source_language": _text(section.get("language_code")) or _text(work.get("language_code")),
                                  "source_language_name": _text(section.get("language_name")) or _text(work.get("language_name"))})
                 sitemap.append({"loc": origin + chapter_url})
-            cards.append(f'<article class="book-card"><h2><a href="{escape(url, quote=True)}">{escape(work["title"])}</a></h2>'
-                         f'<p>by {escape(work["author"])}</p>' + (f'<p>{escape(_text(work.get("year")))}</p>' if _text(work.get("year")) else '') + '</article>')
-        body = '<p class="eyebrow">Published books</p><h1>Books in CARE Library</h1><p>Browse the books already published in this library. Each book has its own source sections and available CARE readings.</p><div class="book-grid">' + ''.join(cards) + '</div>'
-        _write(temporary / "index.html", _shell(title="Books by title and author | CARE Library",
-               description="Browse the published CARE Library books by title and author, with original source sections and available CARE readings.",
-               canonical=origin + "/books/", body=body))
         from reading_seo import build_into as build_readings
         sitemap.extend(build_readings(source, temporary, library=library, library_sha256=digest,
                                      books=entries, origin=origin, mapping=compact_mapping))
+        from static_catalogue import catalogue_fragment, inject_catalogue, with_style
+        reading_pages=json.loads((temporary/'readings-manifest.json').read_text(encoding='utf-8'))['pages']
+        fragment=catalogue_fragment(entries,reading_pages)
+        body=catalogue_fragment(entries,reading_pages,heading='Books and saved CARE readings',level=1)
+        _write(temporary/'index.html',with_style(_shell(title='Books by title and author | CARE Library',
+               description='Browse published books, saved whole-book CARE summaries and chapter, cluster and macro readings in HTML, Markdown and structured packets.',
+               canonical=origin+'/books/',body=body)))
         _write(temporary / "manifest.json", json.dumps({"schema": SCHEMA, "source_sha256": digest,
                "metadata_public": True, "text_requires_public_library": True, "books": entries, "chapters": chapters}, ensure_ascii=False, indent=2) + "\n")
         if target.exists():
@@ -503,7 +504,10 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
         _write(destination/"book-routes.json",json.dumps(compact_mapping,ensure_ascii=False,separators=(",", ":"))+"\n")
         library_page=destination/"library.html"
         if library_page.is_file() and not library_page.is_symlink():
-            _write(library_page,_with_book_routes(library_page.read_text(encoding="utf-8"),compact_mapping))
+            _write(library_page,inject_catalogue(_with_book_routes(library_page.read_text(encoding='utf-8'),compact_mapping),fragment,library=True))
+        homepage=destination/'index.html'
+        if homepage.is_file() and not homepage.is_symlink():
+            _write(homepage,inject_catalogue(homepage.read_text(encoding='utf-8'),fragment))
         return sitemap
     except Exception:
         if old and old.exists() and not target.exists():
