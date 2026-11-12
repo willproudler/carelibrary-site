@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGuestStudioStorage} from '../native/studio-guest-storage.mjs';
+import {createBrowserStudioStorage} from '../studio-workspace.mjs';
 
 // Keep the same request event ordering as IndexedDB and publish writes only on
 // completion. Tests need neither a browser process nor a filesystem database.
 function memoryIndexedDB() {
+  const databases = new Map();
+  function database() {
   const data = new Map();
   const jobs = [];
   let running = false;
@@ -18,6 +21,8 @@ function memoryIndexedDB() {
     });
   }
   const db = {
+    objectStoreNames: {contains: name => data.has(name)},
+    close() {},
     createObjectStore(name) { data.set(name, new Map()); },
     transaction(names, mode) {
       const tx = {error: null};
@@ -52,11 +57,16 @@ function memoryIndexedDB() {
       return tx;
     },
   };
+  return {db, version: 0};
+  }
   return {
-    open() {
-      const request = {result: db};
+    names: databases,
+    open(name, version = 1) {
+      if (!databases.has(name)) databases.set(name, database());
+      const record = databases.get(name);
+      const request = {result: record.db};
       queueMicrotask(() => {
-        if (!data.size) request.onupgradeneeded();
+        if (record.version < version) { request.onupgradeneeded?.(); record.version = version; }
         request.onsuccess();
       });
       return request;
@@ -168,4 +178,176 @@ test('guest First drafts protect their old folder from recursive Trash and keep 
   const trashed = await binderApi.act(null, {operation: 'trash', item_kind: 'folder', target_id: parent});
   assert.deepEqual(trashed.trash.map(item => item.id), [parent]);
   assert.equal((await api.load(null, draft.id)).draft.body, draft.body);
+});
+
+
+test('signed-in browser storage is persistent and isolated from other accounts and legacy guest drafts', async () => {
+  const indexedDB = memoryIndexedDB();
+  const guest = createGuestStudioStorage({indexedDB});
+  const alice = createGuestStudioStorage({indexedDB, account: 'Alice@Example.test'});
+  const bob = createGuestStudioStorage({indexedDB, account: 'bob@example.test'});
+  const {draft} = await guest.api.create(null, {title: 'Guest work', body: 'Guest manuscript'});
+  const {draft: privateDraft} = await alice.api.create(null, {title: 'Alice work', body: 'Private manuscript'});
+  assert.deepEqual((await bob.api.list()).drafts, []);
+  assert.deepEqual((await guest.api.list()).drafts.map(row => row.id), [draft.id]);
+  const reopened = createGuestStudioStorage({indexedDB, account: 'alice@example.test'});
+  assert.equal((await reopened.api.load(null, privateDraft.id)).draft.body, 'Private manuscript');
+  await assert.rejects(bob.api.load(null, privateDraft.id), {code: 'draft_not_found'});
+  assert.equal(indexedDB.names.size, 3);
+  assert.ok(indexedDB.names.has('care-studio-guest'));
+  assert.ok([...indexedDB.names.keys()].filter(name => name !== 'care-studio-guest')
+    .every(name => /^care-studio-account-[a-f0-9]{64}$/.test(name)));
+});
+
+const cloudId = 'a'.repeat(32), cloudFolder = 'f'.repeat(32);
+const cloudDraft = {id: cloudId, title: 'Previous online work', body: 'Saved before browser storage', revision: 7, updated_at: 45};
+function previousOnlineDrafts() {
+  const calls = [];
+  const forbidden = () => { throw new Error('Online writing mutations are forbidden'); };
+  const api = {create: forbidden, update: forbidden, remove: forbidden,
+    async load(account, id) { calls.push(['GET draft', account, id]); return {draft: structuredClone(cloudDraft)}; }};
+  const binderApi = {act: forbidden, async list(account) {
+    calls.push(['GET binder', account]);
+    return {drafts: [{id: cloudId}], folders: [{id: cloudFolder, name: 'Earlier work', parent_id: null}],
+      locations: {[cloudId]: cloudFolder}, first_drafts: [cloudId], trash: []};
+  }};
+  return {api, binderApi, calls};
+}
+
+test('one-time online copy preserves routes and folders, then writing and Binder changes make no online calls', async () => {
+  const indexedDB = memoryIndexedDB(), online = previousOnlineDrafts();
+  const options = {indexedDB, account: 'alice@example.test', ...online};
+  const storage = createBrowserStudioStorage(options);
+  const binder = await storage.binderApi.list(options.account);
+  assert.deepEqual(binder.first_drafts, [cloudId]);
+  assert.equal(binder.locations[cloudId], cloudFolder);
+  assert.equal(binder.folders[0].name, 'Earlier work');
+  const draft = (await storage.api.load(options.account, cloudId)).draft;
+  assert.deepEqual(draft, cloudDraft);
+  assert.deepEqual(online.calls.map(call => call[0]), ['GET binder', 'GET draft']);
+  const edited = (await storage.api.update(options.account, cloudId, {...draft, body: 'Edited only on this device'})).draft;
+  assert.equal(edited.revision, 8);
+  const {draft: fresh} = await storage.api.create(options.account, {title: 'New local draft', body: 'New writing'});
+  await storage.binderApi.act(options.account, {operation: 'move', item_kind: 'document', target_id: fresh.id,
+    target_revision: fresh.revision, folder_id: cloudFolder});
+  const reopened = createBrowserStudioStorage(options);
+  assert.equal((await reopened.api.load(options.account, cloudId)).draft.body, edited.body);
+  assert.equal((await reopened.binderApi.list(options.account)).locations[fresh.id], cloudFolder);
+  assert.equal(online.calls.length, 2, 'Migration receipt prevents later document requests');
+});
+
+test('failed online copy never blocks new local writing and retries without overwriting local edits or reviving trash', async () => {
+  const indexedDB = memoryIndexedDB(), online = previousOnlineDrafts();
+  const options = {indexedDB, account: 'alice@example.test', ...online};
+  const storage = createBrowserStudioStorage({...options,
+    binderApi: {...online.binderApi, async list() { throw new Error('Network unavailable'); }}});
+  assert.deepEqual((await storage.binderApi.list(options.account)).drafts, []);
+  assert.ok(storage.migrationError);
+  const {draft: localDraft} = await storage.api.create(options.account, {title: 'Offline work', body: 'Still writing'});
+  const local = createGuestStudioStorage({indexedDB, account: options.account});
+  await local.importCloud({drafts: [cloudDraft], folders: [], locations: {}, first_drafts: []});
+  const imported = (await local.api.load(options.account, cloudId)).draft;
+  const edited = (await local.api.update(options.account, cloudId, {...imported, body: 'Keep these local edits'})).draft;
+  await local.binderApi.act(options.account, {operation: 'trash', item_kind: 'document', target_id: cloudId,
+    target_revision: edited.revision});
+  const reopened = createBrowserStudioStorage(options);
+  await reopened.retryImport();
+  await assert.rejects(reopened.api.load(options.account, cloudId), {code: 'draft_not_found'});
+  assert.equal((await reopened.api.load(options.account, localDraft.id)).draft.body, localDraft.body);
+  assert.deepEqual((await reopened.binderApi.list(options.account)).trash.map(row => row.id), [cloudId]);
+  assert.equal(online.calls.length, 0, 'Existing receipt preserves local Trash and makes no requests');
+});
+
+test('retry after a failed migration copies saved online drafts once without changing new local work', async () => {
+  const indexedDB = memoryIndexedDB(), online = previousOnlineDrafts();
+  let disconnected = true;
+  const storage = createBrowserStudioStorage({indexedDB, account: 'alice@example.test', api: online.api,
+    binderApi: {act: online.binderApi.act, list: account => disconnected
+      ? Promise.reject(new Error('Offline')) : online.binderApi.list(account)}});
+  await storage.binderApi.list();
+  const {draft} = await storage.api.create(null, {title: 'While offline', body: 'Keep all of this'});
+  disconnected = false;
+  assert.equal((await storage.retryImport()).imported, 1);
+  assert.equal(storage.migrationError, null);
+  assert.equal((await storage.api.load(null, draft.id)).draft.body, 'Keep all of this');
+  assert.equal((await storage.api.load(null, cloudId)).draft.body, cloudDraft.body);
+  await storage.retryImport();
+  assert.equal(online.calls.length, 2);
+});
+
+test('invalid online batch is atomic and does not consume its migration receipt', async () => {
+  const storage = createGuestStudioStorage({indexedDB: memoryIndexedDB(), account: 'alice@example.test'});
+  await assert.rejects(storage.importCloud({drafts: [cloudDraft, {...cloudDraft, id: 'b'.repeat(32), body: 'x'.repeat(256 * 1024 + 1)}]}),
+    {code: 'draft_too_large'});
+  assert.deepEqual((await storage.api.list()).drafts, []);
+  assert.equal(await storage.hasCloudImport(), false);
+  assert.equal((await storage.importCloud({drafts: [cloudDraft]})).imported, 1);
+  assert.equal(await storage.hasCloudImport(), true);
+});
+
+
+test('first import skips existing local IDs, including locally trashed drafts', async () => {
+  const storage = createGuestStudioStorage({indexedDB: memoryIndexedDB(), account: 'alice@example.test'});
+  const {draft: edited} = await storage.api.create(null, {title: 'Local title', body: 'Local changes win'});
+  const {draft: trashed} = await storage.api.create(null, {title: 'Local trash', body: 'Keep me in Trash'});
+  await storage.binderApi.act(null, {operation: 'trash', item_kind: 'document', target_id: trashed.id,
+    target_revision: trashed.revision});
+  const result = await storage.importCloud({drafts: [edited, trashed].map(draft =>
+    ({...draft, title: 'Old cloud title', body: 'Do not replace local data', revision: 9}))});
+  assert.equal(result.imported, 0);
+  assert.equal((await storage.api.load(null, edited.id)).draft.body, edited.body);
+  await assert.rejects(storage.api.load(null, trashed.id), {code: 'draft_not_found'});
+  assert.deepEqual((await storage.binderApi.list()).trash.map(row => row.id), [trashed.id]);
+});
+
+
+test('guest writing through the normal browser adapter needs neither sign-in nor any document API request', async () => {
+  const denyNetwork = () => { throw new Error('Guest writing must remain local'); };
+  const storage = createBrowserStudioStorage({indexedDB: memoryIndexedDB(),
+    api: {list: denyNetwork, load: denyNetwork, create: denyNetwork, update: denyNetwork, remove: denyNetwork},
+    binderApi: {list: denyNetwork, act: denyNetwork}});
+  assert.deepEqual((await storage.binderApi.list(null)).drafts, []);
+  const {draft} = await storage.api.create(null, {title: 'Without signing in', body: 'My manuscript'});
+  const edited = (await storage.api.update(null, draft.id, {...draft, body: 'My revised manuscript'})).draft;
+  await storage.binderApi.act(null, {operation: 'trash', item_kind: 'document', target_id: draft.id,
+    target_revision: edited.revision});
+  await storage.binderApi.act(null, {operation: 'restore', item_kind: 'document', target_id: draft.id});
+  assert.equal((await storage.api.load(null, draft.id)).draft.body, 'My revised manuscript');
+});
+
+test('upgrading the original guest database adds migration metadata without replacing saved writing', async () => {
+  const indexedDB = memoryIndexedDB();
+  await new Promise(resolve => {
+    const request = indexedDB.open('care-studio-guest', 1);
+    request.onupgradeneeded = () => {
+      for (const name of ['drafts', 'folders', 'content']) request.result.createObjectStore(name, {keyPath: 'id'});
+    };
+    request.onsuccess = () => {
+      const tx = request.result.transaction(['drafts', 'content'], 'readwrite');
+      tx.objectStore('drafts').add({...cloudDraft, format: 'text', folder_id: null});
+      tx.objectStore('content').add({id: cloudId, body: cloudDraft.body, format: 'text'});
+      tx.oncomplete = resolve;
+    };
+  });
+  const storage = createGuestStudioStorage({indexedDB});
+  assert.equal((await storage.api.load(null, cloudId)).draft.body, cloudDraft.body);
+  assert.equal(await storage.hasCloudImport(), false);
+  assert.equal(indexedDB.names.get('care-studio-guest').version, 2);
+});
+
+test('a timed-out previous-draft read falls back to browser writing and leaves migration retryable', async () => {
+  const indexedDB = memoryIndexedDB();
+  let aborted = false;
+  const storage = createBrowserStudioStorage({indexedDB, account: 'alice@example.test', timeout: 5,
+    binderApi: {list(_account, {signal}) {
+      return new Promise((_, reject) => signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(new DOMException('Offline', 'AbortError'));
+      }, {once: true}));
+    }}, api: {load() { throw new Error('No draft read after timeout'); }}});
+  assert.deepEqual((await storage.binderApi.list()).drafts, []);
+  assert.equal(aborted, true);
+  const {draft} = await storage.api.create(null, {title: 'Writing offline', body: 'Saved despite timeout'});
+  assert.equal((await storage.api.load(null, draft.id)).draft.body, 'Saved despite timeout');
+  assert.equal(await createGuestStudioStorage({indexedDB, account: 'alice@example.test'}).hasCloudImport(), false);
 });

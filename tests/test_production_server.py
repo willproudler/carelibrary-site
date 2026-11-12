@@ -30,6 +30,7 @@ if str(RELEASE_ROOT) not in sys.path:
     sys.path.insert(0, str(RELEASE_ROOT))
 
 from server.app import create_app
+from server.static_cache import PUBLIC_ASSET, REVALIDATE_READING
 
 
 ORIGIN = "https://care.example.test"
@@ -189,7 +190,11 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(path=path):
                 response = await self.client.get(path)
                 self.assertEqual(response.status_code, 200, response.text)
-                self.assert_no_store(response)
+                if Path(path).suffix in {".mjs", ".css", ".svg", ".png"}:
+                    self.assertEqual(response.headers["cache-control"], PUBLIC_ASSET)
+                    self.assertEqual(response.headers["cdn-cache-control"], PUBLIC_ASSET)
+                else:
+                    self.assert_no_store(response)
         library = await self.client.get("/library.html?mode=read")
         self.assertEqual(library.status_code, 303)
         target = httpx.URL(library.headers["location"])
@@ -302,7 +307,8 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
                     self.assertNotIn("x-robots-tag", public.headers)
                     self.assertIn('</llms.txt>; rel="describedby"', public.headers["link"])
                     self.assertIn('</library.html>; rel="canonical"', public.headers["link"])
-                    self.assert_no_store(public)
+                    self.assertEqual(public.headers["cache-control"], REVALIDATE_READING)
+                    self.assertEqual(public.headers["cdn-cache-control"], "no-store")
                     if encoding == "gzip":
                         self.assertEqual(public.headers["content-encoding"], "gzip")
                     if method == "GET":
@@ -781,7 +787,8 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
                      "/assets/covers/book.jpg", "/assets/covers/web/cover-123.webp"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
-            self.assert_no_store(response)
+            self.assertEqual(response.headers["cache-control"], REVALIDATE_READING)
+            self.assertEqual(response.headers["cdn-cache-control"], "no-store")
         compressed = await self.client.get("/data/chunks/work-123.json", headers={"Accept-Encoding": "gzip"})
         self.assertEqual(compressed.status_code, 200)
         self.assertEqual(compressed.headers["content-encoding"], "gzip")

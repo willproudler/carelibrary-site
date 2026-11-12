@@ -52,9 +52,9 @@ export function binderActionPayload(action, activeRevision) {
 }
 
 export function studioBinderApi(fetcher = globalThis.fetch) {
-  async function request(account, method, payload) {
+  async function request(account, method, payload, signal) {
     const response = await fetcher('/api/studio/binder', {
-      method, cache: 'no-store', credentials: 'same-origin',
+      method, cache: 'no-store', credentials: 'same-origin', ...(signal ? {signal} : {}),
       headers: {'X-Care-Account': account, ...(payload ? {'Content-Type': 'application/json'} : {})},
       ...(payload ? {body: JSON.stringify({...payload, account})} : {}),
     });
@@ -69,7 +69,7 @@ export function studioBinderApi(fetcher = globalThis.fetch) {
     return result;
   }
   return {
-    list: account => request(account, 'GET'),
+    list: (account, {signal} = {}) => request(account, 'GET', undefined, signal),
     act: (account, action, activeRevision) => request(account, 'POST', binderActionPayload(action, activeRevision)),
   };
 }

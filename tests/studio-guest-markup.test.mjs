@@ -109,3 +109,14 @@ test('guest heading preset validation rejects arbitrary attributes and CSS value
   for (const value of invalid) assert.equal(guestParagraphStyles(value), '');
   assert.deepEqual(JSON.parse(guestParagraphStyles(JSON.stringify({h2: style}))), {h2: style});
 });
+
+
+test('browser-local saves preserve existing line spacing and paragraph style presets', () => {
+  const paragraphStyle = {...style, lineHeight: '1.5'};
+  const definitions = JSON.stringify({p: paragraphStyle});
+  const {document, output} = parsedMarkup({definitions, typography: {lineHeight: '1.5'}});
+  sanitizeGuestMarkup('input', document);
+  assert.equal(output().children[0].style.lineHeight, '1.5');
+  assert.equal(JSON.parse(output().children[0].getAttribute('data-writing-styles')).p.lineHeight, '1.5');
+  assert.equal(guestParagraphStyles(JSON.stringify({p: {...style, lineHeight: '100px'}})), '');
+});

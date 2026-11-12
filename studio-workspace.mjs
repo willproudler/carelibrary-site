@@ -106,9 +106,9 @@ export async function resolveStudioFootnoteReading(draft, referenceId, {search =
 }
 
 export function studioDraftApi(fetcher = globalThis.fetch) {
-  async function request(account, method, id = '', payload) {
+  async function request(account, method, id = '', payload, signal) {
     const response = await fetcher(`${DRAFT_API}${id ? `/${encodeURIComponent(id)}` : ''}`, {
-      method, cache: 'no-store', credentials: 'same-origin',
+      method, cache: 'no-store', credentials: 'same-origin', ...(signal ? {signal} : {}),
       headers: {'X-Care-Account': account, ...(payload ? {'Content-Type': 'application/json'} : {})},
       ...(payload ? {body: JSON.stringify({...payload, account})} : {}),
     });
@@ -122,11 +122,61 @@ export function studioDraftApi(fetcher = globalThis.fetch) {
     return result;
   }
   return {
-    list: (account) => request(account, 'GET'),
-    load: (account, id) => request(account, 'GET', id),
+    list: (account, {signal} = {}) => request(account, 'GET', '', undefined, signal),
+    load: (account, id, {signal} = {}) => request(account, 'GET', id, undefined, signal),
     create: (account, payload) => request(account, 'POST', '', payload),
     update: (account, id, payload) => request(account, 'PUT', id, payload),
     remove: (account, id, revision) => request(account, 'DELETE', id, {revision}),
+  };
+}
+
+
+// Only this migration reads previous online manuscripts. Normal writing and
+// Binder operations use the browser database for guests and signed-in readers.
+export async function copyPreviousStudioDrafts({account, storage, api, binderApi, timeout = 8000}) {
+  if (!account || await storage.hasCloudImport()) return {imported: 0, skipped: true};
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const snapshot = await binderApi.list(account, {signal: controller.signal});
+    if (!Array.isArray(snapshot.drafts) || snapshot.drafts.length > 50) throw new Error('invalid_online_drafts');
+    const drafts = new Array(snapshot.drafts.length);
+    let next = 0;
+    await Promise.all(Array.from({length: Math.min(4, drafts.length)}, async () => {
+      while (next < drafts.length) {
+        const index = next++;
+        const id = snapshot.drafts[index].id;
+        const result = await api.load(account, id, {signal: controller.signal});
+        if (result.draft?.id !== id) throw new Error('invalid_online_draft');
+        drafts[index] = result.draft;
+      }
+    }));
+    return await storage.importCloud({...snapshot, drafts});
+  } finally {
+    controller.abort();
+    clearTimeout(timer);
+  }
+}
+
+export function createBrowserStudioStorage({account = null, indexedDB, document = globalThis.document,
+  api = studioDraftApi(), binderApi = studioBinderApi(), timeout} = {}) {
+  const storage = createGuestStudioStorage({account, indexedDB, document});
+  let migration;
+  let migrationError = null;
+  function prepare() {
+    return migration ||= copyPreviousStudioDrafts({account, storage, api, binderApi, timeout})
+      .catch(error => { migrationError = error; return {imported: 0, failed: true}; });
+  }
+  return {
+    api: {...storage.api,
+      async list(owner) { await prepare(); return storage.api.list(owner); },
+      async load(owner, id) { await prepare(); return storage.api.load(owner, id); },
+    },
+    binderApi: {...storage.binderApi,
+      async list(owner) { await prepare(); return storage.binderApi.list(owner); },
+    },
+    async retryImport() { migration = null; migrationError = null; return prepare(); },
+    get migrationError() { return migrationError; },
   };
 }
 
@@ -482,10 +532,11 @@ export function createStudioWorkspace({
   const importInput = find('[data-studio-import]');
   const stores = new Map();
   const initialDrafts = new WeakMap();
-  const guestStorage = guestDrafts ? createGuestStudioStorage({document: doc}) : null;
+  const browserStores = new Map();
   const localScope = Symbol('guest drafts');
-  let local = false;
-  let binderStorage = binderApi;
+  const local = true;
+  let browserStorage = null;
+  let binderStorage = null;
   let store = null;
   let mode = 'studio';
   let besideRequest = '';
@@ -780,9 +831,18 @@ export function createStudioWorkspace({
   }
 
   function draftsDialog() {
-    openDialog('Your drafts', local ? 'Drafts are saved on this browser. Download a copy to keep a backup.' :
-      preview ? 'These drafts are saved in the local preview on this Mac.' : 'Drafts are private to your CARE account.',
-      store.entries().map(entry => ({label: titleOf(entry), invoke: () => go(mode, entry.id)})));
+    const entries = store.entries().map(entry => ({label: titleOf(entry), invoke: () => go(mode, entry.id)}));
+    if (account && browserStorage.migrationError) entries.unshift({label: 'Copy previous online drafts', async invoke() {
+      const state = store;
+      await browserStorage.retryImport();
+      if (state !== store) return;
+      await loadDraftIndex();
+      draftsDialog();
+    }});
+    const detail = browserStorage.migrationError
+      ? 'Earlier online drafts could not be copied yet. Your new writing is saved in this browser; try copying again when connected.'
+      : 'Drafts are saved in this browser on this device. Download a copy to keep a backup.';
+    openDialog('Your drafts', detail, entries);
   }
 
   function offerDraftDownload(draft) {
@@ -1207,18 +1267,19 @@ export function createStudioWorkspace({
 
   function setAccount(next, {preview: isPreview = preview, useLocal = false} = {}) {
     preview = isPreview;
-    useLocal = Boolean(useLocal && !next && guestStorage);
-    if (next === account && useLocal === local && store) return;
+    next = typeof next === 'string' && next.trim() ? next.trim().toLowerCase() : null;
+    if (next === account && store) return;
     delete win.careWritingModePosition;
     store?.pause();
     account = next;
-    local = useLocal;
-    const scope = local ? localScope : account;
-    binderStorage = local ? guestStorage.binderApi : binderApi;
-    store = scope ? stores.get(scope) || createStudioDraftState({
-      api: local ? guestStorage.api : api, account, local, autoSave: false,
-    }) : null;
-    if (scope) stores.set(scope, store);
+    const scope = account || localScope;
+    browserStorage = browserStores.get(scope) || createBrowserStudioStorage({account, document: doc, api, binderApi});
+    browserStores.set(scope, browserStorage);
+    binderStorage = browserStorage.binderApi;
+    store = stores.get(scope) || createStudioDraftState({
+      api: browserStorage.api, account, local, autoSave: false,
+    });
+    stores.set(scope, store);
     listRequest = null;
     binder = null;
     recentlyRead.clear();

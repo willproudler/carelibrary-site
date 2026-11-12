@@ -26,6 +26,7 @@ from .library_search import MAX_REQUEST_BYTES as SEARCH_REQUEST_BYTES
 from .library_search import LibrarySearchError, PublishedLibrarySearch, aq_options, search_options
 from .site_settings import MAX_REVISION, SiteSettingsConflict, SiteSettingsStore
 from .search_pages import search_page
+from .static_cache import CACHE_POLICIES, NO_STORE, PUBLIC_ASSET, REVALIDATE_READING, not_modified, scoped_etag
 from .studio_binder import MAX_REQUEST_BYTES as BINDER_REQUEST_BYTES, StudioBinderStore
 from .studio_drafts import DRAFT_ID, MAX_REQUEST_BYTES as STUDIO_REQUEST_BYTES, MAX_REVISION as STUDIO_MAX_REVISION
 from .studio_drafts import StudioDraftError, StudioDraftStore, draft_content
@@ -62,6 +63,10 @@ NUMO_FONTS = frozenset({
     "native/numo-Kalam-Regular.ttf", "native/numo-IBMPlexMono-Regular.ttf", "native/numo-IBMPlexMono-Medium.ttf",
     "native/numo-EBGaramond.ttf", "native/numo-EBGaramond-Italic.ttf", "native/numo-VT323-Regular.ttf",
 })
+PUBLIC_STATIC_ASSETS = frozenset(
+    name for name in PUBLIC_FILES | PUBLIC_BRANDING | PUBLIC_NUMOGRAM | NUMO_FONTS
+    if Path(name).suffix.lower() != ".html"
+) | frozenset({"books/books.css", "books/readings.css", "numogram/numogram.css"})
 SECURITY_HEADERS = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
@@ -149,6 +154,14 @@ class SecurityBoundary:
                 cookies = [(key, value) for key, value in message.get("headers", []) if key.lower() == b"set-cookie"]
                 headers.pop(b"set-cookie", None)
                 headers.update({key.lower().encode(): value.encode() for key, value in SECURITY_HEADERS.items()})
+                # Only the checked static-file path can opt into caching. API,
+                # owner, error and cookie-setting responses remain uncacheable,
+                # including when the host enables caching for every file type.
+                policy = scope.get("care_static_cache_control", NO_STORE)
+                if policy not in CACHE_POLICIES or message["status"] not in {200, 206, 304} or cookies:
+                    policy = NO_STORE
+                headers[b"cache-control"] = policy.encode()
+                headers[b"cdn-cache-control"] = (policy if policy == PUBLIC_ASSET else NO_STORE).encode()
                 if scope.get("care_library_companion") and message["status"] in {200, 206}:
                     headers[b"x-frame-options"] = b"SAMEORIGIN"
                     headers[b"content-security-policy"] = b"frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
@@ -435,9 +448,16 @@ def resource_path(root, relative):
 
 async def static_file(request):
     root = request.app.state.settings.web_root
-    configuration = await run_in_threadpool(request.app.state.site_settings.get)
-    search = await run_in_threadpool(search_page, root, request.url.path,
-                                     full_text=not configuration["beta_enabled"])
+    requested = request.url.path.lstrip("/") or "index.html"
+    # These exact files were already public in both modes. They never contain
+    # manuscripts or full readings and need neither a session nor a DB lookup.
+    unconditional_asset = requested in PUBLIC_STATIC_ASSETS
+    if unconditional_asset:
+        configuration, search = None, None
+    else:
+        configuration = await run_in_threadpool(request.app.state.site_settings.get)
+        search = await run_in_threadpool(search_page, root, request.url.path,
+                                         full_text=not configuration["beta_enabled"])
     if search and search.redirect:
         return Response(status_code=308, headers={"Location": search.canonical})
     relative = search.resource if search else request.url.path.lstrip("/") or "index.html"
@@ -448,7 +468,7 @@ async def static_file(request):
     if relative.casefold() in OWNER_FILES and relative not in OWNER_FILES:
         raise HTTPException(404, "Not found.")
     suffix = Path(relative).suffix.lower()
-    public = (search is not None or relative in PUBLIC_FILES or relative in PUBLIC_BRANDING
+    public = (unconditional_asset or search is not None or relative in PUBLIC_FILES or relative in PUBLIC_BRANDING
               or relative in PUBLIC_NUMOGRAM or relative in NUMO_FONTS)
     owner_only = relative in OWNER_FILES
     permitted = (public or owner_only or relative == "library.html"
@@ -472,13 +492,14 @@ async def static_file(request):
                  and bool(re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", companion_id[0])))
     # Crawlability follows the live catalogue mode; it must not grant access.
     # Embedded workspace instances retain one canonical catalogue document.
-    catalogue_public = (relative == "library.html" and not configuration["beta_enabled"]
+    beta_enabled = configuration["beta_enabled"] if configuration else True
+    catalogue_public = (relative == "library.html" and not beta_enabled
                         and not any(key.startswith("care_studio_") for key in request.query_params))
     crawlable = public or catalogue_public
-    if not configuration["beta_enabled"] and relative == "index.html":
+    if not beta_enabled and relative == "index.html":
         destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
         return json_response({"location": destination}, 303, {"Location": destination})
-    if owner_only or (not public and configuration["beta_enabled"]):
+    if owner_only or (not public and beta_enabled):
         user = await run_in_threadpool(request.app.state.auth.session, token(request))
         if not user:
             message = "Log in to manage the website." if owner_only else "Log in to open the library."
@@ -495,7 +516,7 @@ async def static_file(request):
                   else "text/javascript" if suffix in {".mjs", ".js"}
                   else "text/markdown" if suffix == ".md"
                   else mimetypes.guess_type(str(path))[0] or "application/octet-stream")
-    headers = {"Vary": "Cookie, Accept-Encoding"}
+    headers = {"Vary": "Accept-Encoding" if unconditional_asset else "Cookie, Accept-Encoding"}
     if crawlable and suffix == ".html":
         headers["Link"] = '</llms.txt>; rel="describedby"; type="text/markdown"'
     if relative == "library.html":
@@ -515,7 +536,19 @@ async def static_file(request):
     if any(item.strip().lower() == "gzip" for item in accepted.split(",")) and Path(str(path) + ".gz").exists():
         path = resource_path(root, resource + ".gz")
         headers["Content-Encoding"] = "gzip"
-    return FileResponse(path, media_type=media_type, headers=headers)
+    policy = (PUBLIC_ASSET if unconditional_asset else REVALIDATE_READING
+              if not beta_enabled and not owner_only and not companion
+              and relative not in {"index.html", "discover.html", "about.html", "welcome.html", "login.html", "request-access.html"}
+              else NO_STORE)
+    response = FileResponse(path, media_type=media_type, headers=headers, stat_result=path.stat())
+    if policy != NO_STORE:
+        response.headers["etag"] = scoped_etag(response.headers["etag"], str(path.relative_to(root)),
+                                               configuration["revision"] if configuration else None)
+        request.scope["care_static_cache_control"] = policy
+        if not_modified(request.headers, response.headers):
+            return Response(status_code=304, headers={key: value for key, value in response.headers.items()
+                                                      if key.lower() not in {"content-length", "content-type", "accept-ranges"}})
+    return response
 
 
 async def http_error(request, error):

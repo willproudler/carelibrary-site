@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from test_book_seo import _book, _publish, seo
 from server.app import create_app
 from server import search_pages
+from server.static_cache import REVALIDATE_READING
 
 
 class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -160,6 +161,27 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertNotIn(self.prose, (await self.client.get(self.unit_url)).text)
 
+    async def test_full_text_validators_cannot_bypass_beta_restriction(self):
+        self.app.state.site_settings.update(False, 0)
+        for encoding in ("identity", "gzip"):
+            previous = await self.client.get(self.unit_url, headers={"Accept-Encoding": encoding})
+            self.assertEqual(previous.headers["cache-control"], REVALIDATE_READING)
+            self.assertEqual(previous.headers["cdn-cache-control"], "no-store")
+            condition = {"Accept-Encoding": encoding, "If-None-Match": previous.headers["etag"]}
+            cached = await self.client.get(self.unit_url, headers=condition)
+            self.assertEqual(cached.status_code, 304)
+            self.assertEqual(cached.headers["link"], previous.headers["link"])
+            self.app.state.site_settings.update(True, self.app.state.site_settings.get()["revision"])
+            metadata = await self.client.get(self.unit_url, headers=condition)
+            self.assertEqual(metadata.status_code, 200)
+            self.assertNotIn(self.prose, metadata.text)
+            self.assertEqual(metadata.headers["cache-control"], "no-store")
+            for key in ("markdown_url", "json_url", "plaintext_url"):
+                denied = await self.client.get(self.reading[key], headers={**condition, "If-None-Match": "*"})
+                self.assertEqual(denied.status_code, 404)
+                self.assertEqual(denied.headers["cdn-cache-control"], "no-store")
+            self.app.state.site_settings.update(False, self.app.state.site_settings.get()["revision"])
+
     async def test_authenticated_beta_reader_does_not_make_the_public_summary_prose_available(self):
         self.app.state.auth.add_user("reader@example.test", "Reader", "a sufficiently long test password")
         login = await self.client.post("/api/login", json={"email": "reader@example.test", "password": "a sufficiently long test password"},
@@ -189,7 +211,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(response.headers["content-type"].startswith(media_type))
                 self.assertEqual(head.content, b"")
                 self.assertEqual(head.headers["content-length"], response.headers["content-length"])
-                self.assertEqual(response.headers["cache-control"], "no-store")
+                self.assertEqual(response.headers["cache-control"], REVALIDATE_READING)
                 self.assertNotIn("x-robots-tag", response.headers)
                 self.assertIn(f'<{self.unit_url}>; rel="canonical"', response.headers["link"])
                 self.assertIn(f'<{self.reading[alternate_key]}>; rel="alternate"', response.headers["link"])
@@ -222,7 +244,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
                         response = await client.request(method, f"/platotimaeus/summary.{extension}?care_studio_embed=1&care_studio_embed=1",
                                                         headers={"Accept-Encoding": "gzip"})
                         self.assertEqual(response.status_code, 404 if beta else 200)
-                        self.assertEqual(response.headers["cache-control"], "no-store")
+                        self.assertEqual(response.headers["cache-control"], "no-store" if beta else REVALIDATE_READING)
                         if beta:
                             self.assertNotIn(self.prose, response.text)
             for path in ("/api/studio/drafts", "/api/studio/binder", "/api/site-settings"):

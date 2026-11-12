@@ -2,7 +2,16 @@ import {binderActionPayload} from './beta-binder.mjs';
 import {sanitizeGuestMarkup} from './studio-guest-markup.mjs';
 import {firstDraftTitle} from './studio-first-drafts.mjs';
 
-const databaseName = 'care-studio-guest';
+const guestDatabaseName = 'care-studio-guest';
+const cloudImportReceipt = 'previous-online-drafts-v1';
+const recordId = /^[0-9a-f]{32}$/;
+
+async function storageDatabaseName(account) {
+  if (!account) return guestDatabaseName;
+  const normalized = account.trim().toLowerCase();
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+  return 'care-studio-account-' + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
 const selectionLimit = 50;
 const bodyLimit = 256 * 1024;
 const previewLimit = 768 * 1024;
@@ -299,16 +308,18 @@ function readingCopy(documents) {
   return {binder_preview: {html: fragments.join(''), count: fragments.length}};
 }
 
-export function createGuestStudioStorage({indexedDB, document = globalThis.document} = {}) {
+export function createGuestStudioStorage({indexedDB, document = globalThis.document, account = null} = {}) {
   let opening;
   function open() {
     if (opening) return opening;
-    const pending = new Promise((resolve, reject) => {
+    const pending = storageDatabaseName(account).then(databaseName => new Promise((resolve, reject) => {
       let blocked = false;
       const factory = indexedDB ?? globalThis.indexedDB;
-      const request = factory.open(databaseName, 1);
+      const request = factory.open(databaseName, 2);
       request.onupgradeneeded = () => {
-        for (const table of [...binderTables, 'content']) request.result.createObjectStore(table, {keyPath: 'id'});
+        for (const table of [...binderTables, 'content', 'metadata']) {
+          if (!request.result.objectStoreNames.contains(table)) request.result.createObjectStore(table, {keyPath: 'id'});
+        }
       };
       request.onblocked = () => {
         blocked = true;
@@ -324,7 +335,7 @@ export function createGuestStudioStorage({indexedDB, document = globalThis.docum
         };
         resolve(db);
       };
-    }).catch(error => {
+    })).catch(error => {
       if (opening === pending) opening = null;
       throw storageError(error);
     });
@@ -440,5 +451,52 @@ export function createGuestStudioStorage({indexedDB, document = globalThis.docum
       });
     },
   };
-  return {api, binderApi};
+  const hasCloudImport = () => transaction(['metadata'], 'readonly',
+    tables => [tables.metadata.get(cloudImportReceipt)], (_, [receipt]) => Boolean(receipt));
+
+  // Import is additive and atomic. Existing local revisions and locally trashed
+  // IDs win, so a retry can neither overwrite edits nor resurrect a draft.
+  async function importCloud({drafts, folders = [], locations = {}, first_drafts = []}) {
+    if (!Array.isArray(drafts) || drafts.length > 50 || !Array.isArray(folders) || folders.length > 100 ||
+        !Array.isArray(first_drafts)) throw invalid();
+    const folderIds = new Set(folders.map(folder => folder.id));
+    if (folderIds.size !== folders.length || folders.some(folder => !recordId.test(folder.id) ||
+        folder.parent_id != null && !folderIds.has(folder.parent_id))) throw invalid();
+    const sourceFolders = new Map(folders.map(folder => [folder.id, folder]));
+    for (const folder of folders) {
+      const seen = new Set();
+      for (let current = folder; current; current = sourceFolders.get(current.parent_id)) {
+        if (seen.has(current.id)) throw invalid();
+        seen.add(current.id);
+      }
+    }
+    const importedFolders = folders.map(folder => ({id: folder.id, name: requireFolderName(folder.name),
+      parent_id: folder.parent_id || null}));
+    const importedDrafts = drafts.map(draft => {
+      if (!recordId.test(draft.id) || !Number.isSafeInteger(draft.revision) || draft.revision < 1 ||
+          !Number.isFinite(draft.updated_at)) throw invalid();
+      const folder_id = locations[draft.id] || null;
+      if (folder_id && !folderIds.has(folder_id)) throw invalid();
+      const {title, content} = checkContent(draft, null, document);
+      return {draft: {id: draft.id, title, format: content.format, revision: draft.revision,
+        updated_at: draft.updated_at, folder_id, first_draft: first_drafts.includes(draft.id)},
+        content: {id: draft.id, ...content}};
+    });
+    if (new Set(importedDrafts.map(row => row.draft.id)).size !== importedDrafts.length) throw invalid();
+    return transaction([...binderTables, 'content', 'metadata'], 'readwrite',
+      tables => [...listBinder(tables), tables.metadata.get(cloudImportReceipt)], (tables, [rows, directory, receipt]) => {
+        if (receipt) return {imported: 0, skipped: true};
+        const existingDrafts = byId(rows), existingFolders = byId(directory);
+        for (const folder of importedFolders) if (!existingFolders.has(folder.id)) tables.folders.add(folder);
+        let imported = 0;
+        for (const row of importedDrafts) if (!existingDrafts.has(row.draft.id)) {
+          tables.drafts.add(row.draft);
+          tables.content.add(row.content);
+          imported++;
+        }
+        tables.metadata.put({id: cloudImportReceipt, imported_at: now()});
+        return {imported, skipped: false};
+      });
+  }
+  return {api, binderApi, hasCloudImport, importCloud};
 }

@@ -7,6 +7,7 @@ const blockId = /^[A-Za-z0-9_-]{1,100}$/;
 const fonts = new Set(['Iowan Old Style', 'Georgia', 'Palatino', 'Times New Roman', 'Helvetica', 'Arial', 'Menlo',
   'var(--serif, Georgia)']);
 const defaultSize = 'var(--writing-default-size, 12pt)';
+const lineHeights = new Set(['1', '1.15', '1.3', '1.5', '2']);
 
 export function guestParagraphStyles(value) {
   if (typeof value !== 'string' || value.length > 4096) return '';
@@ -19,11 +20,12 @@ export function guestParagraphStyles(value) {
   for (const tag of Object.keys(definitions).sort()) {
     const style = definitions[tag];
     if (!tags.has(tag) || !style || typeof style !== 'object' || Array.isArray(style) ||
-        fields.some(key=>!Object.hasOwn(style,key)) || Object.keys(style).some(key=>!fields.includes(key)&&key!=='weight') ||
+        fields.some(key=>!Object.hasOwn(style,key)) || Object.keys(style).some(key=>!fields.includes(key)&&key!=='weight'&&key!=='lineHeight') ||
         !(style.font==='default'||fonts.has(style.font)&&style.font!=='var(--serif, Georgia)') ||
         !(style.size==='default'||typeof style.size==='string'&&/^(?:[89]|[1-6][0-9]|7[0-2])$/.test(style.size)) ||
         ['bold','italic','underline'].some(key=>typeof style[key]!=='boolean') ||
         Object.hasOwn(style,'weight')&&!['400','500','600','700','800','900'].includes(style.weight) ||
+        Object.hasOwn(style,'lineHeight')&&style.lineHeight!=='auto'&&!lineHeights.has(style.lineHeight) ||
         !['left','center','right','justify'].includes(style.align)) return '';
     result[tag] = Object.fromEntries(Object.entries(style).sort(([left],[right])=>left.localeCompare(right)));
   }
@@ -33,6 +35,7 @@ export function guestParagraphStyles(value) {
 function copyStyle(source, target, block) {
   const {textAlign, fontFamily, fontSize} = source.style;
   if (block && ['left', 'right', 'center', 'justify'].includes(textAlign)) target.style.textAlign = textAlign;
+  if (block && lineHeights.has(source.style.lineHeight)) target.style.lineHeight = source.style.lineHeight;
   const font = fontFamily.replace(/^(['"])(.*)\1$/, '$2');
   if (fonts.has(font)) target.style.fontFamily = font;
   const points = Number(/^(\d{1,2})pt$/.exec(fontSize)?.[1]);
