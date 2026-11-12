@@ -67,7 +67,7 @@ class ReadingSEOTests(unittest.TestCase):
         self.assertEqual(set(self.units),{unit['id'] for unit in self.work['units']})
         book=json.loads((self.root/'books/manifest.json').read_text())['books'][0]
         main=(self.root/book['path']).read_text()
-        self.assertIn('Whole-book CARE summary',main)
+        self.assertIn('Whole-book structural reading',main)
         self.assertIn(self.units['WB_TIM']['url'],main)
         self.assertNotIn('Saved English whole-book CARE thesis',main)
         self.assertLess(len(main),60000)

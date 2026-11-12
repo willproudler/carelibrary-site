@@ -37,7 +37,8 @@ class CompactBookRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code,200,response.text)
         self.assertIn('href="https://carelibrary.org/platotimaeus"',response.text)
         self.assertIn('"book":"existing-plato"',response.text)
-        self.assertIn('id="existing-native-reader"',response.text)
+        self.assertNotIn('id="existing-native-reader"',response.text)
+        self.assertIn('data-care-search-shell="library"',response.text)
         for alias in self.book["aliases"]:
             redirected=await self.client.get(alias)
             self.assertEqual(redirected.status_code,308,alias)

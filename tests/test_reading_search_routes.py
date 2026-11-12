@@ -80,6 +80,139 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
     def write_manifest(self, value):
         self.manifest_path.write_text(json.dumps(value))
 
+    def declare_recorded_source(self, identity="WB_PLATO:A1"):
+        digest = hashlib.sha256(identity.encode()).hexdigest()[:24]
+        folder = self.reading["path"].removesuffix("index.html")
+        row = {"item_id": identity, "path": folder + "evidence/" + digest + ".json",
+               "url": self.unit_url + "evidence/" + digest + ".json"}
+        packet = {"start_item_id": identity, "recorded_source_paths": [{"passage_id": "PUBLISHED_PASSAGE", "text": "Saved source passage. " * 60}]}
+        payload = (json.dumps(packet, ensure_ascii=False) + "\n").encode()
+        path = self.web / row["path"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        Path(str(path) + ".gz").write_bytes(gzip.compress(payload))
+        self.reading["recorded_source_paths"] = [row]
+        self.write_manifest(self.manifest)
+        return row, payload
+
+    async def test_recorded_source_routes_are_exact_json_with_claim_canonical_get_head_and_gzip(self):
+        row, payload = self.declare_recorded_source()
+        self.app.state.site_settings.update(False, 0)
+        for encoding in ("identity", "gzip"):
+            for method in ("GET", "HEAD"):
+                response = await self.client.request(method, row["url"], headers={"Accept-Encoding": encoding})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertNotIn("location", response.headers)
+                self.assertTrue(response.headers["content-type"].startswith("application/json"))
+                self.assertIn(f'<{self.unit_url}#ref=WB_PLATO%3AA1>; rel="canonical"', response.headers["link"])
+                self.assertEqual(response.headers["cache-control"], REVALIDATE_READING)
+                self.assertEqual(response.headers["cdn-cache-control"], "no-store")
+                self.assertEqual(response.content, payload if method == "GET" else b"")
+                if encoding == "gzip":
+                    self.assertEqual(response.headers["content-encoding"], "gzip")
+        raw = await self.client.get("/" + row["path"])
+        self.assertEqual(raw.status_code, 308)
+        self.assertEqual(raw.headers["location"], row["url"])
+        undeclared = row["url"].rsplit("/", 1)[0] + "/" + "0" * 24 + ".json"
+        (self.web / row["path"]).with_name("0" * 24 + ".json").write_text("Unpublished sidecar")
+        self.assertEqual((await self.client.get(undeclared)).status_code, 404)
+        self.assertEqual((await self.client.get(row["url"] + ".gz")).status_code, 404)
+
+    async def test_recorded_sources_follow_live_private_gates_for_anonymous_and_authenticated_readers(self):
+        row, payload = self.declare_recorded_source()
+        anonymous = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url="https://care.example.test")
+        self.addAsyncCleanup(anonymous.aclose)
+        self.app.state.auth.add_user("reader@example.test", "Reader", "a sufficiently long test password")
+        login = await self.client.post("/api/login", json={"email": "reader@example.test", "password": "a sufficiently long test password"},
+                                       headers={"Origin": "https://care.example.test"})
+        self.assertEqual(login.status_code, 200)
+        for beta, revision in ((True, None), (False, 0), (True, 1)):
+            if revision is not None:
+                self.app.state.site_settings.update(beta, revision)
+            for client in (anonymous, self.client):
+                for method in ("GET", "HEAD"):
+                    response = await client.request(method, row["url"], headers={"Accept-Encoding": "gzip"})
+                    self.assertEqual(response.status_code, 404 if beta else 200)
+                    self.assertEqual(response.headers["cache-control"], "no-store" if beta else REVALIDATE_READING)
+                    self.assertEqual(response.headers["cdn-cache-control"], "no-store")
+                    if beta:
+                        self.assertNotIn("Saved source passage.", response.text)
+                    elif method == "GET":
+                        self.assertEqual(response.content, payload)
+                self.assertEqual((await client.get("/" + row["path"])).status_code, 404 if beta else 308)
+                self.assertEqual((await client.get("/" + row["path"] + ".gz")).status_code, 404)
+
+    async def test_invalid_recorded_source_declarations_disable_only_evidence_routes(self):
+        row, _ = self.declare_recorded_source()
+        self.app.state.site_settings.update(False, 0)
+        variants = [None, {}, "not a list", ["not a record"], [row, row], [row] * 4097]
+        for changes in ({"item_id": "WB_OTHER:A1"}, {"item_id": "WB_PLATO:"}, {"item_id": "WB_PLATO:\ud800"},
+                        {"path": "data/library.json"}, {"path": "../../private.json"}, {"path": []},
+                        {"url": "https://other.example/evidence.json"}, {"url": row["url"].replace(".json", ".JSON")}):
+            variants.append([{**row, **changes}])
+        for declaration in variants:
+            manifest = copy.deepcopy(self.manifest)
+            manifest["pages"][2]["recorded_source_paths"] = declaration
+            self.write_manifest(manifest)
+            response = await self.client.get(row["url"])
+            self.assertEqual(response.status_code, 404, repr(declaration)[:200])
+            self.assertEqual((await self.client.get(self.reading["json_url"])).status_code, 200)
+            self.assertEqual((await self.client.get(self.unit_url)).status_code, 200)
+        self.assertIsNone(search_pages._recorded_source_paths({**self.reading, "layer": "CH"},
+                          self.reading["path"].removesuffix("index.html"), self.unit_url))
+        self.assertIsNone(search_pages._recorded_source_paths({**self.reading, "has_text": False},
+                          self.reading["path"].removesuffix("index.html"), self.unit_url))
+
+    async def test_duplicate_recorded_source_owners_fail_closed_without_hiding_normal_readings(self):
+        row, _ = self.declare_recorded_source()
+        self.app.state.site_settings.update(False, 0)
+        books_path = self.web / "books/manifest.json"
+        books = json.loads(books_path.read_text())
+        other_book = {**books["books"][0], "work_id": "OTHER_WORK", "reader_slug": "other-reader",
+                      "route_slug": "otherbook", "slug": "other-book", "path": "books/other-book/index.html",
+                      "url": "/otherbook", "aliases": []}
+        books["books"].append(other_book)
+        books_path.write_text(json.dumps(books))
+        other = copy.deepcopy(self.reading)
+        other.update({"work_id": "OTHER_WORK", "reader_slug": "other-reader", "route_slug": "otherbook", "book_slug": "other-book"})
+        for field in ("url", "markdown_url", "json_url", "plaintext_url"):
+            other[field] = other[field].replace("/platotimaeus/", "/otherbook/")
+        for field in ("path", "text_path", "markdown_path", "json_path", "plaintext_path"):
+            other[field] = other[field].replace("books/" + self.reading["book_slug"] + "/", "books/other-book/")
+            target = self.web / other[field]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((self.web / self.reading[field]).read_bytes())
+        other_row = {**row, "path": row["path"].replace("books/" + self.reading["book_slug"] + "/", "books/other-book/"),
+                     "url": row["url"].replace("/platotimaeus/", "/otherbook/")}
+        other_path = self.web / other_row["path"]
+        other_path.parent.mkdir(parents=True, exist_ok=True)
+        other_path.write_bytes((self.web / row["path"]).read_bytes())
+        other["recorded_source_paths"] = [other_row]
+        manifest = copy.deepcopy(self.manifest)
+        manifest["pages"].append(other)
+        self.write_manifest(manifest)
+        for url in (row["url"], other_row["url"]):
+            self.assertEqual((await self.client.get(url)).status_code, 404)
+        for url in (self.reading["json_url"], other["json_url"]):
+            self.assertEqual((await self.client.get(url)).status_code, 200)
+
+    def test_recorded_source_hash_collisions_are_not_registered(self):
+        folder = self.reading["path"].removesuffix("index.html")
+        digest = "a" * 24
+        declaration = [{"item_id": "WB_PLATO:" + suffix, "path": folder + "evidence/" + digest + ".json",
+                        "url": self.unit_url + "evidence/" + digest + ".json"} for suffix in ("A1", "A2")]
+        fake_hash = type("Digest", (), {"hexdigest": lambda self: "a" * 64})()
+        with patch.object(search_pages.hashlib, "sha256", return_value=fake_hash):
+            self.assertIsNone(search_pages._recorded_source_paths({**self.reading, "recorded_source_paths": declaration}, folder, self.unit_url))
+        bounded = []
+        for number in range(4096):
+            identity = "WB_PLATO:A" + str(number)
+            digest = hashlib.sha256(identity.encode()).hexdigest()[:24]
+            bounded.append({"item_id": identity, "path": folder + "evidence/" + digest + ".json",
+                            "url": self.unit_url + "evidence/" + digest + ".json"})
+        self.assertEqual(len(search_pages._recorded_source_paths({**self.reading, "recorded_source_paths": bounded}, folder, self.unit_url)), 4096)
+        self.assertIsNone(search_pages._recorded_source_paths({**self.reading, "recorded_source_paths": bounded + [bounded[0]]}, folder, self.unit_url))
+
     async def test_beta_serves_only_metadata_without_authentication_or_bot_special_cases(self):
         with patch.object(self.app.state.auth, "session", side_effect=AssertionError("Metadata requires no login")):
             for route in (self.canonical, self.canonical + "wb/", self.unit_url):

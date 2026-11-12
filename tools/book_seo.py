@@ -307,19 +307,24 @@ def _shell(*, title: str, description: str, canonical: str, body: str, structure
 
 
 def _book_page(work: dict, slug: str, origin: str) -> str:
+    from book_landings import has_stephanus_pages, landing_metadata, source_label
+    from reading_seo import LAYER_NAMES, LAYER_ORDER, layer_url, overview_url, unit_url
+
     canonical = origin + _book_url(slug)
-    description = _text(work.get("description")) or f'{work["title"]} by {work["author"]}. Book details, original source sections and available CARE readings in CARE Library.'
+    guide = landing_metadata(work)
+    description = guide['description'] or f'{work["title"]} by {work["author"]}. Read the original text and explore the available saved CARE readings in CARE Library.'
     short_description = " ".join(description.split())[:300]
     sources = _sources(work)
     units = [unit for unit in _rows(work.get("units")) if isinstance(unit, dict)]
-    layer_names = {"WB": "whole-book", "MC": "book architecture", "CL": "cluster", "CH": "chapter", "NUMO": "NUMO"}
+    citation_pages = has_stephanus_pages(work)
+    layer_names = {"WB": "whole-book structural", "MC": "book architecture", "CL": "cluster", "CH": "close", "NUMO": "NUMO"}
     layers = Counter(_text(unit.get("layer")) for unit in units)
     facts = []
     for label, value in (("Author", work["author"]), ("Work date", _text(work.get("year"))),
                          ("Edition", _text(work.get("edition"))), ("Language", _text(work.get("language_name")))):
         if value:
             facts.append(f'<dt>{label}</dt><dd>{escape(value)}</dd>')
-    facts.append(f'<dt>Source sections</dt><dd>{len(sources)}</dd>')
+    facts.append(f'<dt>{"Stephanus pages" if citation_pages else "Source sections"}</dt><dd>{len(sources)}</dd>')
     if units:
         facts.append('<dt>CARE readings</dt><dd>' + escape(", ".join(f'{count} {layer_names.get(layer, layer)}' for layer, count in sorted(layers.items()))) + '</dd>')
     if source_url := _safe_external(work.get("source_url")):
@@ -327,51 +332,78 @@ def _book_page(work: dict, slug: str, origin: str) -> str:
     chapter_links = []
     chapter_slugs = _chapter_slugs(work)
     for index, source in enumerate(sources, 1):
-        title = _text(source.get("title")) or f"Source section {index}"
+        title = source_label(work, source, f"Source section {index}")
         target = _chapter_url(slug, chapter_slugs[source["id"]])
         chapter_links.append(f'<li><a href="{escape(target, quote=True)}">{escape(title)}</a></li>')
     body = ('<article><p class="eyebrow">Book · CARE Library</p>'
             f'<h1>{escape(work["title"])}</h1><p class="byline">by {escape(work["author"])}</p>'
-            f'<p class="intro">{escape(description)}</p><div class="actions">'
+            f'<p class="intro">{escape(short_description)}</p><div class="actions">'
             f'<a class="button primary" href="{escape(_reader_url(work), quote=True)}">Open this book in CARE</a>'
-            '<a class="button" href="/books/">Browse books</a></div>'
-            '<dl>' + ''.join(facts) + '</dl>')
-    body += ('<p class="notice">This page lists the published book and its source sections. '
-             'Library access follows the website’s current beta setting; signing in may be required to open the text.</p>')
-    from reading_seo import LAYER_NAMES, LAYER_ORDER, layer_url, overview_url, unit_url
-    body += '<section aria-labelledby="care-readings"><h2 id="care-readings">Saved CARE readings</h2><p>Generated CARE analysis is separate from the author’s original text.</p>'
+            '<a class="button" href="/books/">Browse books</a></div>')
+    if guide['overview']:
+        body += '<section aria-labelledby="work-overview"><h2 id="work-overview">Overview of the work</h2><p class="eyebrow">Editorial guide</p>'
+        body += ''.join('<p>' + escape(paragraph) + '</p>' for paragraph in guide['overview'])
+        body += '<p class="source-tools">Overview references: ' + ' · '.join(
+            '<a href="' + escape(reference['url'], quote=True) + '">' + escape(reference['label']) + '</a>'
+            for reference in guide['references']) + '</p></section>'
+    if guide['topics']:
+        body += '<section aria-labelledby="source-topics"><h2 id="source-topics">Explore the original text</h2><ul>'
+        for topic in guide['topics']:
+            target = _chapter_url(slug, chapter_slugs[topic['source_id']])
+            body += '<li><a href="' + escape(target, quote=True) + '">' + escape(topic['title']) + '</a> · ' + escape(topic['citation']) + '</li>'
+        body += '</ul><p class="source-tools">' + escape(guide['citation_note']) + '</p></section>'
+    if guide['reading_map']:
+        body += '<section aria-labelledby="reading-map"><h2 id="reading-map">A reading map</h2><p>Starting points from the published source headings and saved close-reading titles:</p><ul>'
+        units_by_id = {unit.get('id'): unit for unit in units}
+        for topic in guide['reading_map']:
+            target = (unit_url(slug, units_by_id[topic['id']]) if topic['kind'] == 'reading'
+                      else _chapter_url(slug, chapter_slugs[topic['id']]))
+            body += '<li><a href="' + escape(target, quote=True) + '">' + escape(topic['title']) + '</a></li>'
+        body += '</ul></section>'
+    body += '<dl>' + ''.join(facts) + '</dl>'
+    body += '<section aria-labelledby="care-readings"><h2 id="care-readings">Saved CARE readings</h2><p>CARE’s generated analysis follows the work’s structure and arguments; the original text is linked separately above and below.</p>'
     body += '<p><a href="' + escape(overview_url(slug), quote=True) + '">All saved CARE readings</a></p><ul>'
     for unit in units:
         if unit.get('layer') == 'WB' and isinstance(unit.get('id'), str) and unit['id']:
-            body += '<li><a href="' + escape(unit_url(slug, unit), quote=True) + '">Whole-book CARE summary</a></li>'
+            body += '<li><a href="' + escape(unit_url(slug, unit), quote=True) + '">Whole-book structural reading</a></li>'
     for layer in sorted((key for key in layers if key != 'WB'), key=lambda key: (LAYER_ORDER.get(key, 99), key)):
-        body += '<li><a href="' + escape(layer_url(slug, layer), quote=True) + '">' + escape(LAYER_NAMES.get(layer, layer)) + ' CARE readings</a></li>'
+        label = 'Close readings of citation pages (CH)' if layer == 'CH' and citation_pages else 'Close readings (CH)' if layer == 'CH' else LAYER_NAMES.get(layer, layer) + ' CARE readings'
+        body += '<li><a href="' + escape(layer_url(slug, layer), quote=True) + '">' + escape(label) + '</a></li>'
     body += '</ul></section>'
     if chapter_links:
-        body += '<section aria-labelledby="contents"><h2 id="contents">Source sections</h2><ol class="chapters">' + ''.join(chapter_links) + '</ol></section>'
+        heading = 'Original text · Stephanus pages' if citation_pages else 'Original text · source sections'
+        body += '<section aria-labelledby="contents"><h2 id="contents">' + heading + '</h2>'
+        if citation_pages:
+            body += '<p>These are citation pages in the saved Greek edition, rather than authored chapter divisions.</p>'
+        body += '<ul class="chapters">' + ''.join(chapter_links) + '</ul></section>'
     body += '</article>'
     return _shell(title=f'{work["title"]} by {work["author"]} | CARE Library', description=short_description,
                   canonical=canonical, body=body, structured=_jsonld(work, canonical, short_description))
 
 
 def _chapter_page(work: dict, book_slug: str, source: dict, chapter_slug: str, origin: str, *, include_text: bool) -> str:
+    from book_landings import source_label, source_page_number
+
     sources = _sources(work)
     index = next(index for index, item in enumerate(sources) if item["id"] == source["id"])
     chapter_slugs = _chapter_slugs(work)
-    title = _text(source.get("title")) or f"Source section {index + 1}"
+    title = source_label(work, source, f"Source section {index + 1}")
+    citation_page = source_page_number(work, source)
     book_url = _book_url(book_slug)
     canonical = origin + _chapter_url(book_slug, chapter_slug)
-    description = f'{title}, a source section of {work["title"]} by {work["author"]}. Read this saved source section and its CARE readings in CARE Library.'
-    structured = {"@context": "https://schema.org", "@type": "Chapter", "@id": canonical + "#source",
+    description = f'{title} of {work["title"]} by {work["author"]}. Read the original text and its saved CARE close reading in CARE Library.'
+    structured = {"@context": "https://schema.org", "@type": "CreativeWork" if citation_page else "Chapter", "@id": canonical + "#source",
                   "name": title, "url": canonical, "position": index + 1,
                   "inLanguage": _text(source.get("language_code")) or _text(work.get("language_code")) or "und",
                   "identifier": source["id"],
                   "isPartOf": {"@type": "Book", "@id": origin + book_url + "#book", "name": work["title"],
                                "url": origin + book_url, "author": {"@type": "Person", "name": work["author"]}}}
-    body = (f'<article><p class="eyebrow">Original source · Section {index + 1}</p>'
+    source_caption = title if citation_page else f'Section {index + 1}'
+    source_context = (f'{title} in the saved Greek edition of {work["title"]}; the page number is a Stephanus citation, not an authored chapter division.'
+                      if citation_page else f'Source section {index + 1} of {len(sources)} in the saved edition of {work["title"]}.')
+    body = (f'<article><p class="eyebrow">Original source · {escape(source_caption)}</p>'
             f'<p><a href="{escape(book_url, quote=True)}">{escape(work["title"])}</a> by {escape(work["author"])}</p>'
-            f'<h1>{escape(title)}</h1><p class="intro">Source section {index + 1} of {len(sources)} in the saved edition of '
-            f'{escape(work["title"])}.</p><div class="actions">'
+            f'<h1>{escape(title)}</h1><p class="intro">{escape(source_context)}</p><div class="actions">'
             f'<a class="button primary" href="{escape(_reader_url(work, source["id"]), quote=True)}">Open this section in CARE</a>'
             f'<a class="button" href="{escape(book_url, quote=True)}">Book contents</a></div>')
     details = [("Book", work["title"]), ("Author", work["author"]), ("Work date", _text(work.get("year"))),
@@ -387,12 +419,13 @@ def _chapter_page(work: dict, book_slug: str, source: dict, chapter_slug: str, o
         body += ('<p class="notice">This is the published source-section entry. Opening the reading panes follows the '
                  'website’s current beta setting; signing in may be required.</p>')
     neighbors = []
-    for offset, label in ((-1, "Previous source section"), (1, "Next source section")):
+    for offset, label in ((-1, "Previous citation page" if citation_page else "Previous source section"),
+                          (1, "Next citation page" if citation_page else "Next source section")):
         target = index + offset
         if 0 <= target < len(sources):
             neighbor = sources[target]
             href = _chapter_url(book_slug, chapter_slugs[neighbor["id"]])
-            neighbors.append(f'<a href="{escape(href, quote=True)}">{label}: {escape(_text(neighbor.get("title")))}</a>')
+            neighbors.append(f'<a href="{escape(href, quote=True)}">{label}: {escape(source_label(work, neighbor))}</a>')
     body += '<nav class="source-tools" aria-label="Source-section navigation">' + ''.join(neighbors) + '</nav></article>'
     encoded = json.dumps(structured, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     return _shell(title=f'{work["title"]} by {work["author"]} — {title} | CARE Library', description=description[:300],
@@ -423,6 +456,8 @@ def _scoped_css() -> str:
 
 def build(source: Path, destination: Path | None = None, *, origin: str = "https://carelibrary.org") -> list[dict]:
     """Build only attested books; return canonical URLs for the shared sitemap."""
+    from book_landings import source_label
+
     source = Path(source).resolve(strict=True)
     destination = Path(destination or source).absolute()
     if destination.is_symlink():
@@ -479,7 +514,7 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                                  "source_id": section["id"], "source_order": source_index, "url": chapter_url,
                                  "path": prefix + "/index.html", "text_path": prefix + "/text.html",
                                  "aliases": _aliases(prefix + "/index.html", chapter_url),
-                                 "has_text": bool(_source_text(section)), "title": _text(section.get("title")),
+                                 "has_text": bool(_source_text(section)), "title": source_label(work, section),
                                  "source_language": _text(section.get("language_code")) or _text(work.get("language_code")),
                                  "source_language_name": _text(section.get("language_name")) or _text(work.get("language_name"))})
                 sitemap.append({"loc": origin + chapter_url})

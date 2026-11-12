@@ -103,7 +103,9 @@ class DiscoveryTests(unittest.TestCase):
         guide=(self.root/'llms.txt').read_text()
         self.assertLess(guide.index('/summary.txt'),guide.index(wb['markdown_url']))
         self.assertIn('central problem',guide);self.assertIn('concept connections',guide)
-        self.assertIn('three specific saved claims',guide);self.assertIn('compact source note',guide)
+        self.assertIn('claim IDs support precise attribution',guide);self.assertIn('compact source note',guide)
+        self.assertIn('Chapter readings retain its close textual detail',guide)
+        self.assertIn('bounded recorded source trails',guide)
         self.assertNotIn('not proof',guide);self.assertNotIn('No page or index grants',guide)
 
     def test_canonical_titles_identities_and_citations_are_complete_without_prose(self):

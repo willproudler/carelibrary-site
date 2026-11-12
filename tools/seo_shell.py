@@ -5,6 +5,7 @@ from html import escape
 import json
 from pathlib import Path
 import re
+from urllib.parse import quote, urlencode
 
 from static_catalogue import strip_catalogue
 
@@ -72,6 +73,18 @@ def embed_library(source: Path, reference_html: str, route: dict) -> str:
     body = reference_body[1].replace('id="main"','id="care-reference-main"')
     body = body.replace('href="#main"','href="#care-reference-main"')
     live_body = re.sub(r"<noscript\b.*?</noscript>","",library_body[1],flags=re.S|re.I)
+    lazy_workspace = route.get("view") == "workspace" and isinstance(route.get("book"), str)
+    app_mode = ' data-care-search-shell="library"' if lazy_workspace else ""
+    open_control = ""
+    if lazy_workspace:
+        # The semantic document contains its reading, not a second hidden copy
+        # of every application menu. JavaScript mounts the current shell after
+        # checking the same session/public-mode boundary as the main Library.
+        live_body = ""
+        destination = {key: value for key, value in route.items()
+                       if key in {"view", "book", "unit", "source", "ref", "focus"} and isinstance(value, str)}
+        href = "/library.html#" + urlencode(destination, quote_via=quote)
+        open_control = '<p class="care-search-open"><a href="' + escape(href, quote=True) + '">Open in CARE</a></p>'
     encoded = json.dumps(route,ensure_ascii=False,separators=(",",":"),allow_nan=False).replace("<","\\u003c")
     return f'''<!doctype html>
 <html lang="en" data-care-search-page="true" data-care-toolbar-labels="false" data-care-slider-arrows="true">
@@ -80,6 +93,6 @@ def embed_library(source: Path, reference_html: str, route: dict) -> str:
 <script id="care-search-route" type="application/json">{encoded}</script>
 <script type="module" src="/seo-shell.mjs"></script>
 </head><body class="care-library-shell">
-<div id="care-search-content">{body}<p class="care-search-access" data-care-search-access hidden></p></div>
-<div id="care-search-app" aria-hidden="true" inert>{live_body}</div>
+<div id="care-search-content">{body}{open_control}<p class="care-search-access" data-care-search-access hidden></p></div>
+<div id="care-search-app" aria-hidden="true" inert{app_mode}>{live_body}</div>
 </body></html>'''

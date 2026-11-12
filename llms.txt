@@ -2,7 +2,7 @@
 
 > A reading environment for tracing original texts, arguments and recorded connections, with an interactive Numogram and its attributed CCRU demon reference.
 
-Start with a book's preferred plain-text CARE reading for its argument. It contains the complete saved English rendition where available, otherwise the canonical saved rendition, with section headings, claim IDs and citation links. Markdown and structured JSON retain the full multilingual reading record and source connections.
+Book pages introduce the work and link its original sections. Chapter readings retain its close textual detail; whole-book readings offer a structural interpretation of the argument. A preferred plain-text reading contains the complete saved English rendition where available, otherwise the canonical saved rendition, with section headings, claim IDs and citation links. Markdown and structured JSON retain the full multilingual record and source connections.
 
 AI-assisted CARE interpretations are separate editions from the original source texts. Edition and rendition details belong in a short source note. Plain text and readable HTML require no JavaScript in public mode; the indexes supply navigation and citation metadata.
 
@@ -15,10 +15,11 @@ AI-assisted CARE interpretations are separate editions from the original source 
 
 ## Reading and summarising a work
 
-- Read WB for the central problem, thesis, key moves, concept connections, tensions and open questions. Use the preferred plain-text edition for continuous reading.
-- Read MC (macro/metacluster) and CL (cluster) for the argument's organisation; use CH for detailed chapter claims and distinctions.
-- Follow original source sections for quotations. Cite around three specific saved claims where they help substantiate the intellectual summary.
-- Present the summary directly, then add a compact source note with the edition and saved rendition. The Markdown and JSON records provide the full technical evidence trail when needed.
+- WB covers the central problem, thesis, key moves, concept connections, tensions and open questions. The preferred plain-text edition supports continuous reading.
+- MC (macro/metacluster) and CL (cluster) trace the argument's organisation; CH supplies detailed chapter claims and distinctions.
+- Original source sections support quotations. Stable reading URLs and claim IDs support precise attribution of CARE's interpretations.
+- WB claim records link bounded recorded source trails through the saved lower-layer references to available original passage anchors. These preserve each terminal alignment type and distinguish inherited paths from direct passage alignments.
+- Edition and saved-rendition details fit in a compact source note; Markdown and JSON retain the full record.
 
 ## Books
 

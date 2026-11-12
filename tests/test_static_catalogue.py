@@ -65,7 +65,8 @@ class StaticCatalogueTests(unittest.TestCase):
         self.assertNotIn(START,semantic)
         self.assertNotIn('id="care-published-catalogue"',semantic)
         self.assertNotIn('id="care-published-catalogue-style"',semantic)
-        self.assertIn('id="reader"',semantic)
+        self.assertNotIn('id="reader"',semantic)
+        self.assertIn('data-care-search-shell="library"',semantic)
 
     def test_catalogue_escapes_titles_and_rejects_external_or_unreviewed_paths(self):
         book={**self.book,'title':'<script>Foreign title</script>'}

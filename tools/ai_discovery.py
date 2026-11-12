@@ -259,14 +259,14 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                        "numogram_reference_sha256": numo_manifest.get("public_reference_sha256", "")},
         "citation_guidance": "Cite original-source quotations with source-section URLs and CARE analysis with canonical saved-reading URLs and unit/claim IDs. Keep edition and saved-rendition details in a compact source note.",
         "details_schema": BOOK_SCHEMA,
-        "details_guidance": "Read the WB plain-text edition for the whole argument, MC/CL for its structure and CH for chapter detail. Each book's details_index supplies exact source and claim citations.",
+        "details_guidance": "Book pages orient the work and link its original sections. CH readings retain close textual detail, MC/CL trace the argument's organisation, and WB gives the whole-book structural interpretation. Each book's details_index supplies exact source and claim citations; WB reading JSON also links individual recorded source trails.",
         "books": books, "demons": demons,
     }
     encoded = json.dumps(records, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
     (destination / "research-index.json").write_text(encoded, encoding="utf-8")
     guide = ["# CARE Library and NUMO", "",
              "> A reading environment for tracing original texts, arguments and recorded connections, with an interactive Numogram and its attributed CCRU demon reference.", "",
-             "Start with a book's preferred plain-text CARE reading for its argument. It contains the complete saved English rendition where available, otherwise the canonical saved rendition, with section headings, claim IDs and citation links. Markdown and structured JSON retain the full multilingual reading record and source connections.", "",
+             "Book pages introduce the work and link its original sections. Chapter readings retain its close textual detail; whole-book readings offer a structural interpretation of the argument. A preferred plain-text reading contains the complete saved English rendition where available, otherwise the canonical saved rendition, with section headings, claim IDs and citation links. Markdown and structured JSON retain the full multilingual record and source connections.", "",
              "AI-assisted CARE interpretations are separate editions from the original source texts. Edition and rendition details belong in a short source note. Plain text and readable HTML require no JavaScript in public mode; the indexes supply navigation and citation metadata.", "",
              "## Research entry points", "",
              _link("Machine-readable research index", origin + "/research-index.json", "Canonical URLs, original authors, exact source IDs, saved CARE unit/layer IDs and plain-text reading URLs."),
@@ -274,10 +274,11 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
              _link("Numogram", origin + "/numogram/", "The map, zones, currents, gates and linked demon records."),
              _link("Sitemap", origin + "/sitemap.xml"), "",
              "## Reading and summarising a work", "",
-             "- Read WB for the central problem, thesis, key moves, concept connections, tensions and open questions. Use the preferred plain-text edition for continuous reading.",
-             "- Read MC (macro/metacluster) and CL (cluster) for the argument's organisation; use CH for detailed chapter claims and distinctions.",
-             "- Follow original source sections for quotations. Cite around three specific saved claims where they help substantiate the intellectual summary.",
-             "- Present the summary directly, then add a compact source note with the edition and saved rendition. The Markdown and JSON records provide the full technical evidence trail when needed.", "", "## Books", ""]
+             "- WB covers the central problem, thesis, key moves, concept connections, tensions and open questions. The preferred plain-text edition supports continuous reading.",
+             "- MC (macro/metacluster) and CL (cluster) trace the argument's organisation; CH supplies detailed chapter claims and distinctions.",
+             "- Original source sections support quotations. Stable reading URLs and claim IDs support precise attribution of CARE's interpretations.",
+             "- WB claim records link bounded recorded source trails through the saved lower-layer references to available original passage anchors. These preserve each terminal alignment type and distinguish inherited paths from direct passage alignments.",
+             "- Edition and saved-rendition details fit in a compact source note; Markdown and JSON retain the full record.", "", "## Books", ""]
     for book in books:
         label = book["title"] + " — " + book["author"]
         guide.append(_link(label, book["url"]))

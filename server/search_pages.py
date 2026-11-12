@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_READING_MANIFEST_BYTES = 16 * 1024 * 1024
@@ -139,6 +139,34 @@ def _book_routes(root: Path) -> dict:
         return {}
 
 
+def _recorded_source_paths(item: dict, folder: str, canonical: str) -> tuple | None:
+    """Accept complete, bounded declarations of saved WB claim sidecars only."""
+    declared = item.get("recorded_source_paths", [])
+    if not isinstance(declared, list) or len(declared) > 4096:
+        return None
+    if not declared:
+        return ()
+    if item.get("kind") != "reading" or item.get("layer") != "WB" or item.get("has_text") is not True:
+        return None
+    prefix = item["unit_id"] + ":"
+    ids, hashes, paths = set(), set(), []
+    for row in declared:
+        if not isinstance(row, dict):
+            return None
+        identity = row.get("item_id")
+        if (not isinstance(identity, str) or not identity.startswith(prefix) or len(identity) == len(prefix)
+                or any(ord(char) < 32 or ord(char) == 127 or 0xD800 <= ord(char) <= 0xDFFF for char in identity)):
+            return None
+        digest = hashlib.sha256(identity.encode()).hexdigest()[:24]
+        resource, url = folder + "evidence/" + digest + ".json", canonical + "evidence/" + digest + ".json"
+        if identity in ids or digest in hashes or row.get("path") != resource or row.get("url") != url:
+            return None
+        ids.add(identity)
+        hashes.add(digest)
+        paths.append((identity, resource, url))
+    return tuple(paths)
+
+
 @lru_cache(maxsize=4)
 def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -> dict:
     """Validate generated reading identities and compile exact routes once."""
@@ -176,6 +204,7 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
     routes = {}
     whole_book_counts = {}
     whole_books = {}
+    source_unit_counts, source_claim_counts, source_candidates = {}, {}, []
     def register(path, entry):
         if path in routes and routes[path] != entry:
             routes[path] = None
@@ -241,6 +270,15 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
                               markdown_url=markdown_url, json_path=json_path, json_url=json_url,
                               plaintext_path=plaintext, plaintext_url=plaintext_url)
         if whole_book:
+            unit_id = item["unit_id"]
+            source_unit_counts[unit_id] = source_unit_counts.get(unit_id, 0) + 1
+            recorded = _recorded_source_paths(item, folder, canonical) if has_text else ()
+            for claim, source_path, source_url in recorded or ():
+                source_claim_counts[claim] = source_claim_counts.get(claim, 0) + 1
+                source_candidates.append((unit_id, claim, entry, _ReadingRoute(
+                    source_path, source_url, has_text=True, representation="evidence",
+                    document_canonical=canonical + "#ref=" + quote(claim, safe=""))))
+        if whole_book:
             whole_books[route] = entry
         aliases = {canonical, canonical.rstrip("/"), canonical + "index.html",
                    "/" + resource, "/" + folder, "/" + folder.rstrip("/")}
@@ -264,6 +302,11 @@ def _reading_index(name: str, stamp: tuple, book_name: str, book_stamp: tuple) -
             index_entry = _ReadingRoute(index_path, index_url, representation="index", document_canonical=canonical)
             register("/" + index_path, index_entry)
             register(index_url, index_entry)
+    for unit_id, claim, owner, sidecar in source_candidates:
+        if (source_unit_counts[unit_id] == 1 and source_claim_counts[claim] == 1
+                and routes.get(owner.canonical) == owner):
+            register(sidecar.canonical, sidecar)
+            register("/" + sidecar.resource, sidecar)
     for route, entry in whole_books.items():
         # A summary is an exact alias of one saved whole-book reading. Incomplete
         # or ambiguous WB declarations cannot select a fallback reading.
@@ -333,6 +376,10 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
             return None
         if entry.representation == "text":
             return SearchPage(entry.full_html, entry.canonical, True) if full_text and entry.has_text else None
+        if entry.representation == "evidence":
+            return SearchPage(entry.resource, entry.canonical, request_path != entry.canonical,
+                              document_canonical=entry.document_canonical,
+                              alternates=((entry.document_canonical, "text/html"),)) if full_text and entry.has_text else None
         alternates = tuple((url, kind) for url, kind in (
             (entry.plaintext_url, "text/plain"), (entry.markdown_url, "text/markdown"),
             (entry.json_url, "application/json")) if url and full_text and entry.has_text)

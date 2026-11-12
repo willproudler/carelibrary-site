@@ -18,6 +18,7 @@ from book_seo import (_book_url, _chapter_slugs, _chapter_url, _digest, _jsonld,
                       _origin, _rows, _shell, _sources, _text, _with_book_routes,
                       _write, book_routes, book_slugs, load_attested_library)
 from reading_text_export import render_reading_markdown, render_reading_packet, render_reading_text, rendition_anchor
+from recorded_source_paths import RecordedSourcePathIndex
 from seo_shell import embed_library
 
 SCHEMA = "care-reading-search-pages/1"
@@ -136,7 +137,7 @@ def _recorded(item: dict, references: dict[str, str]) -> str:
     return '<div class="care-recorded-links">' + ''.join(pieces) + '</div>' if pieces else ''
 
 
-def _render_renditions(saved: list[dict], references: dict[str, str]) -> str:
+def _render_renditions(saved: list[dict], references: dict[str, str], source_path_urls: dict[str, str] | None = None) -> str:
     output = []
     for rendition_index, rendition in enumerate(saved):
         language = _text(rendition.get("language_name")) or _text(rendition.get("language_code")) or "Language not recorded"
@@ -158,9 +159,11 @@ def _render_renditions(saved: list[dict], references: dict[str, str]) -> str:
                 anchor = unquote(fragment)
                 canonical = references.get(identity, '').split('#',1)[0]
                 own_link = '<a href="' + escape(canonical + '#' + fragment, quote=True) + '">' + escape(identity) + '</a>' if canonical else escape(identity)
+                source_trail = ('<p class="care-recorded-links"><a href="' + escape(source_path_urls[identity], quote=True)
+                                + '">Follow the recorded source trail</a></p>') if source_path_urls and identity in source_path_urls else ''
                 output.append(f'<article class="care-claim" id="{escape(anchor, quote=True)}" data-item-id="{escape(identity, quote=True)}">'
                               '<h4>' + own_link + '</h4><p class="care-reading-prose">' + escape(item["text"]) + '</p>'
-                              + _recorded(item, references) + '</article>')
+                              + source_trail + _recorded(item, references) + '</article>')
             output.append('</section>')
         output.append('</section>')
     return ''.join(output)
@@ -206,6 +209,7 @@ def _unit_header(work: dict, unit: dict, entry: dict, references: dict[str, str]
 
 def build_into(source: Path, books_directory: Path, *, library: dict, library_sha256: str, books: list[dict], origin: str, mapping: dict) -> list[dict]:
     """Build inside book_seo's staged tree from its already-verified export."""
+    from book_landings import source_label, has_stephanus_pages
     origin = _origin(origin)
     if {work['id'] for work in library['works']} != {entry['work_id'] for entry in books}:
         raise ValueError("CARE reading pages must belong to the attested published books.")
@@ -257,6 +261,7 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                 remember(item['id'], origin + url + _claim_fragment(item['id']))
             pages.append(entry)
             sitemap.append({'loc': origin + url})
+    source_path_index = RecordedSourcePathIndex(library, references, export_sha256=library_sha256)
     _write(books_directory / 'readings.css', _CSS)
     for work in library['works']:
         book = by_work[work['id']]
@@ -306,15 +311,38 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                      'url': layer_url(book['route_slug'], layer),
                      'path': f"books/{book['slug']}/readings/{layer_slug(layer)}/index.html", 'unit_count': len(groups[layer])}
             body = '<article><p class="eyebrow">Saved generated CARE analysis · ' + escape(layer) + '</p><h1>' + escape(entry['title']) + '</h1><p>Source book by ' + escape(work['author']) + '. Analysis generated through CARE; not original author prose.</p><p><a href="' + escape(book['care_overview_url'], quote=True) + '">All CARE layers</a></p><ul class="care-reading-units">'
+            orientation = {'CH': 'Close readings follow individual source units and retain local subjects, claims and distinctions.',
+                           'CL': 'Cluster readings connect adjacent source units and trace their shared arguments.',
+                           'MC': 'Macro readings connect the larger movements and architecture of the argument.',
+                           'WB': 'The whole-book structural reading brings together the central argument, concept connections, tensions and open questions.'}.get(layer, '')
+            if orientation:
+                body = body.replace('<ul class="care-reading-units">', '<p>' + orientation + '</p><ul class="care-reading-units">')
+            if layer == 'CH' and has_stephanus_pages(work):
+                body = body.replace('<ul class="care-reading-units">', '<p>These units follow Stephanus citation pages, rather than chapters authored by Plato.</p><ul class="care-reading-units">')
+            source_by_id = {section['id']: section for section in _sources(work)}
             for unit in groups[layer]:
                 item = unit_entries[unit['id']][3]
-                body += '<li><a href="' + escape(item['url'], quote=True) + '">' + escape(item['title']) + '</a><small>' + escape(unit['id'] + ' · ' + item['revision']) + ' · ' + str(item['item_count']) + ' saved items</small></li>'
+                display_title = source_label(work, source_by_id[item['source_id']], item['title']) if layer == 'CH' and has_stephanus_pages(work) and item.get('source_id') in source_by_id else item['title']
+                body += '<li><a href="' + escape(item['url'], quote=True) + '">' + escape(display_title) + '</a><small>' + escape(unit['id'] + ' · ' + item['revision']) + ' · ' + str(item['item_count']) + ' saved items</small></li>'
             body += '</ul></article>'
             _write(books_directory / Path(entry['path']).relative_to('books'), _page(source, title=entry['title'] + ' | CARE Library', description='Saved ' + LAYER_NAMES.get(layer, layer) + ' CARE units and exact reading revisions for ' + work['title'] + '.', canonical=origin + entry['url'], body=body, route={**base_route, 'unit': groups[layer][0]['id']}, mapping=mapping))
             index_entries.append(entry); sitemap.append({'loc': origin + entry['url']})
     for work, unit, saved, entry in unit_entries.values():
         book = by_work[work['id']]
         canonical = origin + entry['url']
+        source_path_urls = {}
+        if unit['layer'] == 'WB' and entry['has_text']:
+            declarations = []
+            for item in _items(unit):
+                name = _digest(item['id'].encode())[:24] + '.json'
+                path = str(Path(entry['path']).parent / 'evidence' / name)
+                url = entry['url'] + 'evidence/' + name
+                target = books_directory / Path(path).relative_to('books')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source_path_index.to_json(item['id']))
+                declarations.append({'item_id': item['id'], 'path': path, 'url': url})
+                source_path_urls[item['id']] = origin + url
+            entry['recorded_source_paths'] = declarations
         metadata = {'title': entry['title'], 'book_title': work['title'], 'book_author': work['author'], 'work_id': work['id'],
                     'unit_id': unit['id'], 'layer': unit['layer'], 'revision': entry['revision'], 'content_sha256': entry['content_sha256'],
                     'source_sha256': _text(unit.get('source_sha256')), 'public_export_sha256': library_sha256,
@@ -329,7 +357,7 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
                       'isBasedOn': {'@type': 'Book', '@id': origin + _book_url(book['route_slug']) + '#book', 'name': work['title'],
                                     'author': {'@type': 'Person', 'name': work['author']}, 'url': origin + _book_url(book['route_slug'])}}
         meta_body = header + '<h2>Saved sections</h2><ol>' + ''.join('<li>' + escape(str(section.get('number') or '') + ' · ' + str(section.get('name') or 'Saved section')) + '</li>' for section in _rows(saved[0].get('sections'))) + '</ol></article>'
-        full_body = header + _render_renditions(saved, references) + '</article>'
+        full_body = header + _render_renditions(saved, references, source_path_urls) + '</article>'
         kwargs = dict(source=source, title=work['title'] + ' — ' + LAYER_NAMES.get(unit['layer'], unit['layer']) + ' CARE reading: ' + entry['title'] + ' | CARE Library', description=description, canonical=canonical, route=route, mapping=mapping, structured=structured, plaintext_url=origin + entry['plaintext_url'], markdown_url=origin + entry['markdown_url'], json_url=origin + entry['json_url'])
         _write(books_directory / Path(entry['path']).relative_to('books'), _page(body=meta_body, **kwargs))
         _write(books_directory / Path(entry['text_path']).relative_to('books'), _page(body=full_body, **kwargs))
@@ -338,6 +366,10 @@ def build_into(source: Path, books_directory: Path, *, library: dict, library_sh
         markdown = render_reading_markdown(metadata, saved, reference_url=lambda identity: references.get(identity, ''))
         _write(books_directory / Path(entry['markdown_path']).relative_to('books'), markdown)
         packet = render_reading_packet(metadata, saved, reference_url=lambda identity: references.get(identity, ''))
+        for rendition in packet['renditions']:
+            for item in _items(rendition):
+                if item['id'] in source_path_urls:
+                    item['recorded_source_paths_url'] = source_path_urls[item['id']]
         _write(books_directory / Path(entry['json_path']).relative_to('books'), json.dumps(packet, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n')
     manifest = {'schema': SCHEMA, 'source_sha256': library_sha256, 'analysis_provenance': 'Saved AI-assisted CARE analysis; not original author prose.',
                 'text_requires_public_library': True, 'pages': [*index_entries, *pages]}

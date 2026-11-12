@@ -1,24 +1,52 @@
-import {session} from '/auth.mjs';
+import {session} from './auth.mjs';
 
-const initial=document.getElementById('care-search-route');
-const fallback=document.getElementById('care-search-content');
 const app=document.getElementById('care-search-app');
+const shellLoads=new WeakMap();
+
+export async function mountSearchApplicationShell(doc=document,fetcher=globalThis.fetch){
+ const shell=doc.getElementById('care-search-app');
+ if(!shell||shell.dataset.careSearchShell!=='library'||shell.dataset.careSearchShellMounted==='true')return shell;
+ if(shellLoads.has(shell))return shellLoads.get(shell);
+ const loading=(async()=>{
+  const response=await fetcher('/library.html',{credentials:'same-origin',cache:'no-store',redirect:'error'});
+  const destination=new URL(response.url||'/library.html',doc.location.href);
+  if(!response.ok||response.redirected||destination.origin!==doc.location.origin||destination.pathname!=='/library.html'||
+    !response.headers.get('content-type')?.includes('text/html'))throw Error('The Library shell is unavailable.');
+  const parsed=new doc.defaultView.DOMParser().parseFromString(await response.text(),'text/html');
+  for(const node of parsed.querySelectorAll('script,noscript'))node.remove();
+  parsed.getElementById('care-published-catalogue')?.remove();
+  if(!['reader','workbench-library-menu','studio-workspace'].every(id=>parsed.getElementById(id))||parsed.getElementById('care-search-app')){
+   throw Error('The Library shell is incomplete.');
+  }
+  const ids=new Set();
+  for(const node of parsed.body.querySelectorAll('[id]')){
+   if(ids.has(node.id)||doc.getElementById(node.id))throw Error('The Library shell has conflicting elements.');
+   ids.add(node.id);
+  }
+  shell.replaceChildren(...[...parsed.body.childNodes].map(node=>doc.importNode(node,true)));
+  shell.dataset.careSearchShellMounted='true';
+  return shell;
+ })();
+ shellLoads.set(shell,loading);
+ try{return await loading;}catch(error){shellLoads.delete(shell);throw error;}
+}
 
 export function revealSearchApplication(doc=document){
  const content=doc.getElementById('care-search-content'),shell=doc.getElementById('care-search-app');
  if(!content||!shell)return false;
+ if(shell.dataset.careSearchShell==='library'&&shell.dataset.careSearchShellMounted!=='true')return false;
  shell.removeAttribute('inert');shell.removeAttribute('aria-hidden');
  content.hidden=true;
  doc.documentElement.dataset.careSearchReady='true';
  return true;
 }
 
-function accessMessage(message){
- const target=document.querySelector('[data-care-search-access]');
+function accessMessage(message,doc=document){
+ const target=doc.querySelector('[data-care-search-access]');
  if(!target)return;
- target.hidden=false;target.replaceChildren(document.createTextNode(message+' '));
- const link=document.createElement('a');
- link.href='/login.html?next='+encodeURIComponent(location.pathname+location.search+location.hash);
+ target.hidden=false;target.replaceChildren(doc.createTextNode(message+' '));
+ const link=doc.createElement('a');
+ link.href='/login.html?next='+encodeURIComponent(doc.location.pathname+doc.location.search+doc.location.hash);
  link.textContent='Log in to CARE Library';target.append(link);
 }
 
@@ -63,18 +91,22 @@ async function publicNumogram(route){
  app.querySelector('[data-write-beside]')?.setAttribute('hidden','');
 }
 
-async function start(){
- if(!initial||!fallback||!app)return;
+export async function startSearchPage({doc=document,readSession=session,fetcher=globalThis.fetch,
+ bootLibrary=()=>import('/library-boot.mjs'),bootNumogram=publicNumogram}={}){
+ const initial=doc.getElementById('care-search-route'),fallback=doc.getElementById('care-search-content'),shell=doc.getElementById('care-search-app');
+ if(!initial||!fallback||!shell)return;
  const route=JSON.parse(initial.textContent);
- document.addEventListener('care:search-ready',()=>revealSearchApplication());
- const current=await session();
+ const rendered=()=>{if(revealSearchApplication(doc))doc.removeEventListener('care:search-ready',rendered);};
+ doc.addEventListener('care:search-ready',rendered);
+ const current=await readSession();
  if(current.authenticated||current.beta_enabled===false){
-  await import('/library-boot.mjs');
+  await mountSearchApplicationShell(doc,fetcher);
+  await bootLibrary();
  }else if(route.view==='numogram'){
-  await publicNumogram(route);
+  await bootNumogram(route);
  }else{
-  accessMessage('The book’s public catalogue entry is available here. The reading panes are available to invited beta readers.');
+  accessMessage('The book’s public catalogue entry is available here. The reading panes are available to invited beta readers.',doc);
  }
 }
 
-start().catch(()=>accessMessage('The interactive view could not load. The reference remains available on this page.'));
+startSearchPage().catch(()=>accessMessage('The interactive view could not load. The reference remains available on this page.'));
