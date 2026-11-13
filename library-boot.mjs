@@ -18,7 +18,7 @@ try {
     showSessionNavigation(current);
     bindLogout();
     watchSession(current, {library:true});
-    await import('./boot.mjs?v=e82129a28b49e3c9');
+    await import('./boot.mjs?v=82e4a049abe7cf57');
   }
 } catch (error) {
   if(window.CARELibraryBoot){window.CARELibraryBoot.fail(error);}else{

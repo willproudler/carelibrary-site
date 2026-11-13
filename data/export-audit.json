@@ -111,12 +111,19 @@
       "sections": 90,
       "units": 131,
       "items": 8534
+    },
+    {
+      "slug": "beta-ac6f7f99a63ccb92",
+      "seal": "SEAL_LIDT_55A20D3B2AE773FCCF3B",
+      "sections": 7,
+      "units": 11,
+      "items": 968
     }
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 121687559,
-  "sha256": "11f0210c23e37aba0e84c190f086b363f42d3e98b83e23e5537189058798d94e",
+  "bytes": 123376891,
+  "sha256": "cc2308973277c0045f36ada1f286cd070bfdd1b5d97ecf00a69824388fc6ef55",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",

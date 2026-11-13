@@ -2,7 +2,7 @@
 try { document.body.dataset.careVibrantView = String(localStorage.getItem('care-vibrant-view-v2') === 'true'); } catch (_) { document.body.dataset.careVibrantView = 'false'; }
 document.body.dataset.careVibrantViewVersion = '2';
 // Keep a dependency/network failure from leaving the beta loading mark forever.
-import('./public-app.mjs?v=e82129a28b49e3c9').catch(error=>{
+import('./public-app.mjs?v=82e4a049abe7cf57').catch(error=>{
  if(window.CARELibraryBoot){window.CARELibraryBoot.fail(error);return;}
  const host=document.querySelector('#reader');
  const message=document.createElement('p');message.textContent='CARE Library could not load. Check your connection and try again.';
