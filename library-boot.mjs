@@ -18,9 +18,10 @@ try {
     showSessionNavigation(current);
     bindLogout();
     watchSession(current, {library:true});
-    await import('./boot.mjs?v=b831bfdb675f0225');
+    await import('./boot.mjs?v=e82129a28b49e3c9');
   }
 } catch (error) {
+  if(window.CARELibraryBoot){window.CARELibraryBoot.fail(error);}else{
   const host = document.querySelector('#reader');
   const message = document.createElement('p');
   message.className = 'loading';
@@ -30,4 +31,5 @@ try {
   link.textContent = 'Return to login';
   message.append(link);
   host.replaceChildren(message);
+  }
 }

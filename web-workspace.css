@@ -27,7 +27,26 @@
 }
 .care-library-shell .skip-link:focus { top: calc(var(--care-safe-top) + 12px); }
 @media (display-mode: standalone) {
-  html:has(> .care-library-shell), .care-library-shell { overscroll-behavior: none; }
+  /* The installed app owns a fixed viewport. Only its reading panes scroll;
+     keeping the document still avoids a second scroll edge over the toolbar. */
+  html:has(> .care-library-shell), .care-library-shell {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  .care-library-shell { box-sizing: border-box; }
+  /* Keep the navigation outside scrolling/blurred content without replacing
+     its room colours, opaque background or mineral material. */
+  body.care-library-shell:not([data-workbench-view="numogram"]) .app-header.beta-workbench {
+    position: sticky;
+    top: 0;
+    flex-shrink: 0;
+    isolation: isolate;
+    opacity: 1;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
 }
 
 /* Desktop-style navigation around the web reader and document workspace. */
@@ -72,13 +91,32 @@
 .beta-workbench .workbench-library-menu[open] > summary { border-color: #55736c; background: #233631; }
 .workbench-brand-chevron {
   flex: none;
-  inline-size: .38rem;
-  block-size: .38rem;
-  border: solid #a8c7bd;
-  border-width: 0 1.5px 1.5px 0;
-  transform: translateY(-.13rem) rotate(45deg);
+  display: grid;
+  place-items: center;
+  inline-size: 1.1rem;
+  block-size: 1.3rem;
+  border: 1px solid #b4c7bc14;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffffff06, #00000018);
+  box-shadow: inset 0 1px #ffffff09, 0 1px #00000020;
+  color: #aebfb6;
+  transition: color .16s ease-out, border-color .16s ease-out;
 }
-.workbench-library-menu[open] .workbench-brand-chevron { transform: translateY(.1rem) rotate(225deg); }
+.workbench-brand-chevron::before {
+  content: "";
+  inline-size: 12px;
+  block-size: 8px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='m2 2 4 4 4-4' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='m2 2 4 4 4-4' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: transform .18s ease-out;
+}
+.workbench-library-menu > summary:is(:hover, :focus-visible) .workbench-brand-chevron,
+.workbench-library-menu[open] .workbench-brand-chevron { color: #d8e4dc; border-color: #b4c7bc38; }
+.workbench-library-menu[open] .workbench-brand-chevron::before { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .workbench-brand-chevron, .workbench-brand-chevron::before { transition: none; }
+}
 .beta-workbench #workspace-name { color: var(--room-accent, inherit); }
 body:is([data-workbench-room="laterals"], [data-workbench-room="corpuses"], [data-workbench-room="dialogues"], [data-workbench-room="numogram"]) .beta-workbench .workbench-rooms > summary {
   border-color: color-mix(in srgb, var(--room-accent) 62%, var(--workbench-line));
@@ -124,9 +162,9 @@ body[data-workbench-view="reader"] .workbench-switch a.active { border-color: #5
   border-color: var(--workbench-accent);
 }
 .beta-workbench :is(button, a, summary):focus-visible { outline: 2px solid #a2cbb9; outline-offset: -3px; }
-.beta-workbench .nav-label { display: none; }
+/* The main toolbar keeps its icons at every size; menu labels remain intact. */
+.beta-workbench :is(.nav-label, .mobile-library-label, .mobile-more-label) { display: none !important; }
 .beta-workbench :is(.mobile-care-mark, .mobile-library-label, .mobile-more-mark, .mobile-more-label, .mobile-history) { display: none; }
-html[data-care-toolbar-labels="true"] .beta-workbench .nav-label { display: inline; }
 .workbench-search-slot { display: flex; justify-content: center; min-width: 0; container: workspace-search / inline-size; }
 .beta-workbench .workbench-search { justify-content: flex-start; min-width: 0; min-height: 32px; width: min(100%, 32rem); padding: 0 .55rem; text-align: left; }
 .workbench-search svg { color: #9aafad; flex: none; }
@@ -316,7 +354,6 @@ main > :is(#studio-workspace, #study-sets-view) { flex: 1; min-height: 0; min-wi
   .beta-workbench .brand .brand-mark { width: 48px; }
   .beta-workbench .brand :is(.brand-name, small) { display: none; }
   .beta-workbench .workbench-desktop-tool { display: none; }
-  html[data-care-toolbar-labels="true"] .beta-workbench .nav-label { display: none; }
 }
 @media (pointer: coarse) {
   .beta-workbench :is(nav > a, .workbench-tools > button, .workbench-history button, .workbench-switch a, .workbench-settings summary, .workbench-rooms summary, .workbench-search) { min-height: 42px; }
@@ -375,17 +412,9 @@ main > :is(#studio-workspace, #study-sets-view) { flex: 1; min-height: 0; min-wi
   .care-library-shell .app-header.beta-workbench :is(.mobile-care-mark, .mobile-more-mark) { display: block; }
   .care-library-shell .app-header.beta-workbench .mobile-more-mark circle { fill: currentColor; stroke: none; }
   .care-library-shell .app-header.beta-workbench :is(.brand, .workbench-switch, .workbench-rooms summary, .workbench-settings summary) svg { width: 18px; height: 18px; }
-  .care-library-shell .app-header.beta-workbench :is(.mobile-library-label, .mobile-more-label, .workbench-switch .nav-label, .workbench-rooms summary .nav-label) {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: inherit;
-    font: 650 .625rem/1.15 var(--care-web-sans);
-  }
   .care-library-shell .beta-workbench .workbench-library-menu > summary { border-color: #a6c6bb40; }
-  .workbench-brand-chevron { position: absolute; inset-block-start: .43rem; inset-inline-end: .35rem; }
+  .workbench-brand-chevron { position: absolute; inset-block-start: .25rem; inset-inline-end: .22rem; inline-size: .75rem; block-size: .75rem; border: 0; background: none; box-shadow: none; }
+  .workbench-brand-chevron::before { inline-size: 9px; block-size: 6px; }
   .care-library-shell .app-header.beta-workbench .workbench-search {
     width: 100%;
     min-height: 44px !important;

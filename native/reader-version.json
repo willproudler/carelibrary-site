@@ -1,5 +1,5 @@
 {
-  "version": "care-study-desk/2.132",
+  "version": "care-study-desk/2.133",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
@@ -7,8 +7,8 @@
     "Reuse shelf menus for published author browsing and private study sets"
   ],
   "assets": {
-    "study-desk.css": "aa23d6987b1cebbde956b9d76d4dac122512b99d94980d28b6718d8f6a6d48c8",
-    "study-desk.mjs": "439cad2dfd25cd55f4bc877cb63797db19532fd2a32dd6629e9ca96b70cac3f0",
+    "study-desk.css": "674bdbdafc5732693f961bde942f353ce7c6b6c3dfd89dc86acfb0e8cd7cf649",
+    "study-desk.mjs": "1cf8f153a7ae8001a0c22bcaa1489d78d6ea6bef2f5444e18585e1cfbcaff62d",
     "reading-views.mjs": "50de91fb5e017b4c9b922d21fa19294104ef3ccaf32b2462e3300ac2a5ef0e04"
   },
   "reading_presentation": "care-item-presentation/7",

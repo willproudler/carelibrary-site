@@ -1,12 +1,12 @@
 import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {readingStorageKey} from './auth.mjs';
 import {loadText} from './resource-loader.mjs?v=20261018';
-import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord,bookBookmarkRecord} from './saved-library.mjs?v=dc9690a677c43a62';
-import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=dc9690a677c43a62';
-import mountReader from './native/study-desk.mjs?v=dc9690a677c43a62';
+import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord,bookBookmarkRecord} from './saved-library.mjs?v=e82129a28b49e3c9';
+import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=e82129a28b49e3c9';
+import mountReader from './native/study-desk.mjs?v=e82129a28b49e3c9';
 
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=dc9690a677c43a62';
-import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=dc9690a677c43a62';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=e82129a28b49e3c9';
+import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=e82129a28b49e3c9';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 import {createTabMenus,createWorkspaceHistory,createBookAddressing,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,bookRouteUnitState,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
 import {copyStudioLibraryReference,copyStudioSource,createStudioWorkspace} from './studio-workspace.mjs';
@@ -21,7 +21,7 @@ import {openFeaturePreview} from './native/feature-previews.mjs';
 installFixedWorkbenchPreferences(window,document);
 
 const $ = selector => document.querySelector(selector);
-const loadNumogram=()=>import('./native/numogram-atlas.mjs?v=dc9690a677c43a62');
+const loadNumogram=()=>import('./native/numogram-atlas.mjs?v=e82129a28b49e3c9');
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Public mode uses the original browser collection; accounts have separate saves.
 const storageKey = key => readingStorageKey(key,document.documentElement.dataset);
@@ -62,14 +62,14 @@ async function start(){
   libraryMenu.hidden=true;
   libraryMenu.after(shelf);
  }
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=dc9690a677c43a62'),loadText('./native/public-scope.css?v=dc9690a677c43a62')]);
+ const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=e82129a28b49e3c9'),loadText('./native/public-scope.css?v=e82129a28b49e3c9')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
   if(indexedLateral===data.lateral&&indexedWorks.length===data.works.length&&indexedWorks.every((work,i)=>work===data.works[i]))return;
   adapter=createPublicReaderAdapter(data);index=adapter.index;indexedWorks=[...data.works];indexedLateral=data.lateral;
  }
- const host=$('#reader');host.replaceChildren();const shadow=host.attachShadow({mode:'open'});
+ const host=$('#reader');host.replaceChildren(...host.querySelectorAll(':scope > #care-published-catalogue'));const shadow=host.attachShadow({mode:'open'});
  shadow.innerHTML=`<style data-study-style>${css}</style><style>${scope}</style><div class="study-desk" data-study-desk data-skin="care" tabindex="0" style="height:100%;min-height:0"></div><div class="field-desk" data-field-desk hidden style="height:100%;min-height:0"></div>`;
  const studyStyle=shadow.querySelector('[data-study-style]');
  const savedHost=$('[data-saved-library]');
@@ -111,14 +111,14 @@ async function start(){
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise,fieldStyle;
  async function ensureViewer(){
-  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=dc9690a677c43a62'),loadText('./native/reference-viewer.css?v=dc9690a677c43a62'),loadText('./native/reference-viewer.html?v=dc9690a677c43a62')]).then(([module,viewerCSS,viewerHTML])=>{
+  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=e82129a28b49e3c9'),loadText('./native/reference-viewer.css?v=e82129a28b49e3c9'),loadText('./native/reference-viewer.html?v=e82129a28b49e3c9')]).then(([module,viewerCSS,viewerHTML])=>{
    mountViewer=module.default;
    viewerHost.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
   }).catch(error=>{viewerPromise=null;throw error;});
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=dc9690a677c43a62'),loadText('./native/study-field.css?v=dc9690a677c43a62')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=e82129a28b49e3c9'),loadText('./native/study-field.css?v=e82129a28b49e3c9')]).then(([module,fieldCSS])=>{
    mountField=module.default;fieldStyle=document.createElement('style');fieldStyle.media='not all';
    // Keep the bottom save control still when pointer entry reveals trace links.
    fieldStyle.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
@@ -1214,6 +1214,6 @@ async function start(){
   if(!(bookPath&&(!target.hash||workspaceRoute)||target.pathname==='/library.html'&&workspaceRoute))return;
   event.preventDefault();openReadingRoute(target.pathname+target.search+target.hash);
  });
- addEventListener('hashchange',routeChanged);routeFromURL();
+ addEventListener('hashchange',routeChanged);await routeFromURL();
 }
-start().catch(error=>{const host=$('#reader');host.textContent=error.message||'CARE Library could not load.';host.classList.add('loading');const retry=document.createElement('button');retry.textContent='Try again';retry.onclick=()=>location.reload();host.append(document.createElement('br'),retry);});
+start().then(()=>window.CARELibraryBoot?.ready()).catch(error=>{if(window.CARELibraryBoot){window.CARELibraryBoot.fail(error);return;}const host=$('#reader');host.textContent=error.message||'CARE Library could not load.';host.classList.add('loading');const retry=document.createElement('button');retry.textContent='Try again';retry.onclick=()=>location.reload();host.append(document.createElement('br'),retry);});

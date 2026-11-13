@@ -1,9 +1,9 @@
 /* The Discover page mounts CARE's shipped reader against the selected public
  * collection. No authoring, generation, account or private-library API is used. */
-import mountReader from './native/study-desk.mjs?v=dc9690a677c43a62';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=dc9690a677c43a62';
+import mountReader from './native/study-desk.mjs?v=e82129a28b49e3c9';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=e82129a28b49e3c9';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
-import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=dc9690a677c43a62';
+import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=e82129a28b49e3c9';
 import {loadLibrary} from './library-loader.mjs';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
@@ -171,8 +171,8 @@ export async function mountDiscoverReader(host,options={}) {
     };
     const [library,css,scope]=await Promise.all([
       options.library||loadLibrary(options.fetch?{fetch:options.fetch}:{}),
-      readText('./native/study-desk.css?v=dc9690a677c43a62'),
-      readText('./native/public-scope.css?v=dc9690a677c43a62'),
+      readText('./native/study-desk.css?v=e82129a28b49e3c9'),
+      readText('./native/public-scope.css?v=e82129a28b49e3c9'),
     ]);
     const data=await prepareDiscoverReading(library);
     const controller=data.works?.length?createDiscoverController(data):null;
@@ -220,7 +220,7 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=dc9690a677c43a62')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=e82129a28b49e3c9')]);
           if(destroyed||version!==requestVersion)return;
           await loadFieldMembers(field,library);
           if(destroyed||version!==requestVersion)return;

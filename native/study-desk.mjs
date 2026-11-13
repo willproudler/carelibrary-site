@@ -3249,28 +3249,31 @@ function drawRouteThreads(runtime){
   cards.forEach((card,id)=>{
     const group=card.closest("details[data-route-reading]:not([open])"),endpoint=group?.querySelector?.("summary")||card
     const rect=measured(endpoint),body=measured(card.closest(".window-body"))
-    if(!body||rect.width<=0||rect.height<=0||rect.right<=clip.left||rect.left>=clip.right)return
+    if(!body||rect.width<=0||rect.height<=0)return
+    const outsideX=rect.right<=clip.left?"left":rect.left>=clip.right?"right":""
     const middle=rect.top+rect.height/2,offscreen=rect.bottom<=body.top+8?"above":rect.top>=body.bottom-8?"below":""
     let y=Math.max(body.top+10,Math.min(body.bottom-10,middle))
     if(offscreen){const key=`${body.left}|${offscreen}`,slot=edgeSlots.get(key)||0;edgeSlots.set(key,slot+1);const spread=Math.min(slot*6,Math.max(0,(body.bottom-body.top-20)/3));y=offscreen==="above"?body.top+8+spread:body.bottom-8-spread}
-    geometry.set(id,{rect,body,y,offscreen,pane:card.closest("[data-pane]")})
+    geometry.set(id,{rect,body,y,offscreen,outsideX,pane:card.closest("[data-pane]")})
   })
   const drawable=exactRouteEdges(reference).filter(edge=>{
     const from=geometry.get(String(edge.source_id)),to=geometry.get(String(edge.target_id))
-    return from&&to&&!(from.offscreen&&to.offscreen)
+    return from&&to&&!(from.outsideX&&from.outsideX===to.outsideX)
   })
-  const fullyVisible=edge=>!geometry.get(String(edge.source_id)).offscreen&&!geometry.get(String(edge.target_id)).offscreen
+  const fullyVisible=edge=>{const a=geometry.get(String(edge.source_id)),b=geometry.get(String(edge.target_id));return !a.offscreen&&!b.offscreen&&!a.outsideX&&!b.outsideX}
   const retained=new Set(displayRouteEdges(drawable.filter(fullyVisible),runtime.connectionView))
   const paths=drawable.filter(edge=>!fullyVisible(edge)||retained.has(edge)).map((edge,index)=>{
     const from=geometry.get(String(edge.source_id)),to=geometry.get(String(edge.target_id))
-    if(!from||!to||(from.offscreen&&to.offscreen))return ""
+    if(!from||!to)return ""
     const samePane=from.pane===to.pane,a=from.rect,b=to.rect,forward=a.left<b.left
-    const x1=(samePane?a.left+2:forward?a.right-3:a.left+3)-bounds.left,x2=(samePane?b.left+2:forward?b.left+3:b.right-3)-bounds.left
+    const clampX=x=>Math.max(clip.left+3,Math.min(clip.right-3,x))-bounds.left
+    const x1=clampX(samePane?a.left+2:forward?a.right-3:a.left+3),x2=clampX(samePane?b.left+2:forward?b.left+3:b.right-3)
     const y1=from.y-bounds.top,y2=to.y-bounds.top,bend=Math.max(18,Math.abs(x2-x1)*.52),sign=forward?1:-1
     const color=layerColor(edge.source_layer,edge.source_id),targetColor=layerColor(edge.target_layer,edge.target_id),active=[String(edge.source_id),String(edge.target_id)].includes(runtime.hoverReference)
-    return `<defs><linearGradient id="route-thread-${index}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop stop-color="${color}"/><stop offset="1" stop-color="${targetColor}"/></linearGradient></defs><path class="route-thread ${active?"active":""}" data-route-source="${esc(edge.source_id)}" data-route-target="${esc(edge.target_id)}" stroke="url(#route-thread-${index})" d="M ${x1} ${y1} C ${samePane?x1-15:x1+bend*sign} ${y1},${samePane?x2-15:x2-bend*sign} ${y2},${x2} ${y2}"/><circle class="route-port" cx="${x1}" cy="${y1}" r="${active?3.2:2.3}" stroke="${color}"/>${from.offscreen?`<path class="route-edge-continuation" stroke="${color}" d="M ${x1-2.5} ${y1+(from.offscreen==="above"?-4:4)} l 2.5 ${from.offscreen==="above"?-2.5:2.5} l 2.5 ${from.offscreen==="above"?2.5:-2.5}"/>`:""}<circle class="route-port" cx="${x2}" cy="${y2}" r="${active?3.2:2.3}" stroke="${targetColor}"/>`
+    const continuation=(point,x,y,stroke)=>point.outsideX?`<path class="route-edge-continuation" stroke="${stroke}" d="M ${x+(point.outsideX==='left'?5:-5)} ${y-4} L ${x} ${y} L ${x+(point.outsideX==='left'?5:-5)} ${y+4}"/>`:point.offscreen?`<path class="route-edge-continuation" stroke="${stroke}" d="M ${x-2.5} ${y+(point.offscreen==='above'?-4:4)} l 2.5 ${point.offscreen==='above'?-2.5:2.5} l 2.5 ${point.offscreen==='above'?2.5:-2.5}"/>`:""
+    return `<defs><linearGradient id="route-thread-${index}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop stop-color="${color}"/><stop offset="1" stop-color="${targetColor}"/></linearGradient></defs><path class="route-thread ${active?"active":""}" data-route-source="${esc(edge.source_id)}" data-route-target="${esc(edge.target_id)}" stroke="url(#route-thread-${index})" d="M ${x1} ${y1} C ${samePane?clampX(a.left-13):x1+bend*sign} ${y1},${samePane?clampX(b.left-13):x2-bend*sign} ${y2},${x2} ${y2}"/><circle class="route-port" cx="${x1}" cy="${y1}" r="${active?3.2:2.3}" stroke="${color}"/>${continuation(from,x1,y1,color)}<circle class="route-port" cx="${x2}" cy="${y2}" r="${active?3.2:2.3}" stroke="${targetColor}"/>${continuation(to,x2,y2,targetColor)}`
   }).join("")
-  svg.setAttribute("viewBox",`0 0 ${bounds.width} ${bounds.height}`);svg.innerHTML=paths
+  svg.setAttribute("viewBox",`0 0 ${bounds.width} ${bounds.height}`);paintRouteThreadLayer(svg,paths)
 }
 function connectionThreadGeometry(a,b,ab,bb,bounds,clip,samePane=false){
   if(!ab||!bb||!a.width||!b.width||!ab.height||!bb.height)return null
@@ -3313,7 +3316,7 @@ function drawConnectionThreads(runtime){
 
     })
   }).join("")
-  svg.setAttribute("viewBox",`0 0 ${bounds.width} ${bounds.height}`);svg.innerHTML=paths
+  svg.setAttribute("viewBox",`0 0 ${bounds.width} ${bounds.height}`);paintRouteThreadLayer(svg,paths)
 }
 function connectionViewportKey(connection){
   if(!connection?.id)return ""
@@ -4592,6 +4595,28 @@ function workspaceFitReader(runtime) {
 }
 
 
+// Keep mounted paths and gradients alive while their geometry follows scroll.
+// Replacing the live SVG on every frame restarts its CSS transitions in WebKit.
+function paintRouteThreadLayer(svg,markup){
+  if(svg.careThreadMarkup===markup)return
+  svg.careThreadMarkup=markup
+  if(!svg.ownerDocument?.createElementNS||!svg.childNodes){svg.innerHTML=markup;return}
+  const next=svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg","svg")
+  next.innerHTML=markup
+  const sync=(parent,wanted)=>{
+    const children=[...wanted.childNodes]
+    for(let index=0;index<children.length;index++){
+      const source=children[index];let target=parent.childNodes[index]
+      if(!target||target.nodeType!==source.nodeType||target.nodeName!==source.nodeName){parent.insertBefore(source.cloneNode(true),target||null);if(target)parent.removeChild(target);continue}
+      if(source.nodeType!==1){if(target.nodeValue!==source.nodeValue)target.nodeValue=source.nodeValue;continue}
+      for(const attribute of [...target.attributes])if(!source.hasAttribute(attribute.name))target.removeAttribute(attribute.name)
+      for(const attribute of source.attributes)if(target.getAttribute(attribute.name)!==attribute.value)target.setAttribute(attribute.name,attribute.value)
+      sync(target,source)
+    }
+    while(parent.childNodes.length>children.length)parent.removeChild(parent.lastChild)
+  }
+  sync(svg,next)
+}
 const resolutionDepthOrder=["WB","MC","CL","CH","SOURCE"]
 const resolutionLayerColour=layer=>({DIRECT:"#a895be",WB:"#9a4327",MC:"#594f88",CL:"#2d6b67",CH:"#3d668b",SOURCE:"#8a431d",CB:"#a96624",XR:"#6e4f9a",XS:"#8b4f86",SC:"#8f394b"})[layer]||"#a895be"
 function resolutionUnitTitle(unit){
@@ -5181,7 +5206,7 @@ function drawOutlineThreads(runtime){
     const color=layerColor(edge.source_layer,edge.source_id),target=layerColor(edge.target_layer,edge.target_id),lit=active.has(String(edge.source_id))||active.has(String(edge.target_id)),gradient=`outline-thread-${index}`
     return `<defs><linearGradient id="${gradient}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop stop-color="${color}"/><stop offset="1" stop-color="${target}"/></linearGradient></defs><path class="outline-thread${lit?' active':''}" data-outline-source="${esc(edge.source_id)}" data-outline-target="${esc(edge.target_id)}" stroke="url(#${gradient})" d="M ${x1} ${y1} C ${same?x1-16:x1+bend*sign} ${y1},${same?x2-16:x2-bend*sign} ${y2},${x2} ${y2}"/><circle class="outline-port" cx="${x1}" cy="${y1}" r="${lit?3:2}" stroke="${color}"/><circle class="outline-port" cx="${x2}" cy="${y2}" r="${lit?3:2}" stroke="${target}"/>`
   }).join('')
-  svg.setAttribute('viewBox',`0 0 ${bounds.width/scale} ${bounds.height/scale}`);svg.innerHTML=paths
+  svg.setAttribute('viewBox',`0 0 ${bounds.width/scale} ${bounds.height/scale}`);paintRouteThreadLayer(svg,paths)
 }
 function setupOutlineView(runtime){
   const root=runtime.root,view=root.ownerDocument.defaultView

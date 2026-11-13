@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from test_book_seo import _publish,seo
 from test_reading_seo import _reading_book
-from static_catalogue import START,END,catalogue_fragment
+from static_catalogue import START,END,catalogue_fragment,strip_catalogue,with_library_loading
 
 
 class _Links(HTMLParser):
@@ -75,6 +75,23 @@ class StaticCatalogueTests(unittest.TestCase):
         self.assertNotIn('<script>Foreign title</script>',html)
         book['url']='https://unreviewed.example/another-book'
         with self.assertRaises(ValueError):catalogue_fragment([book],self.readings)
+
+    def test_native_loading_cover_keeps_plain_html_links_and_no_script_access(self):
+        library=(self.root/'library.html').read_text()
+        self.assertLess(library.index('id="care-library-loading-script"'),library.index('<body'))
+        self.assertLess(library.index('id="care-library-loading"'),library.index(START))
+        catalogue=library[library.index(START):library.index(END)]
+        self.assertNotIn('hidden',catalogue)
+        self.assertNotIn('aria-hidden',catalogue)
+        self.assertIn(self.wb['url'],_Links(catalogue).links)
+        self.assertIn('#care-library-loading{display:none}',library,'Without JavaScript the cover stays off')
+        self.assertIn('href="/books/"',library,'Slow or failed loads retain a text catalogue route')
+        self.assertEqual(with_library_loading(library),library)
+        semantic=strip_catalogue(library)
+        self.assertNotIn('care-library-loading',semantic)
+        self.assertNotIn(START,semantic)
+        self.assertNotIn('care-library-loading',(self.root/'index.html').read_text(),
+                         'The Discover page has its own content and no native loading cover')
 
     def test_short_summary_links_are_not_advertised_for_zero_or_multiple_wb(self):
         without=[entry for entry in self.readings if not(entry.get('kind')=='reading' and entry.get('layer')=='WB')]

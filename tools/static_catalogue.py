@@ -11,6 +11,63 @@ BLOCK = re.compile(re.escape(START) + r'.*?' + re.escape(END), re.S)
 STYLE = '<style id="care-published-catalogue-style">.care-static-catalogue{max-width:1120px;margin:0 auto;padding:38px 28px;color:#e9e6df;font:16px/1.6 system-ui,sans-serif}.care-static-catalogue h1,.care-static-catalogue h2,.care-static-catalogue h3{font-family:Georgia,serif;font-weight:400;line-height:1.2}.care-static-catalogue h1,.care-static-catalogue h2{font-size:30px;margin:0 0 14px}.care-static-catalogue h3{font-size:22px;margin:0 0 8px}.care-static-catalogue p{max-width:78ch;color:#bbc6bd}.care-static-catalogue a{color:#c5d9cc;text-decoration:underline;text-underline-offset:.2em}.care-catalogue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:15px;list-style:none;padding:0;margin:26px 0}.care-catalogue-grid>li{border:1px solid #38443c;border-radius:7px;padding:20px;min-width:0}.care-catalogue-grid p{font-size:14px;margin:6px 0 12px}.care-catalogue-links{display:flex;gap:9px 15px;flex-wrap:wrap;font-size:13px;line-height:1.7}.care-catalogue-links+ .care-catalogue-links{margin-top:10px}#reader>.care-static-catalogue{max-height:100%;overflow:auto;overscroll-behavior:contain}@media(max-width:600px){.care-static-catalogue{padding:24px 18px}.care-catalogue-grid{grid-template-columns:1fr}}</style>'
 _STYLE_RE = re.compile(r'<style\b[^>]*\bid=["\']care-published-catalogue-style["\'][^>]*>.*?</style>', re.I | re.S)
 
+# This is a visual loading surface, not an alternate crawler response. The
+# catalogue remains ordinary HTML beneath it, including when scripts are off.
+# Set the state synchronously in the head, before any deferred module can paint.
+BOOT_SCRIPT = r"""(() => {
+ const root=document.documentElement;
+ root.dataset.careLibraryBoot='loading';
+ let timer;
+ function panel(){return document.getElementById('care-library-loading');}
+ function message(text){
+  const surface=panel();
+  if(!surface)return;
+  surface.querySelector('[data-care-library-loading-status]').textContent=text;
+  surface.querySelector('[data-care-library-loading-actions]').hidden=false;
+ }
+ window.CARELibraryBoot={
+  ready(){clearTimeout(timer);root.dataset.careLibraryBoot='ready';panel()?.remove();},
+  fail(){clearTimeout(timer);root.dataset.careLibraryBoot='error';message('CARE Library could not load. Check your connection and try again.');}
+ };
+ document.addEventListener('click',event=>{
+  if(event.target.closest?.('[data-care-library-retry]'))location.reload();
+ });
+ timer=setTimeout(()=>{
+  if(root.dataset.careLibraryBoot!=='loading')return;
+  root.dataset.careLibraryBoot='slow';
+  message('Opening CARE Library is taking longer than usual.');
+ },20000);
+})();"""
+BOOT_STYLE = '''<style id="care-library-loading-style">
+#care-library-loading{display:none}
+html[data-care-library-boot="loading"] #care-library-loading,html[data-care-library-boot="slow"] #care-library-loading,html[data-care-library-boot="error"] #care-library-loading{position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:32px max(24px,env(safe-area-inset-right)) 32px max(24px,env(safe-area-inset-left));background:#0d1015;color:#ece8df;overscroll-behavior:none;text-align:center;font:15px/1.6 system-ui,-apple-system,sans-serif}
+#care-library-loading .care-library-loading-copy{max-width:30rem}
+#care-library-loading img{display:block;width:74px;height:74px;object-fit:contain;margin:0 auto 18px}
+#care-library-loading strong{display:block;font-size:19px;font-weight:500;letter-spacing:.08em}
+#care-library-loading p{margin:12px 0;color:#b8c0bd}
+#care-library-loading [data-care-library-loading-actions]:not([hidden]){display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:12px 20px;margin-top:20px}
+#care-library-loading button{min-height:44px;padding:8px 18px;border:1px solid #62746c;border-radius:6px;background:#24332d;color:#ece8df;font:inherit;cursor:pointer}
+#care-library-loading a{color:#c5d9cc;text-underline-offset:.2em}
+#care-library-loading :is(a,button):focus-visible{outline:2px solid #c5d9cc;outline-offset:4px}
+</style>'''
+BOOT_HEAD = BOOT_STYLE + '<script id="care-library-loading-script">' + BOOT_SCRIPT + '</script>'
+BOOT_SURFACE = '''<!-- CARE-LIBRARY-LOADING:START --><div id="care-library-loading" aria-label="Opening CARE Library"><div class="care-library-loading-copy"><img src="/assets/care-mark.svg" alt=""><strong>CARE Library</strong><p role="status" aria-live="polite" data-care-library-loading-status>Opening the library…</p><div data-care-library-loading-actions hidden><button type="button" data-care-library-retry>Try again</button><a href="/books/">Read text catalogue</a></div></div></div><!-- CARE-LIBRARY-LOADING:END -->'''
+_BOOT_HEAD_RE = re.compile(r'<(?:style|script)\b[^>]*\bid=["\']care-library-loading-(?:style|script)["\'][^>]*>.*?</(?:style|script)>', re.I | re.S)
+_BOOT_SURFACE_RE = re.compile(r'<!-- CARE-LIBRARY-LOADING:START -->.*?<!-- CARE-LIBRARY-LOADING:END -->', re.S)
+
+
+def strip_library_loading(document: str) -> str:
+    return _BOOT_SURFACE_RE.sub('', _BOOT_HEAD_RE.sub('', document))
+
+
+def with_library_loading(document: str) -> str:
+    """Cover the native app's startup without removing its semantic fallback."""
+    document = strip_library_loading(document)
+    if not re.search(r'<div\b[^>]*\bid=["\']reader["\']', document, re.I):
+        return document
+    document = re.sub(r'</head>', lambda _: BOOT_HEAD + '</head>', document, count=1, flags=re.I)
+    return re.sub(r'(<body\b[^>]*>)', lambda match: match[1] + BOOT_SURFACE, document, count=1, flags=re.I)
+
 
 def _href(value: str) -> str:
     if (not isinstance(value, str) or not value.startswith('/') or value.startswith('//')
@@ -58,7 +115,7 @@ def catalogue_fragment(books: list[dict], reading_pages: list[dict], *, heading=
 
 def strip_catalogue(document: str) -> str:
     """Semantic pages supply their own exact reading; omit repeated shelf HTML."""
-    document=_STYLE_RE.sub('', BLOCK.sub('', document))
+    document=strip_library_loading(_STYLE_RE.sub('', BLOCK.sub('', document)))
     # Its native host is inert while the page's exact saved reading is visible.
     # Normalize it before/after catalogue generation so rebuilds are identical.
     return re.sub(r'(<div\b[^>]*\bid=["\']reader["\'][^>]*>).*?(</div>)',
@@ -71,7 +128,7 @@ def with_style(document: str) -> str:
 
 
 def inject_catalogue(document: str, fragment: str, *, library=False) -> str:
-    """Idempotent visible fallback; the normal app replaces #reader's children."""
+    """Idempotent semantic fallback, with an early cover for the native app."""
     if BLOCK.search(document):
         document = BLOCK.sub(lambda _: fragment, document, count=1)
     elif library:
@@ -87,4 +144,5 @@ def inject_catalogue(document: str, fragment: str, *, library=False) -> str:
     # The old notice incorrectly implied that no saved reading could be read
     # without JavaScript and pointed to only two external original editions.
     document = re.sub(r'<noscript\b[^>]*>.*?</noscript>', '', document, flags=re.I | re.S)
-    return with_style(document)
+    document = with_style(document)
+    return with_library_loading(document) if library else document

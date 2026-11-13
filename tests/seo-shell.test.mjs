@@ -36,7 +36,7 @@ function fixture({parse='native',conflict=false}={}){
    const body=new Node('','body');
    if(parse==='native'||parse==='duplicate'){
     const main=new Node('main'),reader=new Node('reader');reader.append(new Node('care-published-catalogue'));main.append(reader);
-    body.append(new Node('workbench-library-menu'),main,new Node('studio-workspace'),new Node('double-boot','script'),new Node('no-script','noscript'));
+    body.append(new Node('care-library-loading'),new Node('workbench-library-menu'),main,new Node('studio-workspace'),new Node('double-boot','script'),new Node('no-script','noscript'));
     if(parse==='duplicate')body.append(new Node('reader'));
    }else body.append(new Node('login-form'));
    return {body,querySelectorAll:selector=>body.querySelectorAll(selector),getElementById:id=>descendants(body).find(node=>node.id===id)};
@@ -66,6 +66,7 @@ test('the same exact book/unit boot mounts native hosts before listeners and rev
   assert.equal(f.doc.getElementById('double-boot'),null,'Fetched scripts cannot start a second application');
   assert.equal(f.doc.getElementById('no-script'),null);
   assert.equal(f.doc.getElementById('care-published-catalogue'),null,'The reader does not mount an unrelated catalogue before replacing it');
+  assert.equal(f.doc.getElementById('care-library-loading'),null,'The semantic reading supplies its own progressive loading state');
   assert.equal(f.content.hidden,false);
   f.doc.getElementById('reader').listenersAttached=true;
  }});

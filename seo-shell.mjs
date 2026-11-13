@@ -15,6 +15,7 @@ export async function mountSearchApplicationShell(doc=document,fetcher=globalThi
   const parsed=new doc.defaultView.DOMParser().parseFromString(await response.text(),'text/html');
   for(const node of parsed.querySelectorAll('script,noscript'))node.remove();
   parsed.getElementById('care-published-catalogue')?.remove();
+  parsed.getElementById('care-library-loading')?.remove();
   if(!['reader','workbench-library-menu','studio-workspace'].every(id=>parsed.getElementById(id))||parsed.getElementById('care-search-app')){
    throw Error('The Library shell is incomplete.');
   }

@@ -116,6 +116,18 @@ AI-assisted CARE interpretations are separate editions from the original source 
 - [Metaphysics — Aristotle: Meta-cluster CARE readings (MC)](https://carelibrary.org/aristotlemetaphysics/readings/mc/): 2 saved readings.
 - [Metaphysics — Aristotle: Cluster CARE readings (CL)](https://carelibrary.org/aristotlemetaphysics/readings/cl/): 5 saved readings.
 - [Metaphysics — Aristotle: Chapter CARE readings (CH)](https://carelibrary.org/aristotlemetaphysics/readings/ch/): 14 saved readings.
+- [Monadology — Gottfried Wilhelm Leibniz](https://carelibrary.org/leibnizmonadology)
+- [Monadology — Gottfried Wilhelm Leibniz: whole-book CARE summary — preferred plain text](https://carelibrary.org/leibnizmonadology/summary.txt): Complete preferred saved rendition with section headings and exact claim citations.
+- [Monadology — Gottfried Wilhelm Leibniz: saved CARE readings](https://carelibrary.org/leibnizmonadology/readings/): Overview of available saved interpretations, grouped by level.
+- [Monadology — Gottfried Wilhelm Leibniz: research details JSON](https://carelibrary.org/leibnizmonadology/readings/index.json): All original source-section citations and saved CARE unit/layer identities for this book.
+- [Monadology — Gottfried Wilhelm Leibniz: whole-book CARE summary — full Markdown record](https://carelibrary.org/leibnizmonadology/summary.md): Complete multilingual record and saved source connections.
+- [Monadology — Gottfried Wilhelm Leibniz: whole-book CARE summary — structured JSON](https://carelibrary.org/leibnizmonadology/summary.json): The same saved CARE packet, with its exact unit citation and recorded evidence fields.
+- [Monadology — Gottfried Wilhelm Leibniz: whole-book CARE reading (WB)](https://carelibrary.org/leibnizmonadology/readings/wb/monadology-fd026bc92ab0/): Saved whole-book interpretation in the reading interface.
+- [Monadology — Gottfried Wilhelm Leibniz: WB full Markdown record](https://carelibrary.org/leibnizmonadology/readings/wb/monadology-fd026bc92ab0/reading.md)
+- [Monadology — Gottfried Wilhelm Leibniz: WB structured saved-reading JSON](https://carelibrary.org/leibnizmonadology/readings/wb/monadology-fd026bc92ab0/reading.json): Complete saved sections, claim IDs, rendition labels and recorded evidence fields; this contains the reading, unlike the metadata-only research index.
+- [Monadology — Gottfried Wilhelm Leibniz: Meta-cluster CARE readings (MC)](https://carelibrary.org/leibnizmonadology/readings/mc/): 10 saved readings.
+- [Monadology — Gottfried Wilhelm Leibniz: Cluster CARE readings (CL)](https://carelibrary.org/leibnizmonadology/readings/cl/): 30 saved readings.
+- [Monadology — Gottfried Wilhelm Leibniz: Chapter CARE readings (CH)](https://carelibrary.org/leibnizmonadology/readings/ch/): 90 saved readings.
 - [Monas Hieroglyphica — John Dee](https://carelibrary.org/deemonashieroglyphica)
 - [Monas Hieroglyphica — John Dee: whole-book CARE summary — preferred plain text](https://carelibrary.org/deemonashieroglyphica/summary.txt): Complete preferred saved rendition with section headings and exact claim citations.
 - [Monas Hieroglyphica — John Dee: saved CARE readings](https://carelibrary.org/deemonashieroglyphica/readings/): Overview of available saved interpretations, grouped by level.
