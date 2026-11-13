@@ -111,6 +111,21 @@ def copy_browser_files(source: Path, destination: Path) -> None:
 
 def stamp_browser_modules(destination: Path) -> None:
     """Invalidate the new landing/auth/reader chains without rewriting exports."""
+    # Measure top-level website pages once, excluding embedded reader panes.
+    beacon = """<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "d9231c975f5c4b69be1e6aff695cc977"}'></script><!-- End Cloudflare Web Analytics -->"""
+    for path in destination.rglob("*.html"):
+        relative = path.relative_to(destination)
+        if relative.parts[0] == "native" or relative.as_posix() in {"about.html", "welcome.html"}:
+            continue
+        html = path.read_text(encoding="utf-8")
+        if "static.cloudflareinsights.com/beacon.min.js" in html:
+            continue
+        # Compatibility redirects should count at their destination.
+        if re.search(r"""<meta\b[^>]*http-equiv\s*=\s*["']?refresh\b""", html, re.IGNORECASE):
+            continue
+        html = re.sub(r"</body\s*>", lambda match: beacon + "\n" + match.group(0),
+                      html, count=1, flags=re.IGNORECASE)
+        path.write_text(html, encoding="utf-8")
     digest = hashlib.sha256()
     for path in sorted(destination.rglob("*")):
         if path.is_file() and path.suffix in {".html", ".mjs", ".js", ".css"}:
