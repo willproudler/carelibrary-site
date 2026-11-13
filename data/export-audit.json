@@ -122,8 +122,8 @@
   ],
   "lateral_items": 53,
   "unresolved_references": [],
-  "bytes": 123376891,
-  "sha256": "cc2308973277c0045f36ada1f286cd070bfdd1b5d97ecf00a69824388fc6ef55",
+  "bytes": 123376901,
+  "sha256": "7fdbe09e0f655bea9e698b4ce995005cf2881ad373f699d9c82e8905a98633cd",
   "kant_grounding": {
     "method": "supplemental-passage-alignment",
     "revision": "R001",
