@@ -25,9 +25,9 @@ if (legacy) {
       bindLogout();
       watchSession(current);
       await Promise.all([
-        import('./discover-reader.mjs?v=b831bfdb675f0225'),
+        import('./discover-reader.mjs?v=44f3b4f1161123b0'),
         import('./discover-atlas.mjs?v=b831bfdb675f0225'),
-        import('./discover-experiments.mjs?v=b831bfdb675f0225'),
+        import('./discover-experiments.mjs?v=44f3b4f1161123b0'),
       ]);
     } else {
       watchSession(current);
