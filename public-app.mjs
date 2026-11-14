@@ -1,9 +1,20 @@
+function publicReaderCardCache(limit=1536){
+  let owner=null,context='';const cards=new Map();
+  return (id,nextOwner,nextContext,build)=>{
+    if(owner!==nextOwner||context!==nextContext){owner=nextOwner;context=nextContext;cards.clear();}
+    if(cards.has(id)){const card=cards.get(id);cards.delete(id);cards.set(id,card);return card;}
+    const card=build();cards.set(id,card);
+    if(cards.size>limit)cards.delete(cards.keys().next().value);
+    return card;
+  };
+}
+
 import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {readingStorageKey} from './auth.mjs';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord,bookBookmarkRecord} from './saved-library.mjs?v=82e4a049abe7cf57';
 import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=82e4a049abe7cf57';
-import mountReader from './native/study-desk.mjs?v=82e4a049abe7cf57';
+import mountReader from './native/study-desk.mjs?v=44f3b4f1161123b0';
 
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=82e4a049abe7cf57';
 import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=82e4a049abe7cf57';
@@ -118,7 +129,7 @@ async function start(){
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=82e4a049abe7cf57'),loadText('./native/study-field.css?v=82e4a049abe7cf57')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=44f3b4f1161123b0'),loadText('./native/study-field.css?v=82e4a049abe7cf57')]).then(([module,fieldCSS])=>{
    mountField=module.default;fieldStyle=document.createElement('style');fieldStyle.media='not all';
    // Keep the bottom save control still when pointer entry reveals trace links.
    fieldStyle.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
@@ -254,11 +265,13 @@ async function start(){
  }});
  studySets.update({accountKey:account,books});
  function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return readingAddress('#'+p);}
+ const readerCardCache=publicReaderCardCache();
  function referenceRows(ids){
   const favourites=new Set(saved.favourites);
+  const projectionContext=JSON.stringify([state.readingLanguages,state.paneVersions]);
   return [...ids].flatMap(id=>{
    const node=index.nodes.get(id);if(!node||!['claim','passage'].includes(node.kind))return [];
-   const row=adapter.card(id,{state}),citation=[node.work?.author,node.work?.title||data.lateral.title,id].filter(Boolean).join(', ')+'.';
+   const row=readerCardCache(id,adapter,projectionContext,()=>adapter.card(id,{state})),citation=[node.work?.author,node.work?.title||data.lateral.title,id].filter(Boolean).join(', ')+'.';
    const note=node.grounding?.type==='Unresolved'?'Source alignment unresolved':node.passages?.some(p=>p.review==='unreviewed')?'AI source links · awaiting review':'';
    const result={...row,scope:'',metadata:[row.author,row.work_title,row.chapter_title,note,row.is_translation?`${row.reading_language_name} · saved machine translation`:''].filter(Boolean),citation,citation_short:citation,citation_ibid:`Ibid., ${id}.`,destination:urlFor(node,{route:true}),sheet_destination:urlFor(node),studio_route:{work:node.work?.id||data.works[0]?.id},open_label:'Open Routes',favourite:favourites.has(id)};
    return [result,{...result,scope:`public:${row.unit_id}`},...(row.work_id?[{...result,scope:`work:${row.work_id}`}]:[])];
@@ -866,6 +879,7 @@ async function start(){
    if(kind==='navigate_route'){const target=historyIndex+Number(value);if(target<0||target>=history.length)return;historyIndex=target;state={...history[target]};syncURL();paint();return;}
    if(kind==='connection_action'&&value.action==='open'){const request=++routeRequest;await Promise.all([loader.ensureLateral(),ensureViewer()]);if(request!==routeRequest)return;refreshAdapter();}
    const next=adapter.reduce(state,kind,value);if(next===state)return;state=next;
+   if(kind==='selected_axiom'||kind==='connection_action'&&value?.action==='select_axiom'){paintViewer();saveState();return;}
    if(kind==='connection_action'&&value.action==='open'){view='workspace';if(!opened.includes(currentKey()))opened.push(currentKey());}
    if(kind==='open_reference'||kind==='set_route_mode'||kind==='connection_action'&&value.action==='reference')remember();
    if(kind!=='open_outline_sheet')syncURL();paint();

@@ -6875,6 +6875,7 @@ function beautifulTypesetSource(source){
     previous={id,last,row}
   }
   if(footer.childElementCount>1){source.append(footer);undo.push(()=>footer.remove())}
+  const setTop=(node,top)=>{if(node&&node.style.top!==top+'px')node.style.top=top+'px'}
   const positionControls=()=>{
     const selected=markers.find(marker=>marker.routes&&!marker.routes.hidden&&Number.isFinite(marker.controlTop))
     const body=source.closest('.window-body')
@@ -6882,12 +6883,11 @@ function beautifulTypesetSource(source){
     const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
     const minimum=(body.getBoundingClientRect().top-bounds.top)/(scale||1)+8
     const top=Math.max(selected.controlTop,minimum)
-    if(selected.mark)selected.mark.style.top=top+'px'
-    selected.routes.style.top=(top+(selected.mark?28:0))+'px'
+    setTop(selected.mark,top)
+    setTop(selected.routes,top+(selected.mark?28:0))
   }
   const paintSelectionRail=()=>{
     const selected=markers.find(marker=>marker.article.getAttribute('aria-pressed')==='true')
-    rail.hidden=!selected
     if(!selected){rail.removeAttribute('data-passage-id');return}
     const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
     const walker=document.createTreeWalker(selected.container,4),range=document.createRange()
@@ -6901,17 +6901,39 @@ function beautifulTypesetSource(source){
     }
     if(!first||!last){rail.hidden=true;return}
     const inset=parseFloat(document.defaultView.getComputedStyle(source).paddingLeft)||0
+    rail.hidden=false
     rail.style.left=Math.max(0,inset-9)+'px'
     rail.style.top=((first.top-bounds.top)/(scale||1)-2)+'px'
     rail.style.height=(Math.max(16,(last.bottom-first.top)/(scale||1)+4))+'px'
     rail.dataset.passageId=selected.article.dataset.refId||''
   }
+  const layoutControls=()=>{
+    let nextControl=-Infinity
+    for(const marker of markers){
+      if(!Number.isFinite(marker.natural))continue
+      const {mark,routes}=marker,controlTop=Math.max(marker.natural,nextControl)
+      marker.controlTop=controlTop
+      setTop(mark,controlTop)
+      setTop(routes,controlTop+(mark?28:0))
+      nextControl=controlTop+(routes&&!routes.hidden?56:28)
+    }
+  }
+  const paintSelection=()=>{
+    if(!source.isConnected)return
+    // Selecting a passage changes its rail and controls, not the chapter's
+    // line geometry. Reuse the last measured positions of every other passage.
+    if(!markers.some(marker=>marker.article.getAttribute('aria-pressed')==='true'))rail.hidden=true
+    paintSelectionRail()
+    layoutControls()
+    positionControls()
+  }
   const layout=()=>{
     if(!source.isConnected)return
     const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
-    let previousTop=-Infinity,nextControl=-Infinity
+    // Finish every text measurement before setting any margin positions.
+    // Alternating a Range read and a style write forced layout once per passage.
     for(const marker of markers){
-      const {container,address,mark,routes,studio}=marker
+      const {container}=marker
       const walker=document.createTreeWalker(container,4)
       let node,rect=null
       while(node=walker.nextNode()){
@@ -6921,21 +6943,19 @@ function beautifulTypesetSource(source){
         const candidate=range.getBoundingClientRect()
         if(candidate.height&&candidate.width){rect=candidate;break}
       }
-      if(!rect)continue
-      const natural=(rect.top-bounds.top)/(scale||1),top=Math.max(natural,previousTop+26)
-      address.style.top=top+'px';previousTop=top+(studio?12:0)
-      if(studio){studio.style.top=(top+16)+'px';studio.setAttribute('data-studio-source-positioned','')}
-      const controlTop=Math.max(natural,nextControl)
-      marker.controlTop=controlTop
-      if(mark)mark.style.top=controlTop+'px'
-      if(routes){routes.style.top=(controlTop+(mark?28:0))+'px'}
-      nextControl=controlTop+(routes&&!routes.hidden?56:28)
+      marker.natural=rect?(rect.top-bounds.top)/(scale||1):null
     }
-    positionControls()
-    paintSelectionRail()
+    let previousTop=-Infinity
+    for(const marker of markers){
+      if(!Number.isFinite(marker.natural))continue
+      const {address,studio}=marker,top=Math.max(marker.natural,previousTop+26)
+      setTop(address,top);previousTop=top+(studio?12:0)
+      if(studio){setTop(studio,top+16);studio.setAttribute('data-studio-source-positioned','')}
+    }
+    paintSelection()
   }
   layout()
-  return {layout,positionControls,cleanup(){for(const restore of undo.reverse())restore()}}
+  return {layout,paintSelection,positionControls,cleanup(){for(const restore of undo.reverse())restore()}}
 }
 
 function setupBeautifulText(runtime){
@@ -6946,6 +6966,7 @@ function setupBeautifulText(runtime){
   let disposed=false,observer=null,frame=null,updating=false,marginFrame=null,marginObserver=null,controlFrame=null
   const clearTypesets=()=>{for(const record of typesets.values())record.cleanup();typesets.clear()}
   const layoutMargins=()=>{for(const record of typesets.values())record.layout()}
+  const paintMargins=()=>{for(const record of typesets.values())record.paintSelection()}
   const queueMargins=()=>{if(disposed||!typesets.size||marginFrame!==null)return;marginFrame=view.requestAnimationFrame(()=>{marginFrame=null;if(!disposed)layoutMargins()})}
   const queueControls=()=>{if(disposed||!typesets.size||controlFrame!==null)return;controlFrame=view.requestAnimationFrame(()=>{controlFrame=null;if(!disposed)for(const record of typesets.values())record.positionControls()})}
   const discardChangedProse=records=>{
@@ -7103,7 +7124,7 @@ function setupBeautifulText(runtime){
   if(view.ResizeObserver)marginObserver=new view.ResizeObserver(queueMargins)
   root.ownerDocument.fonts?.ready?.then(()=>{if(!disposed)queueMargins()})
   runtime.paintBeautifulText=refresh
-  runtime.paintBeautifulMargins=layoutMargins
+  runtime.paintBeautifulMargins=paintMargins
   const cleanup=()=>{
     if(disposed)return
     discardChangedProse(observer?.takeRecords?.()||[])
@@ -7120,7 +7141,7 @@ function setupBeautifulText(runtime){
     root.removeAttribute('data-beautiful-text')
     root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed','false'))
     if(runtime.cleanupBeautifulText===cleanup){runtime.cleanupBeautifulText=null;runtime.paintBeautifulText=null}
-    if(runtime.paintBeautifulMargins===layoutMargins)delete runtime.paintBeautifulMargins
+    if(runtime.paintBeautifulMargins===paintMargins)delete runtime.paintBeautifulMargins
   }
   runtime.cleanupBeautifulText=cleanup
   refresh()
@@ -7356,7 +7377,7 @@ function setupReaderTouchSelection(root){
 }
 function setupAxiomCopy(runtime){
   runtime.cleanupAxiomCopy?.()
-  const root=runtime.root,doc=root.ownerDocument
+  const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
   const touchSelection=setupReaderTouchSelection(root)
   const textSelector='[data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id,.axiom-trace,.route-card-via,.field-item .item-copy,.field-item .item-prose,.item-address,.item-trace'
   const cardSelector='[data-select-axiom],[data-select-passage],[data-open-item]'
@@ -7364,29 +7385,65 @@ function setupAxiomCopy(runtime){
     const target=event.target,container=target?.closest?.(textSelector)
     if(!container||!root.contains(container)||!doc?.createTreeWalker||!doc?.createRange)return false
     if(target.closest?.('a[href],svg,math,input,textarea,select'))return false
-    // Read text line rectangles without adding wrappers or changing saved prose.
-    // This also handles formatted, wrapped and dynamically loaded text.
+    const containsPoint=rect=>event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom
+    // Native hit testing identifies the text node at this point without walking
+    // a long formatted paragraph. Verify its glyph rectangles because a caret
+    // may be returned for empty space beside a line or underneath a paragraph.
+    let caret=null
+    try{
+      if(doc.caretPositionFromPoint){
+        const scope=root.getRootNode?.(),position=doc.caretPositionFromPoint(event.clientX,event.clientY,scope?.host?{shadowRoots:[scope]}:undefined)
+        if(position)caret={node:position.offsetNode,offset:position.offset}
+      }else if(doc.caretRangeFromPoint){
+        const position=doc.caretRangeFromPoint(event.clientX,event.clientY)
+        if(position)caret={node:position.startContainer,offset:position.startOffset}
+      }
+    }catch(_){}
+    if(caret?.node?.nodeType===3&&container.contains?.(caret.node)){
+      const node=caret.node
+      if(!node.textContent.trim()||node.parentElement?.closest('svg,math,script,style'))return false
+      const range=doc.createRange(),length=node.textContent.length,offset=Math.max(0,Math.min(length,Number(caret.offset)||0))
+      for(const [start,end] of [[Math.max(0,offset-1),offset],[offset,Math.min(length,offset+1)]]){
+        if(start===end)continue
+        range.setStart(node,start);range.setEnd(node,end)
+        if([...range.getClientRects()].some(containsPoint))return true
+      }
+      return false
+    }
+    // Older engines and shadow roots without native caret support retain the
+    // exact line-rectangle fallback, without adding wrappers to saved prose.
     const walker=doc.createTreeWalker(container,4),range=doc.createRange()
     while(walker.nextNode()){
       const node=walker.currentNode
       if(!node.textContent.trim()||node.parentElement?.closest('svg,math,script,style'))continue
       range.selectNodeContents(node)
       for(const rect of range.getClientRects()){
-        if(event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom)return true
+        if(containsPoint(rect))return true
       }
     }
     return false
   }
-  let gesture=null,nativeTextScope=null,cursorTarget=null
-  const clearCursor=()=>{cursorTarget?.removeAttribute('data-reader-text-hit');cursorTarget=null}
-  const hover=event=>{
-    if(event.pointerType==='touch')return
+  let gesture=null,nativeTextScope=null,cursorTarget=null,hoverFrame=null,pendingHover=null
+  const clearCursor=()=>{
+    if(hoverFrame!==null){view?.cancelAnimationFrame?.(hoverFrame);hoverFrame=null}
+    pendingHover=null;cursorTarget?.removeAttribute('data-reader-text-hit');cursorTarget=null
+  }
+  const paintHover=event=>{
     const next=textHit(event)?event.target:null
     if(next===cursorTarget)return
     clearCursor();cursorTarget=next;cursorTarget?.setAttribute('data-reader-text-hit','')
   }
+  const hover=event=>{
+    if(event.pointerType==='touch')return
+    if(!view?.requestAnimationFrame){paintHover(event);return}
+    pendingHover=event
+    if(hoverFrame!==null)return
+    hoverFrame=view.requestAnimationFrame(()=>{hoverFrame=null;const latest=pendingHover;pendingHover=null;if(latest)paintHover(latest)})
+  }
   const down=event=>{
-    nativeTextScope=textHit(event)?event.target.closest(cardSelector)||event.target.closest(textSelector):null
+    // The touch classifier already preserves scroll, pinch and long-press
+    // selection, so finger presses need no synchronous glyph measurement.
+    nativeTextScope=event.pointerType!=='touch'&&textHit(event)?event.target.closest(cardSelector)||event.target.closest(textSelector):null
     gesture=nativeTextScope?{id:event.pointerId}:null
   }
   const cancel=()=>{gesture=null;nativeTextScope=null}
@@ -7396,7 +7453,6 @@ function setupAxiomCopy(runtime){
     const touchTap=touchSelection.classify(event)
     if(touchTap!==null){if(!touchTap)event.stopImmediatePropagation();return}
     const target=event.target,selection=axiomCodeSelection(root)
-    const text=textHit(event)
     const link=target?.closest?.('a[href]')
     const selected=selection?.isCollapsed===false&&Boolean(String(selection))
     // Continuous typeset prose has no card padding to click. A plain click
@@ -7406,7 +7462,7 @@ function setupAxiomCopy(runtime){
     }
     // Suppress only native text gestures, never blank card space or unrelated
     // controls because an earlier text selection happens to remain on screen.
-    if(text||(link&&link.closest(cardSelector))||(startedOnText&&selected))event.stopImmediatePropagation()
+    if((link&&link.closest(cardSelector))||(startedOnText&&selected)||textHit(event))event.stopImmediatePropagation()
   }
   const key=event=>{
     if(!nativeTextScope||!(event.target===nativeTextScope||nativeTextScope.contains(event.target))||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return

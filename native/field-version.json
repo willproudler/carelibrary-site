@@ -1,10 +1,10 @@
 {
-  "version": "care-study-field/2.85",
+  "version": "care-study-field/2.86",
   "source": "care_platform/study_field_component.py",
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
     "study-field.css": "9dd57f2f1f3ce156dac5ca5bb0b4d60d098d786c7020d11564c827deb896bba7",
-    "study-field.mjs": "c24ec7244da2c3b49ab7c9af89e6508831d2616eb2b01f0a047e722f9b1e49bb"
+    "study-field.mjs": "d01720642ed662807bf56a5bbb2a555d887f3a5bd41416bb6633a97df80e34e9"
   },
   "compatibility_changes": [
     "Apply public reading controls within embedded corpus book readers"
