@@ -9,11 +9,11 @@ function readerHelpers(name){
   const start=source.indexOf('const VIBRANT_VIEW_KEY=');
   const end=source.indexOf('\nfunction axiomCopyAttributes',start);
   assert.ok(start>=0&&end>start);
-  return new Function(source.slice(start,end)+';return {setup:setupVibrantView,control:vibrantViewControl};')();
+  return new Function((name==='study-desk'?source.slice(0,source.indexOf('const INSTANCES =')):'')+source.slice(start,end)+';return {setup:setupVibrantView,control:vibrantViewControl};')();
 }
 function viewerSetup(){
   const source=read('native/reference-viewer.mjs');
-  return new Function(source.slice(source.indexOf('const VIEWER_VIBRANT_KEY'),source.indexOf('\nfunction setup(parentElement'))+';return setupViewerVibrantView;')();
+  return new Function(source.slice(0,Math.max(0,source.indexOf('const INSTANCES =')))+source.slice(source.indexOf('const VIEWER_VIBRANT_KEY'),source.indexOf('\nfunction setup(parentElement'))+';return setupViewerVibrantView;')();
 }
 function environment(entries=[],bodyState={}){
   const saved=new Map(entries),view=new EventTarget();
