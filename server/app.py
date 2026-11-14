@@ -36,7 +36,7 @@ COOKIE_NAME = "__Host-care_session"
 MAX_BODY_BYTES = 4096
 OWNER_FILES = frozenset({"site-settings.html", "site-settings.mjs"})
 PUBLIC_FILES = frozenset({
-    "index.html", "discover.html", "about.html", "welcome.html", "login.html", "request-access.html",
+    "index.html", "discover.html", "about.html", "about.css", "about-page.mjs", "about-live-panels.mjs", "welcome.html", "login.html", "request-access.html",
     "auth.mjs", "login.mjs", "landing.mjs", "legacy-landing.mjs", "request-access.mjs",
     "auth.css", "styles.css", "discover.css", "discover-atlas.css",
     "discover-experiments.css", "brand-header.css", "site.webmanifest",
@@ -58,13 +58,20 @@ PUBLIC_BRANDING = frozenset({
     "assets/ui-fonts/source-sans.woff2", "assets/ui-fonts/source-code.woff2",
     "assets/ui-icons/workbench.svg",
 })
+# Presentation code for the finite, build-time About examples. This list does
+# not grant access to any saved-library data, generated reading module or API.
+PUBLIC_ABOUT_RENDERER = frozenset({
+    "native/study-desk.mjs", "native/study-desk.css",
+    "native/reference-viewer.mjs", "native/reference-viewer.css", "native/reference-viewer.html",
+    "native/public-scope.css",
+})
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".svg", ".ico"})
 NUMO_FONTS = frozenset({
     "native/numo-Kalam-Regular.ttf", "native/numo-IBMPlexMono-Regular.ttf", "native/numo-IBMPlexMono-Medium.ttf",
     "native/numo-EBGaramond.ttf", "native/numo-EBGaramond-Italic.ttf", "native/numo-VT323-Regular.ttf",
 })
 PUBLIC_STATIC_ASSETS = frozenset(
-    name for name in PUBLIC_FILES | PUBLIC_BRANDING | PUBLIC_NUMOGRAM | NUMO_FONTS
+    name for name in PUBLIC_FILES | PUBLIC_BRANDING | PUBLIC_ABOUT_RENDERER | PUBLIC_NUMOGRAM | NUMO_FONTS
     if Path(name).suffix.lower() != ".html"
 ) | frozenset({"books/books.css", "books/readings.css", "numogram/numogram.css"})
 SECURITY_HEADERS = {
@@ -469,7 +476,7 @@ async def static_file(request):
         raise HTTPException(404, "Not found.")
     suffix = Path(relative).suffix.lower()
     public = (unconditional_asset or search is not None or relative in PUBLIC_FILES or relative in PUBLIC_BRANDING
-              or relative in PUBLIC_NUMOGRAM or relative in NUMO_FONTS)
+              or relative in PUBLIC_ABOUT_RENDERER or relative in PUBLIC_NUMOGRAM or relative in NUMO_FONTS)
     owner_only = relative in OWNER_FILES
     permitted = (public or owner_only or relative == "library.html"
                  or (len(parts) == 1 and suffix in {".mjs", ".js", ".css"})
@@ -495,7 +502,9 @@ async def static_file(request):
     beta_enabled = configuration["beta_enabled"] if configuration else True
     catalogue_public = (relative == "library.html" and not beta_enabled
                         and not any(key.startswith("care_studio_") for key in request.query_params))
-    crawlable = public or catalogue_public
+    # The standalone reference-viewer HTML is a UI fragment, not a reading or
+    # discovery page. Serving it publicly must not invite it into search results.
+    crawlable = (public and relative != "native/reference-viewer.html") or catalogue_public
     if not beta_enabled and relative == "index.html":
         destination = "/library.html" + ("?" + request.url.query if request.url.query else "")
         return json_response({"location": destination}, 303, {"Location": destination})
@@ -595,3 +604,4 @@ def create_app(*, env=None, settings=None, access_service=None):
     app.state.mail_limiter = anyio.CapacityLimiter(2)
     app.state.search_limiter = anyio.CapacityLimiter(1)
     return app
+

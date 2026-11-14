@@ -1,3 +1,12 @@
+// Optional About examples keep viewer history and appearance in memory.
+const EPHEMERAL_VIEWER_STORES = new WeakMap()
+function referenceViewerStorage(root,kind='sessionStorage'){
+  if(root?.dataset?.ephemeralWorkspace!=='true')return root?.ownerDocument?.defaultView?.[kind]
+  let stores=EPHEMERAL_VIEWER_STORES.get(root)
+  if(!stores){stores={};EPHEMERAL_VIEWER_STORES.set(root,stores)}
+  if(!stores[kind]){const values=new Map();stores[kind]={getItem:key=>values.has(String(key))?values.get(String(key)):null,setItem:(key,value)=>values.set(String(key),String(value)),removeItem:key=>values.delete(String(key)),clear:()=>values.clear()}}
+  return stores[kind]
+}
 
 const INSTANCES = new WeakMap()
 const SAVED_VIEWERS = new WeakMap()
@@ -16,16 +25,16 @@ const layerColor = layer => ({
 function setupViewerVibrantView(runtime) {
   const root=runtime.root,doc=root.ownerDocument||document,view=doc.defaultView||window
   const read=()=>{
-    if(doc.body?.dataset?.careVibrantViewVersion==='2')return doc.body.dataset.careVibrantView==='true'
-    try{const saved=view.localStorage?.getItem(VIEWER_VIBRANT_KEY);if(saved!==null&&saved!==undefined)return saved==='true'}catch(_){}
+    if(root.dataset.ephemeralWorkspace!=='true'&&doc.body?.dataset?.careVibrantViewVersion==='2')return doc.body.dataset.careVibrantView==='true'
+    try{const saved=referenceViewerStorage(root,'localStorage')?.getItem(VIEWER_VIBRANT_KEY);if(saved!==null&&saved!==undefined)return saved==='true'}catch(_){}
     return false
   }
   const paint=enabled=>{
     runtime.vibrantView=enabled===true;root.dataset.vibrantView=String(runtime.vibrantView)
-    if(doc.body){doc.body.dataset.careVibrantView=String(runtime.vibrantView);doc.body.dataset.careVibrantViewVersion='2'}
+    if(root.dataset.ephemeralWorkspace!=='true'&&doc.body){doc.body.dataset.careVibrantView=String(runtime.vibrantView);doc.body.dataset.careVibrantViewVersion='2'}
   }
-  const change=event=>{if(typeof event.detail?.enabled==='boolean')paint(event.detail.enabled)}
-  const storage=event=>{if(event.key===VIEWER_VIBRANT_KEY||event.key===null)paint(event.key!==null&&event.newValue==='true')}
+  const change=event=>{if(root.dataset.ephemeralWorkspace==='true')return;if(typeof event.detail?.enabled==='boolean')paint(event.detail.enabled)}
+  const storage=event=>{if(root.dataset.ephemeralWorkspace==='true')return;if(event.key===VIEWER_VIBRANT_KEY||event.key===null)paint(event.key!==null&&event.newValue==='true')}
   view.addEventListener(VIEWER_VIBRANT_EVENT,change);view.addEventListener('storage',storage)
   let disposed=false
   runtime.cleanupVibrantView=()=>{if(disposed)return;disposed=true;view.removeEventListener(VIEWER_VIBRANT_EVENT,change);view.removeEventListener('storage',storage);delete root.dataset.vibrantView}
@@ -63,9 +72,9 @@ function dismissMobileViewerOutside(runtime,event) {
   event.preventDefault();event.stopImmediatePropagation();runtime.onClose()
   return true
 }
-function setup(parentElement, root, setTriggerValue) {
+function setup(parentElement, root, setTriggerValue, eventRoot=null, eventScope='') {
   const runtime = {
-    root, registry:new Map(), sequence:[], selected:null, spatialElement:null, open:false, surface:"read", toolScreen:"home", statusTimer:null, textScaleIndex:2, setTriggerValue,
+    root, eventRoot, eventScope, registry:new Map(), sequence:[], selected:null, spatialElement:null, open:false, surface:"read", toolScreen:"home", statusTimer:null, textScaleIndex:2, setTriggerValue,
     launcher:root.querySelector(".crv-launcher"),launcherLabel:root.querySelector(".crv-launcher-label"),panel:root.querySelector(".crv-panel"),close:root.querySelector(".crv-close"),returnStudio:root.querySelector(".crv-return-studio"),
     textSmaller:root.querySelector(".crv-text-smaller"),textLarger:root.querySelector(".crv-text-larger"),previous:root.querySelector(".crv-previous"),next:root.querySelector(".crv-next"),referenceId:root.querySelector(".crv-reference-id"),copyId:root.querySelector(".crv-copy-id:not([data-copy-reading])"),empty:root.querySelector(".crv-empty"),content:root.querySelector(".crv-content"),
     readingLinks:[...root.querySelectorAll("[data-copy-reading]")],
@@ -83,7 +92,7 @@ function setup(parentElement, root, setTriggerValue) {
     edition:null,editionTitle:root.querySelector(".crv-edition-title"),editionDescription:root.querySelector(".crv-edition-description"),editionStatistics:root.querySelector(".crv-edition-statistics"),editionPrepare:root.querySelector(".crv-edition-prepare"),editionDownloads:root.querySelector(".crv-edition-downloads"),editionMarkdown:root.querySelector(".crv-edition-markdown"),editionPdf:root.querySelector(".crv-edition-pdf"),editionStatus:root.querySelector(".crv-edition-status"),
   }
   try {
-    const savedScale = window.sessionStorage.getItem(TEXT_SIZE_KEY)
+    const savedScale = referenceViewerStorage(root,'sessionStorage').getItem(TEXT_SIZE_KEY)
     const parsedScale = savedScale === null ? Number.NaN : Number(savedScale)
     if (Number.isInteger(parsedScale)) runtime.textScaleIndex = Math.max(0,Math.min(TEXT_SCALES.length-1,parsedScale))
   } catch (_) {}
@@ -91,7 +100,7 @@ function setup(parentElement, root, setTriggerValue) {
   for (let score=1;score<=5;score+=1) { const button=document.createElement("button");button.type="button";button.className="crv-star";button.dataset.score=String(score);button.setAttribute("aria-label",`${score} star${score===1?"":"s"}`);button.textContent="★";runtime.stars.append(button) }
   const surfaceFor = element => element.closest(".care-axiom,.relative-card,.passage-card,.related-axiom,.lineage-node,.lineage-passage-card,.family-card") || element
   runtime.historyRecords = () => {
-    try { const value = JSON.parse(window.sessionStorage.getItem(runtime.historyKey || HISTORY_KEY) || "[]"); return Array.isArray(value) ? value : [] }
+    try { const value = JSON.parse(referenceViewerStorage(root,'sessionStorage').getItem(runtime.historyKey || HISTORY_KEY) || "[]"); return Array.isArray(value) ? value : [] }
     catch (_) { return [] }
   }
   runtime.lineageElement = ref => {
@@ -141,7 +150,7 @@ function setup(parentElement, root, setTriggerValue) {
     if (ref.studio_route && Object.keys(ref.studio_route).length) record.studio_route = ref.studio_route
     const records = runtime.historyRecords().filter(item => keyFor(item.kind,item.id,item.scope) !== keyFor(ref.kind,ref.id,ref.scope))
     records.unshift(record)
-    try { window.sessionStorage.setItem(runtime.historyKey || HISTORY_KEY, JSON.stringify(records.slice(0,60))) } catch (_) {}
+    try { referenceViewerStorage(root,'sessionStorage').setItem(runtime.historyKey || HISTORY_KEY, JSON.stringify(records.slice(0,60))) } catch (_) {}
   }
   runtime.renderHistory = () => {
     runtime.historyList.replaceChildren()
@@ -617,7 +626,7 @@ function setup(parentElement, root, setTriggerValue) {
     const next=Math.max(0,Math.min(TEXT_SCALES.length-1,runtime.textScaleIndex+delta))
     if(next===runtime.textScaleIndex)return
     runtime.textScaleIndex=next
-    try { window.sessionStorage.setItem(TEXT_SIZE_KEY,String(next)) } catch (_) {}
+    try { referenceViewerStorage(root,'sessionStorage').setItem(TEXT_SIZE_KEY,String(next)) } catch (_) {}
     runtime.render();runtime.showStatus(delta<0?"Viewer text made smaller":"Viewer text made larger")
   }
   runtime.onTextSmaller = () => runtime.setTextScale(-1)
@@ -626,7 +635,7 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.onClear = () => { runtime.selected = null;runtime.surface="read";runtime.toolScreen="home";runtime.open = true;runtime.render() }
   runtime.onPrevious = () => runtime.move(-1)
   runtime.onNext = () => runtime.move(1)
-  runtime.onHistoryClear = () => { try { window.sessionStorage.removeItem(runtime.historyKey || HISTORY_KEY) } catch (_) {};runtime.renderHistory() }
+  runtime.onHistoryClear = () => { try { referenceViewerStorage(root,'sessionStorage').removeItem(runtime.historyKey || HISTORY_KEY) } catch (_) {};runtime.renderHistory() }
   runtime.onCopyText = () => runtime.copy(runtime.selected?.reading_text ?? runtime.selected?.text)
   runtime.onCopyId = async () => {
     const reference=runtime.selected
@@ -669,9 +678,15 @@ function setup(parentElement, root, setTriggerValue) {
   runtime.onSheetCollect=()=>{if(!runtime.sheetContext)return;runtime.showStatus("Full CARE sheet added");runtime.emit("sheet_collect",{sheet_id:runtime.sheetContext.unit_id||""})}
   runtime.onSheetExport=()=>{if(!runtime.sheetContext)return;runtime.emit("sheet_export",{sheet_id:runtime.sheetContext.unit_id||""})}
   runtime.onEditionPrepare=()=>{if(!runtime.edition)return;runtime.editionPrepare.disabled=true;runtime.editionPrepare.textContent="Preparing the complete edition…";runtime.editionStatus.textContent="Binding every finding, quotation, and cited axiom…";runtime.setTriggerValue("action",{type:"edition_prepare",id:runtime.edition.signature||"edition",nonce:`${Date.now()}-${Math.random()}`})}
-  runtime.onReferencePreview=event=>{const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;runtime.previewSource=detail.source||null;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:true,remember:!selected})}
-  runtime.onReferenceDismissPreview=event=>{if(!runtime.previewSource||event.detail?.source!==runtime.previewSource)return;runtime.previewSource=null;runtime.open=false;runtime.render()}
+  runtime.onReferencePreview=event=>{
+    if(runtime.eventScope&&event.detail?.event_scope!==runtime.eventScope)return;
+const detail=event.detail||{},ref=runtime.registry.get(keyFor(detail.kind,detail.id,detail.scope));if(!ref)return;runtime.previewSource=detail.source||null;const selected=runtime.selected&&keyFor(runtime.selected.kind,runtime.selected.id,runtime.selected.scope)===keyFor(ref.kind,ref.id,ref.scope);runtime.select(ref,{open:true,remember:!selected})}
+  runtime.onReferenceDismissPreview=event=>{
+    if(runtime.eventScope&&event.detail?.event_scope!==runtime.eventScope)return;
+if(!runtime.previewSource||event.detail?.source!==runtime.previewSource)return;runtime.previewSource=null;runtime.open=false;runtime.render()}
   runtime.onReferenceSelect = event => {
+    if(runtime.eventScope&&event.detail?.event_scope!==runtime.eventScope)return;
+
     const detail = event.detail || {}
     const ref = runtime.registry.get(keyFor(detail.kind, detail.id, detail.scope))
     if (!ref) return
@@ -679,10 +694,15 @@ function setup(parentElement, root, setTriggerValue) {
     const showUses = detail.open === true && detail.surface === "writing_uses" && ref.writing_uses_available
     runtime.select(ref, {open:detail.open === true || runtime.open, remember:!selected, surface:showUses ? "writing_uses" : "read"})
     if (showUses) runtime.loadDraftUses()
+    if(runtime.eventScope)runtime.setTriggerValue("action",{type:"preview_select",id:ref.id,scope:ref.scope||""})
     event.preventDefault?.()
   }
-  runtime.onReferenceClearSelection=event=>{const detail=event.detail||{},selected=runtime.selected;if(!selected||keyFor(selected.kind,selected.id,selected.scope)!==keyFor(detail.kind,detail.id,detail.scope))return;runtime.selected=null;runtime.previewSource=null;runtime.surface="read";runtime.toolScreen="home";runtime.render()}
+  runtime.onReferenceClearSelection=event=>{
+    if(runtime.eventScope&&event.detail?.event_scope!==runtime.eventScope)return;
+const detail=event.detail||{},selected=runtime.selected;if(!selected||keyFor(selected.kind,selected.id,selected.scope)!==keyFor(detail.kind,detail.id,detail.scope))return;runtime.selected=null;runtime.previewSource=null;runtime.surface="read";runtime.toolScreen="home";runtime.render()}
   runtime.onPaneFocus = event => {
+    if(runtime.eventRoot&&!event.composedPath?.().includes(runtime.eventRoot))return;
+
     if(!runtime.studioMode)return
     const path=typeof event.composedPath==="function"?event.composedPath():[event.target]
     const pane=path.find(node=>node instanceof Element&&node.matches('.desk-window[data-layer],.field-pane[data-pane]'))
@@ -693,6 +713,8 @@ function setup(parentElement, root, setTriggerValue) {
     runtime.paneAccent=accent;runtime.root.style.setProperty('--crv-accent',accent)
   }
   runtime.onDocumentClick = event => {
+    if(runtime.eventRoot&&!event.composedPath?.().includes(runtime.eventRoot))return;
+
     if(dismissMobileViewerOutside(runtime,event))return
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     if (event.target instanceof Element && event.target.closest("a[data-care-reference-direct]")) return
@@ -717,6 +739,8 @@ function setup(parentElement, root, setTriggerValue) {
     return path.some(node=>node instanceof HTMLElement&&(node.matches("input,textarea,select")||node.isContentEditable))
   }
   runtime.onDocumentKeydown = event => {
+    if(runtime.eventRoot&&!event.composedPath?.().includes(runtime.eventRoot))return;
+
     // The ordinary CARE sheet owns its selection controls. These attributes
     // are absent inside Routes, whose viewer shortcuts remain unchanged.
     const path=typeof event.composedPath==="function"?event.composedPath():[event.target]
@@ -744,6 +768,8 @@ function setup(parentElement, root, setTriggerValue) {
     if (key==="t"&&(runtime.selected?.kind==="axiom"||runtime.selected?.bookmark_available)) {event.preventDefault();if(runtime.surface==="tools")runtime.showRead();else runtime.showTools("home");return}
   }
   runtime.onDocumentCopy = event => {
+    if(runtime.eventRoot&&!event.composedPath?.().includes(runtime.eventRoot))return;
+
     if(event.defaultPrevented || event.composedPath().some(node=>node instanceof HTMLElement&&node.matches('[role="dialog"]')))return
     const scopedCopy = runtime.studioEmbed || runtime.copyStudioReference
     if (scopedCopy && runtime.eventComesFromEditable(event)) return
@@ -840,11 +866,12 @@ export default function(component) {
   const { parentElement, data, setTriggerValue } = component
   const root = parentElement.querySelector("[data-care-reference-viewer-root]")
   if (!root) return
+  root.dataset.ephemeralWorkspace=String(Boolean(data?.ephemeral_workspace))
   let runtime = INSTANCES.get(parentElement)
   // Dispose before binding this render. A late host cleanup then becomes a
   // no-op, while setup restores the viewer's saved selection and reading state.
   if(runtime)teardown(parentElement,runtime)
-  runtime = setup(parentElement, root, setTriggerValue)
+  runtime = setup(parentElement, root, setTriggerValue, component.eventRoot, component.eventScope)
   runtime.renderCleanup=()=>teardown(parentElement,runtime)
   runtime.setTriggerValue = setTriggerValue
   runtime.studioMode = Boolean(data?.studio_mode)

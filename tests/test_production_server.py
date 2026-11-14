@@ -63,7 +63,10 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         }
         self.files = {
             "index.html": "Public Discover",
-            "about.html": "Discover compatibility",
+            "about.html": "About CARE Library",
+            "about.css": "public About styles",
+            "about-page.mjs": "public About interactions",
+            "about-live-panels.mjs": "public saved-panel adapter",
             "welcome.html": "Welcome compatibility",
             "login.html": "Login",
             "request-access.html": "Request access",
@@ -76,6 +79,9 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
             "auth.css": "public login styles",
             "assets/care-header-mark.svg": "<svg>public branding</svg>",
             "assets/favicon-32.png": "public icon",
+            "assets/about/reading.png": "published reading screenshot",
+            "assets/about/chapter.png": "published chapter screenshot",
+            "assets/about/lateral.png": "published lateral screenshot",
             "library.html": "Protected Library",
             "public-app.mjs": "protected reader module",
             "boot.mjs": "protected reader boot",
@@ -83,9 +89,13 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
             "data/library-parts/part.jsonpart": '{"private":"large catalogue part"}',
             "data/chunks/work-123.json": '{"private":"reading chunk"}',
             "data/chunks/work-123.json.gz": "private precompressed reading",
-            "native/study-desk.mjs": "protected renderer",
-            "native/study-desk.css": "protected renderer styles",
-            "native/reference-viewer.html": "protected reference view",
+            "native/study-desk.mjs": "public shared renderer code",
+            "native/study-desk.css": "public shared renderer styles",
+            "native/reference-viewer.mjs": "public shared reference viewer code",
+            "native/reference-viewer.css": "public shared reference viewer styles",
+            "native/reference-viewer.html": "public reference viewer UI fragment",
+            "native/public-scope.css": "public browser reader controls",
+            "native/reference-viewer-private.json": "protected reference data",
             "native/reading-views.mjs": "protected generated readings",
             "assets/covers/book.jpg": "protected cover",
             "assets/covers/web/cover-123.webp": "protected cover variant",
@@ -185,7 +195,8 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_public_discover_and_login_are_available_but_readings_require_session(self):
         for path in ("/", "/index.html", "/about.html", "/welcome.html", "/login.html",
                      "/request-access.html", "/auth.mjs", "/landing.mjs", "/login.mjs",
-                     "/request-access.mjs", "/auth.css", "/assets/care-header-mark.svg",
+                     "/request-access.mjs", "/auth.css", "/about.css", "/about-page.mjs", "/about-live-panels.mjs",
+                     "/native/study-desk.mjs", "/native/study-desk.css", "/assets/care-header-mark.svg",
                      "/assets/favicon-32.png"):
             with self.subTest(path=path):
                 response = await self.client.get(path)
@@ -201,8 +212,7 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(target.path, "/login.html")
         self.assertEqual(target.params.get("next"), "/library.html?mode=read")
         for path in ("/data/library.json", "/data/library-parts/part.jsonpart",
-                     "/data/chunks/work-123.json", "/native/study-desk.mjs",
-                     "/native/study-desk.css", "/native/reference-viewer.html",
+                     "/data/chunks/work-123.json", "/native/reference-viewer-private.json",
                      "/native/reading-views.mjs", "/assets/covers/book.jpg",
                      "/assets/covers/web/cover-123.webp", "/public-app.mjs", "/boot.mjs"):
             with self.subTest(path=path):
@@ -213,6 +223,31 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
         compressed = await self.client.get("/data/chunks/work-123.json.gz")
         self.assertIn(compressed.status_code, (401, 404))
         self.assertNotIn("private precompressed reading", compressed.text)
+
+    async def test_about_renderer_is_public_without_unlocking_reading_data(self):
+        for path in ("/about-live-panels.mjs", "/native/study-desk.mjs", "/native/study-desk.css",
+                     "/native/reference-viewer.mjs", "/native/reference-viewer.css", "/native/public-scope.css",
+                     "/native/reference-viewer.html"):
+            with self.subTest(path=path):
+                response = await self.client.get(path)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertIn(response.headers["content-type"].split(";")[0], {"text/css", "text/html", "application/javascript", "text/javascript"})
+                self.assertEqual(response.content, self.files[path.lstrip("/")].encode())
+                expected_cache = "no-store" if path.endswith(".html") else PUBLIC_ASSET
+                self.assertEqual(response.headers["cache-control"], expected_cache)
+                if path.endswith(".html"):
+                    self.assertEqual(response.headers["x-robots-tag"], "noindex")
+                head = await self.client.head(path)
+                self.assertEqual(head.status_code, 200)
+                self.assertEqual(head.headers["content-type"], response.headers["content-type"])
+                self.assertEqual(head.content, b"")
+        for path in ("/data/library.json", "/data/chunks/work-123.json", "/assets/covers/book.jpg",
+                     "/native/reading-views.mjs", "/native/reference-viewer-private.json"):
+            with self.subTest(protected_path=path):
+                response = await self.client.get(path)
+                self.assertEqual(response.status_code, 401)
+                self.assert_no_store(response)
+        self.assertFalse((await self.client.get("/api/session")).json()["authenticated"])
 
     async def test_secure_server_session_unlocks_assets_and_logout_revokes_old_token(self):
         response = await self.authenticated()
@@ -1184,3 +1219,4 @@ class ProductionServerTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

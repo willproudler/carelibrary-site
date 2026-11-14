@@ -1,3 +1,13 @@
+// Optional isolated examples use per-root memory instead of changing a reader's
+// saved workspace or preferences. Ordinary Library mounts retain their storage.
+const EPHEMERAL_READER_STORES = new WeakMap()
+function studyDeskStorage(root,kind='localStorage'){
+  if(root?.dataset?.ephemeralWorkspace!=='true')return root?.ownerDocument?.defaultView?.[kind]
+  let stores=EPHEMERAL_READER_STORES.get(root)
+  if(!stores){stores={};EPHEMERAL_READER_STORES.set(root,stores)}
+  if(!stores[kind]){const values=new Map();stores[kind]={getItem:key=>values.has(String(key))?values.get(String(key)):null,setItem:(key,value)=>values.set(String(key),String(value)),removeItem:key=>values.delete(String(key)),clear:()=>values.clear()}}
+  return stores[kind]
+}
 
 const INSTANCES = new WeakMap()
 
@@ -555,14 +565,14 @@ function readerMenuLabel(markup,label){return markup.replace('</button>',`<span 
 
 const READING_FOCUS_KEY = "care-reading-focus-v1";
 const READING_FOCUS_EVENT = "care-reading-focus-change";
-function readingFocusEnabled(view) {
-  try { return view?.sessionStorage?.getItem(READING_FOCUS_KEY) === "true"; }
+function readingFocusEnabled(view,root=null) {
+  try { return (root?studyDeskStorage(root,'sessionStorage'):view?.sessionStorage)?.getItem(READING_FOCUS_KEY) === "true"; }
   catch (_) { return false; }
 }
 
 function setupReadingFocus(runtime){
   const {root}=runtime,view=root.ownerDocument.defaultView
-  runtime.paintReadingFocus=()=>{root.dataset.readingFocus=String(readingFocusEnabled(view))}
+  runtime.paintReadingFocus=()=>{root.dataset.readingFocus=String(readingFocusEnabled(view,root))}
   runtime.watchReadingFocus=()=>{
     const paint=runtime.paintReadingFocus,storage=event=>{if(event.key===READING_FOCUS_KEY||event.key===null)paint()}
     view?.addEventListener(READING_FOCUS_EVENT,paint)
@@ -578,7 +588,7 @@ function connectionViewControl(){
 function setupConnectionView(runtime,redraw){
   runtime.cleanupConnectionView?.()
   const root=runtime.root,view=root.ownerDocument.defaultView,key=root.dataset?.studioEmbed==='true'?'care-companion-connection-view-v1':'care-connection-view-v1',eventName='care-connection-view-change'
-  const read=()=>{try{const storage=view?.localStorage;return storage?storage.getItem(key)==='all'?'all':'flow':runtime.connectionView||'flow'}catch(_){return runtime.connectionView||'flow'}}
+  const read=()=>{try{const storage=studyDeskStorage(root,'localStorage');return storage?storage.getItem(key)==='all'?'all':'flow':runtime.connectionView||'flow'}catch(_){return runtime.connectionView||'flow'}}
   const draw=()=>{if(runtime.queueThreads)runtime.queueThreads();else redraw?.()}
   runtime.connectionView=read()
   runtime.paintConnectionView=()=>{
@@ -586,7 +596,7 @@ function setupConnectionView(runtime,redraw){
   }
   const apply=mode=>{const next=mode==='all'?'all':'flow',changed=next!==runtime.connectionView;runtime.connectionView=next;runtime.paintConnectionView();if(changed)draw()}
   const change=event=>{if(event.detail?.mode==='all'||event.detail?.mode==='flow')apply(event.detail.mode)}
-  const storage=event=>{if(event.key===key||event.key===null)apply(read())}
+  const storage=event=>{if(root.dataset.ephemeralWorkspace==='true')return;if(event.key===key||event.key===null)apply(read())}
   const click=runtime.onClick
   runtime.onClick=event=>{
     const control=event.target?.closest?.('[data-connection-view]')
@@ -595,8 +605,8 @@ function setupConnectionView(runtime,redraw){
     const mode=control.dataset.connectionView
     if(mode!=='all'&&mode!=='flow')return
     apply(mode)
-    try{view?.localStorage?.setItem(key,mode)}catch(_){}
-    if(view?.CustomEvent)view.dispatchEvent(new view.CustomEvent(eventName,{detail:{mode}}))
+    try{studyDeskStorage(root,'localStorage')?.setItem(key,mode)}catch(_){}
+    if(!runtime.data?.ephemeral_workspace&&view?.CustomEvent)view.dispatchEvent(new view.CustomEvent(eventName,{detail:{mode}}))
   }
   runtime.attachConnectionView=()=>{view?.addEventListener(eventName,change);view?.addEventListener('storage',storage);apply(read())}
   runtime.cleanupConnectionView=()=>{view?.removeEventListener(eventName,change);view?.removeEventListener('storage',storage)}
@@ -619,7 +629,7 @@ function setupSliderArrows(runtime){
     let preference=owner()?.careSliderArrowsVisible
     // A reader may be mounted before the app's listener sets the new value.
     if(typeof next==='boolean')preference=fallback=next
-    else if(typeof preference!=='boolean')try{if(view?.localStorage)fallback=view.localStorage.getItem(key)!=='false'}catch(_){}
+    else if(typeof preference!=='boolean')try{if(studyDeskStorage(root,'localStorage'))fallback=studyDeskStorage(root,'localStorage').getItem(key)!=='false'}catch(_){}
     const visible=typeof preference==='boolean'?preference:fallback,pressed=String(visible)
     if(root.dataset&&root.dataset.careSliderArrows!==pressed)root.dataset.careSliderArrows=pressed
     const button=root.querySelector('[data-care-slider-arrows-toggle]')
@@ -633,14 +643,14 @@ function setupSliderArrows(runtime){
     const current=owner()
     if(host===current||typeof current?.careSliderArrowsVisible!=='boolean')paint(event.detail?.visible)
   }])
-  const storage=event=>{if(event.key===key||event.key===null)paint()}
+  const storage=event=>{if(root.dataset.ephemeralWorkspace==='true')return;if(event.key===key||event.key===null)paint()}
   return {
     toggle(){
       const host=owner();if(!host?.CustomEvent)return
       const detail={visible:!paint()}
       if(typeof host.careSliderArrowsVisible==='boolean')host.dispatchEvent(new host.CustomEvent(request,{detail}))
       else{
-        try{view?.localStorage?.setItem(key,String(detail.visible))}catch(_){}
+        try{studyDeskStorage(root,'localStorage')?.setItem(key,String(detail.visible))}catch(_){}
         host.dispatchEvent(new host.CustomEvent(changed,{detail}))
       }
     },
@@ -1201,7 +1211,7 @@ function setupAxiomStudioUses(runtime){
     if(runtime.data?.studio_embed){
       const view=runtime.root.ownerDocument.defaultView
       if(view?.CustomEvent){
-        const inspect=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{kind,id,scope,open:true,surface:"writing_uses"}})
+        const inspect=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{event_scope:runtime.eventScope||"",kind,id,scope,open:true,surface:"writing_uses"}})
         view.dispatchEvent(inspect)
         if(inspect.defaultPrevented)return
       }
@@ -1310,7 +1320,7 @@ function setupStudioDeskCopy(runtime){
     if(event.defaultPrevented||!event.clipboardData||origin?.closest?.(editable))return
     const packet=reference()
     if(!packet)return
-    const token=studioSourceClipboardToken(view,packet)
+    const token=studioSourceClipboardToken(view,packet,root)
     if(packet.mode==="passage-quote"&&!token)return
     event.clipboardData.setData("text/plain",packet.text)
     if(token){
@@ -2200,7 +2210,7 @@ function routePresentationControls(reference){
 function setupRoutePresentation(runtime){
   const root=runtime.root,view=root.ownerDocument.defaultView,studioEmbed=root.dataset?.studioEmbed==="true"
   let mode="all"
-  try{if(!studioEmbed&&view?.sessionStorage?.getItem(ROUTE_PRESENTATION_KEY)==="compact")mode="compact"}catch(_){}
+  try{if(!studioEmbed&&studyDeskStorage(root,'sessionStorage')?.getItem(ROUTE_PRESENTATION_KEY)==="compact")mode="compact"}catch(_){}
   runtime.routePresentation=mode
   const state={scope:"",groups:new Map(),positions:new Map()}
   const groups=()=>[...root.querySelectorAll("details[data-route-reading]")].filter(group=>!group.closest("[data-connection-book],[data-connection-field]"))
@@ -2231,7 +2241,7 @@ function setupRoutePresentation(runtime){
     event.preventDefault()
     state.positions.set(runtime.routePresentation,positions())
     runtime.routePresentation=next
-    try{if(!studioEmbed)view?.sessionStorage?.setItem(ROUTE_PRESENTATION_KEY,next)}catch(_){}
+    try{if(!studioEmbed)studyDeskStorage(root,'sessionStorage')?.setItem(ROUTE_PRESENTATION_KEY,next)}catch(_){}
     runtime.applyRoutePresentation({reset:true})
     const saved=state.positions.get(next)
     for(const body of root.querySelectorAll(".window-body")){if(body.closest("[data-connection-book],[data-connection-field]"))continue;const top=saved?.get(body.closest("[data-pane]")?.dataset.pane);if(top!==undefined)body.scrollTop=top}
@@ -3373,7 +3383,7 @@ function setupConnectionReader(runtime){
     // A scoped acknowledgement prevents accidentally using a newer edition
     // with the same CARE ID. Fall back if the viewer has not mounted yet.
     const view=root.ownerDocument.defaultView,scope=selection.pane_id||(selection.work_id?`work:${selection.work_id}`:"")
-    if(view?.CustomEvent){const event=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{kind:button.dataset.selectPassage||pane.dataset.layer==="SOURCE"?"passage":"axiom",id,scope,open:false}});view.dispatchEvent(event);if(event.defaultPrevented)return}
+    if(view?.CustomEvent){const event=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{event_scope:runtime.eventScope||"",kind:button.dataset.selectPassage||pane.dataset.layer==="SOURCE"?"passage":"axiom",id,scope,open:false}});view.dispatchEvent(event);if(event.defaultPrevented)return}
     runtime.connectionAction({action:"select_axiom",...selection})
   }
   runtime.chooseConnectionLayer=(input,value,neighbors=true)=>{
@@ -3556,10 +3566,10 @@ function restorePaneReadingFocus(root,saved){
 }
 function setup(root,studioEmbed=false){
   let savedTextScale=1
-  try{if(!studioEmbed)savedTextScale=Number(root.ownerDocument.defaultView?.sessionStorage?.getItem(TEXT_SCALE_KEY)??1)}catch(_){}
+  try{if(!studioEmbed)savedTextScale=Number(studyDeskStorage(root,'sessionStorage')?.getItem(TEXT_SCALE_KEY)??1)}catch(_){}
   let savedSkin="care"
   try{
-    const storage=studioEmbed?null:root.ownerDocument.defaultView?.sessionStorage
+    const storage=studioEmbed?null:studyDeskStorage(root,'sessionStorage')
     savedSkin=String(storage?.getItem(SKIN_KEY)||"")
     if(!savedSkin){const legacy=String(storage?.getItem(LEGACY_SKIN_KEY)||"");savedSkin=["library","classic"].includes(legacy)?legacy:"care"}
   }catch(_){}
@@ -3576,7 +3586,7 @@ function setup(root,studioEmbed=false){
     const selection=runtime.selectedAxiom,view=root.ownerDocument.defaultView
     if(!selection||selection.work_id!==runtime.workId||!view?.CustomEvent)return
     if(runtime.isRouting()&&selection.route_root_id!==runtime.referenceId)return
-    const event=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{kind:selection.passage_id?"passage":"axiom",id:selection.passage_id||selection.axiom_id,open:false}})
+    const event=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{event_scope:runtime.eventScope||"",kind:selection.passage_id?"passage":"axiom",id:selection.passage_id||selection.axiom_id,open:false}})
     view.dispatchEvent(event)
     if(event.defaultPrevented)runtime.viewerSelectionPending=false
   }
@@ -3595,7 +3605,7 @@ function setup(root,studioEmbed=false){
     runtime.api?.setStateValue('selected_axiom',null)
     const view=root.ownerDocument.defaultView
     if(view?.CustomEvent){
-      view.dispatchEvent(new view.CustomEvent('care-reference-clear-selection',{detail:{kind:'passage',id:selection.passage_id}}))
+      view.dispatchEvent(new view.CustomEvent('care-reference-clear-selection',{detail:{event_scope:runtime.eventScope||'',kind:'passage',id:selection.passage_id}}))
       view.dispatchEvent(new view.CustomEvent('care-workspace-checkpoint'))
     }
     return true
@@ -3661,7 +3671,7 @@ function setup(root,studioEmbed=false){
     if(button!==requested)button.scrollIntoView({block:"nearest",inline:"nearest",behavior:"auto"})
     const view=root.ownerDocument.defaultView
     if(view?.CustomEvent){
-      const event=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{kind:passage?"passage":"axiom",id:selection.passage_id||selection.axiom_id,open:false}})
+      const event=new view.CustomEvent("care-reference-select",{cancelable:true,detail:{event_scope:runtime.eventScope||"",kind:passage?"passage":"axiom",id:selection.passage_id||selection.axiom_id,open:false}})
       view.dispatchEvent(event)
       if(event.defaultPrevented){runtime.viewerSelectionPending=false;return}
     }
@@ -3704,7 +3714,7 @@ function setup(root,studioEmbed=false){
   setupLibrarySelection(runtime)
   setupStudySetPicker(runtime)
   // Reading destinations start fresh; only the sort order is a preference.
-  try{const saved=JSON.parse((!studioEmbed&&root.ownerDocument.defaultView?.sessionStorage?.getItem(SHELF_STATE_KEY))||"{}");if(SHELF_SORTS.some(([id])=>id===saved.sort))runtime.shelf.sort=saved.sort}catch(_){}
+  try{const saved=JSON.parse((!studioEmbed&&studyDeskStorage(root,'sessionStorage')?.getItem(SHELF_STATE_KEY))||"{}");if(SHELF_SORTS.some(([id])=>id===saved.sort))runtime.shelf.sort=saved.sort}catch(_){}
   runtime.mainShelfSort=runtime.shelf.sort
   runtime.syncShelf=data=>{
     const setId=String(data?.active_study_set?.id||""),previousSet=runtime.shelfSetId
@@ -3723,7 +3733,7 @@ function setup(root,studioEmbed=false){
   runtime.saveShelf=()=>{
     if(runtime.data?.active_study_set||runtime.shelf.collection)return
     if(SHELF_SORTS.some(([id])=>id===runtime.shelf.sort))runtime.mainShelfSort=runtime.shelf.sort
-    try{if(!studioEmbed)root.ownerDocument.defaultView?.sessionStorage?.setItem(SHELF_STATE_KEY,JSON.stringify({...runtime.shelf,sort:runtime.mainShelfSort}))}catch(_){}
+    try{if(!studioEmbed)studyDeskStorage(root,'sessionStorage')?.setItem(SHELF_STATE_KEY,JSON.stringify({...runtime.shelf,sort:runtime.mainShelfSort}))}catch(_){}
   }
   runtime.closeShelfActions=(details,{restoreFocus=false}={})=>{
     if(!details?.open)return
@@ -3850,8 +3860,8 @@ function setup(root,studioEmbed=false){
     const clear=event.target.closest("[data-clear-reference]");if(clear){runtime.api?.setTriggerValue("clear_reference",true);return}
     const reference=event.target.closest("[data-ref-id]");if(reference&&!reference.disabled){const id=String(reference.dataset.refId||"");if(id&&id===runtime.referenceId)runtime.api?.setTriggerValue("clear_reference",true);else runtime.openPreparedReference(id);return}
     const rate=event.target.closest("[data-rate]");if(rate){runtime.api?.setTriggerValue("rate",{id:rate.dataset.rateId,score:Number(rate.dataset.rate)});return}
-    const skin=event.target.closest("[data-skin-value]");if(skin){runtime.skin=["care","library","classic"].includes(skin.dataset.skinValue)?skin.dataset.skinValue:"care";try{if(!studioEmbed)root.ownerDocument.defaultView?.sessionStorage?.setItem(SKIN_KEY,runtime.skin)}catch(_){};runtime.applySkin();return}
-    const textSize=event.target.closest("[data-text-size]");if(textSize){runtime.textScaleIndex=Math.max(0,Math.min(TEXT_SCALES.length-1,runtime.textScaleIndex+Number(textSize.dataset.textSize||0)));try{if(!studioEmbed)root.ownerDocument.defaultView?.sessionStorage?.setItem(TEXT_SCALE_KEY,String(runtime.textScaleIndex))}catch(_){};runtime.applyTextScale();return}
+    const skin=event.target.closest("[data-skin-value]");if(skin){runtime.skin=["care","library","classic"].includes(skin.dataset.skinValue)?skin.dataset.skinValue:"care";try{if(!studioEmbed)studyDeskStorage(root,'sessionStorage')?.setItem(SKIN_KEY,runtime.skin)}catch(_){};runtime.applySkin();return}
+    const textSize=event.target.closest("[data-text-size]");if(textSize){runtime.textScaleIndex=Math.max(0,Math.min(TEXT_SCALES.length-1,runtime.textScaleIndex+Number(textSize.dataset.textSize||0)));try{if(!studioEmbed)studyDeskStorage(root,'sessionStorage')?.setItem(TEXT_SCALE_KEY,String(runtime.textScaleIndex))}catch(_){};runtime.applyTextScale();return}
     const pane=event.target.closest("[data-pane-target]");if(pane){runtime.focus(pane.dataset.paneTarget);return}
     const step=event.target.closest("[data-step]");if(step){runtime.step(Number(step.dataset.step));return}
   }
@@ -4495,15 +4505,16 @@ const WORKSPACE_READER_PREFIX = 'care-study-workspace-reader-v1:'
 function workspaceSnapshotSlot(workId, connectionId = '') { return connectionId ? workId + '|connection:' + connectionId : workId }
 function workspaceReaderKey(workId, connectionId = '') { return WORKSPACE_READER_PREFIX + encodeURIComponent(workspaceSnapshotSlot(workId,connectionId)) }
 function workspaceReadSnapshot(root, workId, signature, referenceId, context = '', connectionId = '') {
-  if (!workId) return null
+  if (!workId || root?.dataset?.ephemeralWorkspace === 'true') return null
   let saved = workspaceSnapshots.get(workspaceSnapshotSlot(workId,connectionId))
   if (!saved) {
-    try { saved = JSON.parse(root.ownerDocument.defaultView?.localStorage?.getItem(workspaceReaderKey(workId,connectionId)) || 'null') } catch (_) {}
+    try { saved = JSON.parse(studyDeskStorage(root,'localStorage')?.getItem(workspaceReaderKey(workId,connectionId)) || 'null') } catch (_) {}
   }
   if (!saved || saved.version !== 1 || saved.workId !== workId || saved.signature !== signature || saved.referenceId !== referenceId || (saved.context || '') !== context) return null
   return saved
 }
 function workspaceCheckpoint(runtime) {
+  if (runtime.data?.ephemeral_workspace) return
   if (runtime.root.dataset?.view === 'outline') return
   const root = runtime.root, strip = root.querySelector('[data-strip]')
   // React may call cleanup after detaching the old host. Detached scroll boxes
@@ -4520,7 +4531,7 @@ function workspaceCheckpoint(runtime) {
     bookPosition:runtime.bookPosition ? {...runtime.bookPosition,positions:[...runtime.bookPosition.positions]} : null}
   const connectionId = runtime.data?.connection?.id || ''
   workspaceSnapshots.set(workspaceSnapshotSlot(runtime.workId,connectionId), saved)
-  try { root.ownerDocument.defaultView?.localStorage?.setItem(workspaceReaderKey(runtime.workId,connectionId), JSON.stringify(saved)) } catch (_) {}
+  try { studyDeskStorage(root,'localStorage')?.setItem(workspaceReaderKey(runtime.workId,connectionId), JSON.stringify(saved)) } catch (_) {}
 }
 function workspaceRestoreRuntime(runtime, saved) {
   if (!saved) return
@@ -5466,7 +5477,7 @@ function replaceStudyDeskMarkup(runtime,markup){
 function setupDialoguePlayer(runtime){
   const root=runtime.root,view=root.ownerDocument.defaultView
   const pause=()=>runtime.dialoguePlayer?.media.pause()
-  const save=()=>{const player=runtime.dialoguePlayer;if(!player)return;const state=player.thinker;try{view?.sessionStorage?.setItem(`care-dialogue-playback/1:${player.id}`,JSON.stringify({time:player.media.currentTime,rate:player.media.playbackRate,follow:player.follow,thinker:state?{id:state.id,follow:state.follow,mode:state.mode,wb:state.wb}:null}))}catch(_){}}
+  const save=()=>{const player=runtime.dialoguePlayer;if(!player)return;const state=player.thinker;try{studyDeskStorage(root,'sessionStorage')?.setItem(`care-dialogue-playback/1:${player.id}`,JSON.stringify({time:player.media.currentTime,rate:player.media.playbackRate,follow:player.follow,thinker:state?{id:state.id,follow:state.follow,mode:state.mode,wb:state.wb}:null}))}catch(_){}}
   const play=()=>{const player=runtime.dialoguePlayer;if(!player)return;const pending=player.media.play();pending?.catch(()=>{player.error='Press play to start the recording.';runtime.paintDialoguePlayer()})}
   runtime.disposeDialoguePlayer=()=>{const player=runtime.dialoguePlayer;if(!player)return;save();pause();player.host.remove();runtime.dialoguePlayer=null;delete root.dataset.dialogueReady}
   runtime.seekDialogue=time=>{const player=runtime.dialoguePlayer;if(!player||!Number.isFinite(Number(time)))return;const limit=Number.isFinite(player.media.duration)?player.media.duration:Number(player.payload.duration)||Infinity,value=Math.max(0,Math.min(Number(time),limit));player.pendingTime=Number(player.media.readyState)===0?value:null;try{player.media.currentTime=value}catch(_){player.pendingTime=value}player.activePassage='';runtime.paintDialoguePlayer();save()}
@@ -5517,7 +5528,7 @@ function setupDialoguePlayer(runtime){
       const host=root.ownerDocument.createElement('div'),media=root.ownerDocument.createElement(payload.kind)
       host.className='dialogue-media-host';host.dataset.dialogueMediaHost='';host.append(media);root.append(host)
       media.controls=true;media.preload='metadata';media.setAttribute('playsinline','');media.setAttribute('aria-label',payload.title||'Recording');media.src=payload.url
-      let saved={};try{saved=JSON.parse(view?.sessionStorage?.getItem(`care-dialogue-playback/1:${id}`)||'{}')}catch(_){}
+      let saved={};try{saved=JSON.parse(studyDeskStorage(root,'sessionStorage')?.getItem(`care-dialogue-playback/1:${id}`)||'{}')}catch(_){}
       const thinker=saved.thinker?{id:String(saved.thinker.id||''),follow:saved.thinker.follow!==false,mode:saved.thinker.mode==='care'?'care':'comparison',wb:String(saved.thinker.wb||''),match:''}:null
       const player={id,host,media,payload,follow:saved.follow!==false,thinker,ranges:[],cues:[],passageText:new Map(),activePassage:'',savedAt:0,pendingTime:Math.max(0,Number(saved.time)||0),error:''};runtime.dialoguePlayer=player
       media.playbackRate=[.75,1,1.25,1.5,1.75,2].includes(Number(saved.rate))?Number(saved.rate):1
@@ -5864,10 +5875,10 @@ function setupOriginalAnnotations(runtime){
   const openViewer=selection=>{
     if(!view?.CustomEvent)return false
     const detail={kind:'axiom',id:selection.axiom_id,scope:runtime.data?.viewer_scopes?.[selection.axiom_id]||''}
-    const event=new view.CustomEvent('care-reference-select',{cancelable:true,detail:{...detail,open:false}})
+    const event=new view.CustomEvent('care-reference-select',{cancelable:true,detail:{event_scope:runtime.eventScope||'',...detail,open:false}})
     view.dispatchEvent(event)
     if(!event.defaultPrevented)return false
-    view.dispatchEvent(new view.CustomEvent('care-reference-preview',{detail:{...detail,source:'original-reader'}}))
+    view.dispatchEvent(new view.CustomEvent('care-reference-preview',{detail:{event_scope:runtime.eventScope||'',...detail,source:'original-reader'}}))
     runtime.originalPreviewOpen=true
     return true
   }
@@ -5952,7 +5963,7 @@ function setupOriginalFormats(runtime){
     if(!source||!work||!originalReadingFormats(source).length){runtime.cancelOriginalFormatRequest();runtime.originalFormatEntry=null;runtime.originalFormatContext='';return data}
     if(runtime.originalFormatContext!==work)runtime.cancelOriginalFormatRequest()
     let entry=entries.get(work)
-    if(!entry){let preferred='';try{preferred=view.localStorage?.getItem('care-original-format/1:'+work)||''}catch(_){};entry={work,preferred,desired:preferred||source.kind,payloads:new Map(),error:'',pending:null};entries.set(work,entry)}
+    if(!entry){let preferred='';try{preferred=studyDeskStorage(root,'localStorage')?.getItem('care-original-format/1:'+work)||''}catch(_){};entry={work,preferred,desired:preferred||source.kind,payloads:new Map(),error:'',pending:null};entries.set(work,entry)}
     if(entry.base&&entry.base.id!==source.id){runtime.cancelOriginalFormatRequest();entry.payloads.clear();if(!entry.preferred)entry.desired=source.kind}
     const formats=originalReadingFormats(source),urls=new Map(formats.map(item=>[item.kind,item.content_url]))
     for(const [kind,cached] of entry.payloads)if(cached.url!==urls.get(kind))entry.payloads.delete(kind)
@@ -6004,7 +6015,7 @@ function setupOriginalFormats(runtime){
       const chosen={...payload,work_id:entry.work,formats:entry.base.formats,downloads:entry.base.downloads}
       if(chosen.id!==originalReaderPayload(runtime.data)?.id||originalReaderPayload(runtime.data)?.deferred===true){if(!runtime.replaceOriginalFormat(chosen,{reveal}))return false}
       else if(reveal)runtime.revealOriginal?.({follow:false})
-      entry.preferred=kind;if(persist)try{view.localStorage?.setItem('care-original-format/1:'+entry.work,kind)}catch(_){}
+      entry.preferred=kind;if(persist)try{studyDeskStorage(root,'localStorage')?.setItem('care-original-format/1:'+entry.work,kind)}catch(_){}
       runtime.paintOriginalFormats();return true
     }
     const cached=entry.payloads.get(kind)
@@ -6194,12 +6205,12 @@ function originalRestoreAnchor(body,anchor){
 function setupOriginalReader(runtime){
   const root=runtime.root,view=root.ownerDocument.defaultView
   runtime.originalStates=new Map()
-  try{const saved=view?.localStorage?.getItem('care-original-theme/1');if(['light','dark'].includes(saved))runtime.originalTheme=saved}catch(_){}
+  try{const saved=studyDeskStorage(root,'localStorage')?.getItem('care-original-theme/1');if(['light','dark'].includes(saved))runtime.originalTheme=saved}catch(_){}
   runtime.originalSave=()=>{
     const state=runtime.originalState;if(!state)return
     const saved={id:state.id,location:state.location,offset:state.offset||0,follow:state.follow,expanded:state.expanded,open:Boolean(state.open),zoom:state.zoom||1,controlsMode:state.controlsMode||'auto'}
     runtime.originalStates.set(state.id,saved)
-    try{view?.localStorage?.setItem('care-original-reader/1:'+state.id,JSON.stringify(saved))}catch(_){}
+    try{studyDeskStorage(root,'localStorage')?.setItem('care-original-reader/1:'+state.id,JSON.stringify(saved))}catch(_){}
   }
   runtime.revealOriginal=({follow=true}={})=>{
     const state=runtime.originalState,pane=root.querySelector('[data-pane="original"]'),strip=root.querySelector('[data-strip]')
@@ -6312,7 +6323,7 @@ function setupOriginalReader(runtime){
       runtime.originalZoom?.(button.hasAttribute('data-original-fit')?1:Math.round(((state.zoom||1)+Number(button.dataset.originalZoomStep)*.2)*10)/10)
     }else if(button.hasAttribute('data-original-theme-toggle')){
       runtime.originalTheme=root.dataset.originalTheme==='light'?'dark':'light'
-      try{view?.localStorage?.setItem('care-original-theme/1',runtime.originalTheme)}catch(_){}
+      try{studyDeskStorage(root,'localStorage')?.setItem('care-original-theme/1',runtime.originalTheme)}catch(_){}
     }else if(button.hasAttribute('data-original-follow')){
       state.follow=!state.follow;state.pending='';state.evidenceKey='';originalPaintAwareness(runtime,[])
       if(state.follow){state.driver='original';runtime.originalWarm?.(state.location);runtime.originalFollow()}
@@ -6339,7 +6350,7 @@ function setupOriginalReader(runtime){
     let state=runtime.originalState
     if(!state||state.id!==payload.id){
       let saved=runtime.originalStates.get(payload.id)
-      if(!saved){try{saved=JSON.parse(view?.localStorage?.getItem('care-original-reader/1:'+payload.id)||'null')}catch(_){}}
+      if(!saved){try{saved=JSON.parse(studyDeskStorage(root,'localStorage')?.getItem('care-original-reader/1:'+payload.id)||'null')}catch(_){}}
       state={id:payload.id,location:saved?.location||payload.initial_location_id||payload.locations?.[0]?.id||'',offset:Number(saved?.offset)||0,follow:saved?.follow!==false,expanded:Boolean(saved?.expanded),open:Boolean(saved?.open||saved?.expanded),pending:'',driver:'desk',controlsMode:['shown','hidden'].includes(saved?.controlsMode)?saved.controlsMode:'auto',zoom:Math.max(.6,Math.min(2,Number(saved?.zoom)||1)),pages:new Map()}
       runtime.originalState=state
     }
@@ -6960,7 +6971,7 @@ function setupBeautifulText(runtime){
       }
     }
   }
-  const read=()=>{const fallback=beautifulTextSessions.get(view)??runtime.beautifulText??true;try{return beautifulTextPreference(view.localStorage?.getItem(BEAUTIFUL_TEXT_KEY),fallback)}catch(_){return fallback}}
+  const read=()=>{const fallback=(runtime.data?.ephemeral_workspace?undefined:beautifulTextSessions.get(view))??runtime.beautifulText??true;try{return beautifulTextPreference(studyDeskStorage(root,'localStorage')?.getItem(BEAUTIFUL_TEXT_KEY),fallback)}catch(_){return fallback}}
   let enabled=read()
   const watch=()=>observer?.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-beautiful-compact','data-beautiful-opening-foldable','data-beautiful-opening-titles']})
   const mutate=callback=>{discardChangedProse(observer?.takeRecords?.()||[]);observer?.disconnect();updating=true;try{return callback()}finally{updating=false;if(!disposed)watch()}}
@@ -7053,11 +7064,11 @@ function setupBeautifulText(runtime){
   })
   const apply=(value,persist=false)=>{
     const next=value===true,restore=beautifulTextReadingAnchors(root)
-    enabled=next;runtime.beautifulText=next;beautifulTextSessions.set(view,next)
+    enabled=next;runtime.beautifulText=next;runtime.data?.ephemeral_workspace||beautifulTextSessions.set(view,next)
     refresh();restore();runtime.queueThreads?.();runtime.queueTrackZoom?.()
     if(persist){
-      try{view.localStorage?.setItem(BEAUTIFUL_TEXT_KEY,String(next))}catch(_){}
-      if(view.CustomEvent)view.dispatchEvent(new view.CustomEvent(BEAUTIFUL_TEXT_EVENT,{detail:{enabled:next}}))
+      try{studyDeskStorage(root,'localStorage')?.setItem(BEAUTIFUL_TEXT_KEY,String(next))}catch(_){}
+      if(!runtime.data?.ephemeral_workspace&&view.CustomEvent)view.dispatchEvent(new view.CustomEvent(BEAUTIFUL_TEXT_EVENT,{detail:{enabled:next}}))
     }
   }
   const click=event=>{
@@ -7068,8 +7079,8 @@ function setupBeautifulText(runtime){
     apply(!enabled,true)
   }
   const key=event=>{if(event.target?.closest?.('.beautiful-source-notes,.beautiful-chapter-notes')||event.target?.closest?.('[data-beautiful-text-toggle]')&&[' ','Enter','ArrowUp','ArrowDown','Home','End'].includes(event.key))event.stopImmediatePropagation()}
-  const change=event=>{if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
-  const storage=event=>{if(event.key===BEAUTIFUL_TEXT_KEY||event.key===null)apply(read())}
+  const change=event=>{if(runtime.data?.ephemeral_workspace)return;if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
+  const storage=event=>{if(root.dataset.ephemeralWorkspace==='true')return;if(event.key===BEAUTIFUL_TEXT_KEY||event.key===null)apply(read())}
   const queueRefresh=()=>{
     if(disposed||updating||frame!==null)return
     frame=view.requestAnimationFrame(()=>{frame=null;if(!disposed){refresh();runtime.queueThreads?.()}})
@@ -7203,7 +7214,7 @@ function setupTitleView(runtime){
   if(!root||!view)return()=>{}
   const moved=new Map(),groups=new Set()
   let observer=null,frame=null,disposed=false,updating=false
-  const read=()=>{const fallback=titleViewSessions.get(view)??runtime.titleView??true;try{return titleViewPreference(view.localStorage?.getItem(TITLE_VIEW_KEY),fallback)}catch(_){return fallback}}
+  const read=()=>{const fallback=(runtime.data?.ephemeral_workspace?undefined:titleViewSessions.get(view))??runtime.titleView??true;try{return titleViewPreference(studyDeskStorage(root,'localStorage')?.getItem(TITLE_VIEW_KEY),fallback)}catch(_){return fallback}}
   let enabled=read()
   const watch=()=>observer?.observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden']})
   const restoreControls=()=>{
@@ -7243,11 +7254,11 @@ function setupTitleView(runtime){
   }
   const apply=(value,persist=false)=>{
     const restore=titleViewReadingAnchors(root)
-    enabled=value===true;runtime.titleView=enabled;titleViewSessions.set(view,enabled)
+    enabled=value===true;runtime.titleView=enabled;runtime.data?.ephemeral_workspace||titleViewSessions.set(view,enabled)
     refresh();restore();runtime.queueThreads?.();runtime.queueTrackZoom?.()
     if(persist){
-      try{view.localStorage?.setItem(TITLE_VIEW_KEY,String(enabled))}catch(_){}
-      if(view.CustomEvent)view.dispatchEvent(new view.CustomEvent(TITLE_VIEW_EVENT,{detail:{enabled}}))
+      try{studyDeskStorage(root,'localStorage')?.setItem(TITLE_VIEW_KEY,String(enabled))}catch(_){}
+      if(!runtime.data?.ephemeral_workspace&&view.CustomEvent)view.dispatchEvent(new view.CustomEvent(TITLE_VIEW_EVENT,{detail:{enabled}}))
     }
   }
   const click=event=>{
@@ -7256,8 +7267,8 @@ function setupTitleView(runtime){
     event.preventDefault();event.stopImmediatePropagation();apply(!enabled,true)
   }
   const key=event=>{if(event.target?.closest?.('[data-title-view-toggle]')&&[' ','Enter','ArrowUp','ArrowDown','Home','End'].includes(event.key))event.stopImmediatePropagation()}
-  const change=event=>{if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
-  const storage=event=>{if(event.key===TITLE_VIEW_KEY||event.key===null)apply(read())}
+  const change=event=>{if(runtime.data?.ephemeral_workspace)return;if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
+  const storage=event=>{if(root.dataset.ephemeralWorkspace==='true')return;if(event.key===TITLE_VIEW_KEY||event.key===null)apply(read())}
   const queueRefresh=()=>{
     if(disposed||updating||frame!==null)return
     frame=view.requestAnimationFrame(()=>{frame=null;if(!disposed){refresh();runtime.queueThreads?.()}})
@@ -7298,17 +7309,17 @@ function setupVibrantView(runtime){
   runtime.cleanupVibrantView?.()
   const root=runtime.root,view=root?.ownerDocument?.defaultView
   if(!root||!view)return()=>{}
-  const read=()=>{const body=root.ownerDocument.body;if(body?.dataset.careVibrantViewVersion==='2')return body.dataset.careVibrantView==='true';const savedSession=vibrantViewSessions.get(view);if(typeof savedSession==='boolean')return savedSession;try{return view.localStorage?.getItem(VIBRANT_VIEW_KEY)==='true'}catch(_){return false}}
+  const read=()=>{const body=root.ownerDocument.body;if(!runtime.data?.ephemeral_workspace&&body?.dataset.careVibrantViewVersion==='2')return body.dataset.careVibrantView==='true';const savedSession=runtime.data?.ephemeral_workspace?undefined:vibrantViewSessions.get(view);if(typeof savedSession==='boolean')return savedSession;try{return studyDeskStorage(root,'localStorage')?.getItem(VIBRANT_VIEW_KEY)==='true'}catch(_){return false}}
   let enabled=read(),disposed=false
-  const paint=()=>{root.dataset.vibrantView=String(enabled);if(root.ownerDocument.body){root.ownerDocument.body.dataset.careVibrantView=String(enabled);root.ownerDocument.body.dataset.careVibrantViewVersion='2'}root.querySelectorAll('[data-vibrant-view-toggle]').forEach(button=>button.setAttribute('aria-pressed',String(enabled)))}
+  const paint=()=>{root.dataset.vibrantView=String(enabled);if(!runtime.data?.ephemeral_workspace&&root.ownerDocument.body){root.ownerDocument.body.dataset.careVibrantView=String(enabled);root.ownerDocument.body.dataset.careVibrantViewVersion='2'}root.querySelectorAll('[data-vibrant-view-toggle]').forEach(button=>button.setAttribute('aria-pressed',String(enabled)))}
   const apply=(value,persist=false)=>{
-    enabled=value===true;runtime.vibrantView=enabled;vibrantViewSessions.set(view,enabled);paint()
-    if(persist){try{view.localStorage?.setItem(VIBRANT_VIEW_KEY,String(enabled))}catch(_){};if(view.CustomEvent)view.dispatchEvent(new view.CustomEvent(VIBRANT_VIEW_EVENT,{detail:{enabled}}))}
+    enabled=value===true;runtime.vibrantView=enabled;runtime.data?.ephemeral_workspace||vibrantViewSessions.set(view,enabled);paint()
+    if(persist){try{studyDeskStorage(root,'localStorage')?.setItem(VIBRANT_VIEW_KEY,String(enabled))}catch(_){};if(!runtime.data?.ephemeral_workspace&&view.CustomEvent)view.dispatchEvent(new view.CustomEvent(VIBRANT_VIEW_EVENT,{detail:{enabled}}))}
   }
   const click=event=>{const control=event.target?.closest?.('[data-vibrant-view-toggle]');if(!control||!root.contains(control))return;event.preventDefault();event.stopImmediatePropagation();apply(!enabled,true)}
   const key=event=>{if(event.target?.closest?.('[data-vibrant-view-toggle]')&&[' ','Enter'].includes(event.key))event.stopImmediatePropagation()}
-  const change=event=>{if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
-  const storage=event=>{if(event.key===VIBRANT_VIEW_KEY||event.key===null)apply(event.key!==null&&event.newValue==='true')}
+  const change=event=>{if(runtime.data?.ephemeral_workspace)return;if(typeof event.detail?.enabled==='boolean'&&event.detail.enabled!==enabled)apply(event.detail.enabled)}
+  const storage=event=>{if(root.dataset.ephemeralWorkspace==='true')return;if(event.key===VIBRANT_VIEW_KEY||event.key===null)apply(event.key!==null&&event.newValue==='true')}
   root.addEventListener('click',click,true);root.addEventListener('keydown',key,true)
   view.addEventListener(VIBRANT_VIEW_EVENT,change);view.addEventListener('storage',storage)
   runtime.paintVibrantView=paint
@@ -7435,13 +7446,13 @@ function setupAxiomCopy(runtime){
 }
 
 
-function studioSourceClipboardToken(view,packet){
+function studioSourceClipboardToken(view,packet,root=null){
   try{
     // Keep exact source wording inside this tab, even if the clipboard is
     // pasted into a different app or synced to another device.
     const bytes=view.crypto.getRandomValues(new Uint8Array(16))
     const token=Array.from(bytes,byte=>byte.toString(16).padStart(2,"0")).join("")
-    view.sessionStorage.setItem("care-studio-source-clipboard-v1",JSON.stringify({token,packet}))
+    ;(root?studyDeskStorage(root,'sessionStorage'):view.sessionStorage).setItem("care-studio-source-clipboard-v1",JSON.stringify({token,packet}))
     return token
   }catch(_){return ""}
 }
@@ -7458,9 +7469,11 @@ function renderStudyDesk(component,localNavigation=false){
   const {parentElement,setStateValue,setTriggerValue}=component
   let data=component.data
   const root=parentElement.querySelector("[data-study-desk]");if(!root)return
+  root.dataset.ephemeralWorkspace=String(Boolean(data?.ephemeral_workspace))
   try {
     root.dataset.studioEmbed=String(Boolean(data?.studio_embed))
     let runtime=INSTANCES.get(parentElement);if(!runtime||runtime.root!==root){runtime?.renderCleanup?.();runtime=setup(root,Boolean(data?.studio_embed));INSTANCES.set(parentElement,runtime)}
+    runtime.eventRoot=component.eventRoot||null;runtime.eventScope=component.eventScope||""
     data=studyNavigationReceive(runtime,component,localNavigation)
     runtime.renderNavigation=next=>renderStudyDesk({...studyNavigationState(runtime).component,data:next},true)
     data=runtime.prepareOriginalFormats(data||{})

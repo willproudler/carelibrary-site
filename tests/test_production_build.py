@@ -30,6 +30,9 @@ class ProductionBuildTests(unittest.TestCase):
         search = patch.object(production, "build_search_pages")
         self.search_pages = search.start()
         self.addCleanup(search.stop)
+        about = patch.object(production, "build_about_page")
+        self.about_page = about.start()
+        self.addCleanup(about.stop)
 
     def site(self):
         self.fixture_number += 1
@@ -228,6 +231,7 @@ class ProductionBuildTests(unittest.TestCase):
                 result = production.build(site)
         self.assertEqual(result, site / "dist")
         self.search_pages.assert_called_once_with(site)
+        self.about_page.assert_called_once_with(site / "dist")
         commands = [call.args[0] for call in run.call_args_list]
         self.assertEqual(commands, [
             [sys.executable, str(site / "tools/optimise-covers.py"), str(site / "dist")],
@@ -235,6 +239,50 @@ class ProductionBuildTests(unittest.TestCase):
         ])
         self.assertTrue(all(call.kwargs == {"check": True} for call in run.call_args_list))
         self.assertFalse((site / "dist" / "tools").exists())
+
+    def test_clean_build_refreshes_about_after_catalogue_and_before_stamping(self):
+        site = self.site()
+        dist = site / "dist"
+        self.assertFalse((site / "data/catalogue.json").exists())
+        (site / "book-routes.json").write_text('{"books":[]}')
+        original_about = (site / "about.html").read_bytes()
+        stages = []
+        self.search_pages.side_effect = lambda root: stages.append("search")
+
+        def prepare_asset(command, *, check):
+            self.assertTrue(check)
+            self.assertEqual(Path(command[-1]), dist)
+            if command[1].endswith("optimise-covers.py"):
+                stages.append("covers")
+            elif command[1].endswith("build-public-assets.mjs"):
+                stages.append("catalogue")
+                (dist / "data/catalogue.json").write_text('{"works":[]}')
+            else:
+                self.fail(f"Unexpected builder: {command}")
+
+        def prepare_about(root):
+            self.assertEqual(root, dist)
+            self.assertTrue((root / "data/catalogue.json").is_file())
+            self.assertEqual((root / "book-routes.json").read_text(), '{"books":[]}')
+            self.assertFalse((root / "tools").exists())
+            stages.append("about")
+            (root / "about.html").write_text('<html><body>' + 'Saved About example. ' * 100 + '</body></html>')
+
+        self.about_page.side_effect = prepare_about
+        stamp = production.stamp_browser_modules
+        def stamp_after_about(root):
+            self.assertIn('Saved About example.', (root / "about.html").read_text())
+            stages.append("stamp")
+            stamp(root)
+
+        with patch.object(production.subprocess, "run", side_effect=prepare_asset), \
+             patch.object(production, "stamp_browser_modules", side_effect=stamp_after_about), \
+             patch("builtins.print"):
+            self.assertEqual(production.build(site), dist)
+        self.assertEqual(stages, ["search", "covers", "catalogue", "about", "stamp"])
+        self.assertIn(b'Saved About example.', gzip.decompress((dist / "about.html.gz").read_bytes()))
+        self.assertEqual((site / "about.html").read_bytes(), original_about)
+        self.assertFalse((site / "data/catalogue.json").exists())
 
     def test_stamping_updates_both_entry_chains_without_changing_native_exports(self):
         site = self.site()
@@ -275,6 +323,28 @@ class ProductionBuildTests(unittest.TestCase):
         for name, content in files.items():
             self.assertEqual((site / name).read_text(), content)
 
+    def test_about_page_and_its_public_assets_survive_staging_and_stamping(self):
+        site = self.site()
+        about = '<!doctype html><html><head><link rel="stylesheet" href="/about.css"><script type="module" src="/about-page.mjs"></script></head><body><h1>About CARE Library</h1></body></html>'
+        (site / "about.html").write_text(about)
+        (site / "about.css").write_text('body { color: #ece8df; }')
+        (site / "about-page.mjs").write_text('import "./about-live-panels.mjs";')
+        (site / "about-live-panels.mjs").write_text('export const panel = true;')
+        (site / "welcome.html").write_text('<html><body>Compatibility</body></html>')
+        dist = site / "dist"
+        production.copy_browser_files(site, dist)
+        production.stamp_browser_modules(dist)
+        staged = (dist / "about.html").read_text()
+        self.assertIn('<h1>About CARE Library</h1>', staged)
+        for name in ("about.css", "about-page.mjs"):
+            self.assertTrue((dist / name).is_file())
+            self.assertRegex(staged, re.escape('/' + name) + r'\?v=[a-f0-9]{16}')
+        self.assertTrue((dist / "about-live-panels.mjs").is_file())
+        self.assertRegex((dist / "about-page.mjs").read_text(), r'about-live-panels\.mjs\?v=[a-f0-9]{16}')
+        self.assertEqual(staged.count('static.cloudflareinsights.com/beacon.min.js'), 1)
+        self.assertNotIn('beacon.min.js', (dist / "welcome.html").read_text())
+        self.assertEqual((site / "about.html").read_text(), about)
+
     def test_gzip_copies_roundtrip_final_stamped_bytes_and_leave_binary_files_alone(self):
         site = self.site()
         source = "import './boot.mjs?v=old';\n" + "// compressible browser text\n" * 100
@@ -304,3 +374,4 @@ class ProductionBuildTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
