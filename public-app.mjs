@@ -1,12 +1,23 @@
+function publicReaderCardCache(limit=1536){
+  let owner=null,context='';const cards=new Map();
+  return (id,nextOwner,nextContext,build)=>{
+    if(owner!==nextOwner||context!==nextContext){owner=nextOwner;context=nextContext;cards.clear();}
+    if(cards.has(id)){const card=cards.get(id);cards.delete(id);cards.set(id,card);return card;}
+    const card=build();cards.set(id,card);
+    if(cards.size>limit)cards.delete(cards.keys().next().value);
+    return card;
+  };
+}
+
 import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {readingStorageKey} from './auth.mjs';
 import {loadText} from './resource-loader.mjs?v=20261018';
-import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord,bookBookmarkRecord} from './saved-library.mjs?v=82e4a049abe7cf57';
-import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=82e4a049abe7cf57';
-import mountReader from './native/study-desk.mjs?v=82e4a049abe7cf57';
+import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord,bookBookmarkRecord} from './saved-library.mjs?v=8d2763a9327f47d2';
+import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=8d2763a9327f47d2';
+import mountReader from './native/study-desk.mjs?v=8d2763a9327f47d2';
 
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=82e4a049abe7cf57';
-import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=82e4a049abe7cf57';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=8d2763a9327f47d2';
+import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=8d2763a9327f47d2';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
 import {createTabMenus,createWorkspaceHistory,createBookAddressing,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,bookRouteUnitState,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
 import {copyStudioLibraryReference,copyStudioSource,createStudioWorkspace} from './studio-workspace.mjs';
@@ -21,7 +32,7 @@ import {openFeaturePreview} from './native/feature-previews.mjs';
 installFixedWorkbenchPreferences(window,document);
 
 const $ = selector => document.querySelector(selector);
-const loadNumogram=()=>import('./native/numogram-atlas.mjs?v=82e4a049abe7cf57');
+const loadNumogram=()=>import('./native/numogram-atlas.mjs?v=8d2763a9327f47d2');
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Public mode uses the original browser collection; accounts have separate saves.
 const storageKey = key => readingStorageKey(key,document.documentElement.dataset);
@@ -62,7 +73,7 @@ async function start(){
   libraryMenu.hidden=true;
   libraryMenu.after(shelf);
  }
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=82e4a049abe7cf57'),loadText('./native/public-scope.css?v=82e4a049abe7cf57')]);
+ const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=8d2763a9327f47d2'),loadText('./native/public-scope.css?v=8d2763a9327f47d2')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
@@ -111,14 +122,14 @@ async function start(){
  const viewerHost=document.createElement('div');viewerHost.hidden=true;document.body.append(viewerHost);const viewerShadow=viewerHost;
  let mountViewer,mountField,viewerPromise,fieldPromise,fieldStyle;
  async function ensureViewer(){
-  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=82e4a049abe7cf57'),loadText('./native/reference-viewer.css?v=82e4a049abe7cf57'),loadText('./native/reference-viewer.html?v=82e4a049abe7cf57')]).then(([module,viewerCSS,viewerHTML])=>{
+  if(!viewerPromise)viewerPromise=Promise.all([import('./native/reference-viewer.mjs?v=8d2763a9327f47d2'),loadText('./native/reference-viewer.css?v=8d2763a9327f47d2'),loadText('./native/reference-viewer.html?v=8d2763a9327f47d2')]).then(([module,viewerCSS,viewerHTML])=>{
    mountViewer=module.default;
    viewerHost.innerHTML=`<style>.care-reference-component{--st-text-color:#ece8df;--st-background-color:#0e1117;--st-secondary-background-color:#171c23;--st-font:system-ui,sans-serif;--st-code-font:ui-monospace,monospace}${viewerCSS}\n.crv-tool-rate,.crv-tool-quality,.crv-tool-collect,.crv-tool-sheet,.crv-tool-reveal-sheet{display:none!important}.crv-text p:first-child{margin-top:0}.crv-text p:last-child{margin-bottom:0}</style>${viewerHTML}`;
   }).catch(error=>{viewerPromise=null;throw error;});
   return viewerPromise;
  }
  async function ensureField(){
-  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=82e4a049abe7cf57'),loadText('./native/study-field.css?v=82e4a049abe7cf57')]).then(([module,fieldCSS])=>{
+  if(!fieldPromise)fieldPromise=Promise.all([import('./native/study-field.mjs?v=8d2763a9327f47d2'),loadText('./native/study-field.css?v=8d2763a9327f47d2')]).then(([module,fieldCSS])=>{
    mountField=module.default;fieldStyle=document.createElement('style');fieldStyle.media='not all';
    // Keep the bottom save control still when pointer entry reveals trace links.
    fieldStyle.textContent=fieldCSS+`\n.field-desk .field-item[data-open-item] .item-links{display:flex;visibility:hidden}.field-desk .field-item[data-open-item]:hover .item-links,.field-desk .field-item[data-open-item]:focus-within .item-links{visibility:visible}`;
@@ -254,11 +265,13 @@ async function start(){
  }});
  studySets.update({accountKey:account,books});
  function urlFor(node,{route=false}={}){const p=new URLSearchParams();if(!node.work)p.set('lateral',data.lateral.id);else p.set('book',node.work.slug);if(route)p.set('ref',node.id);else if(node.kind==='passage')p.set('source',node.unit.id);else if(node.work)p.set('unit',node.unit.id);return readingAddress('#'+p);}
+ const readerCardCache=publicReaderCardCache();
  function referenceRows(ids){
   const favourites=new Set(saved.favourites);
+  const projectionContext=JSON.stringify([state.readingLanguages,state.paneVersions]);
   return [...ids].flatMap(id=>{
    const node=index.nodes.get(id);if(!node||!['claim','passage'].includes(node.kind))return [];
-   const row=adapter.card(id,{state}),citation=[node.work?.author,node.work?.title||data.lateral.title,id].filter(Boolean).join(', ')+'.';
+   const row=readerCardCache(id,adapter,projectionContext,()=>adapter.card(id,{state})),citation=[node.work?.author,node.work?.title||data.lateral.title,id].filter(Boolean).join(', ')+'.';
    const note=node.grounding?.type==='Unresolved'?'Source alignment unresolved':node.passages?.some(p=>p.review==='unreviewed')?'AI source links · awaiting review':'';
    const result={...row,scope:'',metadata:[row.author,row.work_title,row.chapter_title,note,row.is_translation?`${row.reading_language_name} · saved machine translation`:''].filter(Boolean),citation,citation_short:citation,citation_ibid:`Ibid., ${id}.`,destination:urlFor(node,{route:true}),sheet_destination:urlFor(node),studio_route:{work:node.work?.id||data.works[0]?.id},open_label:'Open Routes',favourite:favourites.has(id)};
    return [result,{...result,scope:`public:${row.unit_id}`},...(row.work_id?[{...result,scope:`work:${row.work_id}`}]:[])];
@@ -866,6 +879,7 @@ async function start(){
    if(kind==='navigate_route'){const target=historyIndex+Number(value);if(target<0||target>=history.length)return;historyIndex=target;state={...history[target]};syncURL();paint();return;}
    if(kind==='connection_action'&&value.action==='open'){const request=++routeRequest;await Promise.all([loader.ensureLateral(),ensureViewer()]);if(request!==routeRequest)return;refreshAdapter();}
    const next=adapter.reduce(state,kind,value);if(next===state)return;state=next;
+   if(kind==='selected_axiom'||kind==='connection_action'&&value?.action==='select_axiom'){paintViewer();saveState();return;}
    if(kind==='connection_action'&&value.action==='open'){view='workspace';if(!opened.includes(currentKey()))opened.push(currentKey());}
    if(kind==='open_reference'||kind==='set_route_mode'||kind==='connection_action'&&value.action==='reference')remember();
    if(kind!=='open_outline_sheet')syncURL();paint();

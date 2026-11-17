@@ -2519,11 +2519,11 @@ const shelfFieldLabel=field=>field==="dialogue"?"Dialogues":SHELF_FIELDS.find(([
 const isShelfField=book=>SHELF_FIELDS.some(([id])=>id===book.field)
 const shelfScope=data=>["lateral","corpus","dialogue"].includes(data?.library_scope)?data.library_scope:""
 const shelfTheme=(data,state)=>shelfScope(data)||(!data?.active_study_set&&!state.collection&&["lateral","corpus","dialogue"].includes(state.kind)?state.kind:"")
-const shelfDefaults=(scope="")=>({kind:scope||"book",query:"",sort:"title",author:"",language:"",layer:"",era:"",collection:"",filtersOpen:false})
+const shelfDefaults=(scope="")=>({kind:scope||"book",query:"",sort:"title",author:"",language:"",layer:"",era:"",document_type:"",subject:"",collection:"",filtersOpen:false})
 function shelfStateFor(data,state){
   const scope=shelfScope(data)
-  if(scope)return {...state,kind:scope,collection:""}
-  if(state.kind==="study_sets")return {...state,author:"",language:"",layer:"",era:"",filtersOpen:false}
+  if(scope)return {...state,kind:scope,collection:"",...(["lateral","corpus"].includes(scope)?{document_type:"",subject:""}:{})}
+  if(state.kind==="study_sets")return {...state,author:"",language:"",layer:"",era:"",document_type:"",subject:"",filtersOpen:false}
   return state
 }
 const studySetsAvailable=data=>Array.isArray(data?.study_sets)
@@ -2538,6 +2538,16 @@ const librarySelectionAvailable=data=>Boolean(data?.library_selection_enabled)&&
 const libraryBooks=data=>new Map(shelfLeaves(data?.books).filter(book=>book.id&&!isShelfField(book)&&book.item_type!=="collection"&&!book.archived).map(book=>[String(book.id),book]))
 const librarySelectedIds=data=>{const books=libraryBooks(data);return [...new Set(arr(data?.selected_work_ids).map(String))].filter(id=>books.has(id))}
 const librarySelecting=data=>typeof data?.library_selecting==="boolean"?data.library_selecting:librarySelectedIds(data).length>0
+const LIBRARY_SELECTING_KEY="care-library-selecting/1"
+const librarySelectionInactiveControls=".library-more,.library-edit-collection,.book-menu-toggle,[data-shelf-kind=study_sets],.book-card[data-selection-unavailable]"
+function paintLibrarySelectionControls(runtime,selecting){
+  const root=runtime.root
+  for(const card of root.querySelectorAll(".book-card"))card.toggleAttribute("data-selection-unavailable",!card.querySelector("[data-library-select],[data-open-collection]"))
+  for(const control of root.querySelectorAll(librarySelectionInactiveControls))control.inert=selecting
+  // Restore any top-bar state retained by the previous component during reload.
+  for(const [control,previous] of runtime.librarySelectionOuterControls||[]){control.inert=previous.inert;control.style.opacity=previous.opacity}
+  runtime.librarySelectionOuterControls?.clear()
+}
 const libraryMemberIds=book=>[...new Set(shelfLeaves([book]).filter(item=>item.id&&!isShelfField(item)&&!["collection","study_set","studio_book"].includes(item.item_type)&&!item.archived).map(item=>String(item.id)))]
 function libraryCheckState(book,selected){
   const ids=libraryMemberIds(book),count=ids.filter(id=>selected.has(id)).length
@@ -2555,11 +2565,16 @@ function librarySelectionTray(data){
 function setupLibrarySelection(runtime){
   const root=runtime.root
   runtime.librarySelected=new Set();runtime.librarySelecting=false;runtime.librarySelectionPending=[]
+  runtime.saveLibrarySelecting=()=>{if(!librarySelectionAvailable(runtime.data))return;try{studyDeskStorage(root,"sessionStorage")?.setItem(LIBRARY_SELECTING_KEY,JSON.stringify({revision:runtime.librarySelectionRevision,selecting:runtime.librarySelecting}))}catch(_){}}
+  runtime.releaseLibrarySelectionControls=()=>paintLibrarySelectionControls(runtime,false)
+  runtime.setLibrarySelecting=selecting=>{runtime.librarySelecting=selecting;runtime.saveLibrarySelecting();runtime.closeBookMenu();runtime.paintLibrarySelection()}
   runtime.librarySelectionData=()=>({...runtime.data,selected_work_ids:[...runtime.librarySelected],library_selecting:runtime.librarySelecting,study_set_picker_state:runtime.studySetPicker})
   runtime.syncLibrarySelection=data=>{
     const ids=librarySelectedIds(data),signature=JSON.stringify(ids),revision=String(data?.selection_revision??"")
     if(runtime.librarySelectionRevision!==revision){
-      runtime.librarySelected=new Set(ids);runtime.librarySelecting=ids.length>0;runtime.librarySelectionPending=[]
+      let remembered=null
+      if(runtime.librarySelectionRevision===undefined)try{remembered=JSON.parse(studyDeskStorage(root,"sessionStorage")?.getItem(LIBRARY_SELECTING_KEY)||"null")}catch(_){}
+      runtime.librarySelected=new Set(ids);runtime.librarySelecting=remembered?.revision===revision&&typeof remembered.selecting==="boolean"?remembered.selecting:ids.length>0;runtime.librarySelectionPending=[]
     }else if(signature!==runtime.librarySelectionServer){
       const acknowledged=runtime.librarySelectionPending.lastIndexOf(signature)
       if(acknowledged>=0)runtime.librarySelectionPending.splice(0,acknowledged+1)
@@ -2568,12 +2583,14 @@ function setupLibrarySelection(runtime){
     const books=libraryBooks(data)
     runtime.librarySelected=new Set([...runtime.librarySelected].filter(id=>books.has(id)))
     runtime.librarySelectionRevision=revision;runtime.librarySelectionServer=signature
+    runtime.saveLibrarySelecting()
   }
   runtime.paintLibrarySelection=()=>{
     const data=runtime.librarySelectionData(),window=root.querySelector(".library-window")
     if(!window||!librarySelectionAvailable(data))return
     window.setAttribute("data-selecting",String(runtime.librarySelecting))
-    const toggle=root.querySelector("[data-library-selection-toggle]"),tools=root.querySelector("[data-library-selection-tools]"),tray=root.querySelector("[data-library-selection-tray]")
+    paintLibrarySelectionControls(runtime,runtime.librarySelecting)
+    const toggle=root.querySelector("[data-library-selection-toggle]"),tray=root.querySelector("[data-library-selection-tray]")
     if(toggle){
       const label=runtime.librarySelecting?"Done selecting":"Select books"
       const text=toggle.querySelector(".library-control-label")
@@ -2582,7 +2599,6 @@ function setupLibrarySelection(runtime){
       toggle.setAttribute("aria-label",label)
       toggle.setAttribute("aria-pressed",String(runtime.librarySelecting))
     }
-    if(tools)tools.hidden=!runtime.librarySelecting
     if(tray){tray.hidden=!runtime.librarySelecting&&!runtime.librarySelected.size;const markup=librarySelectionTray(data);if(tray.innerHTML!==markup)tray.innerHTML=markup}
     const entries=new Map([...arr(data.books),...shelfLeaves(data.books)].map(book=>[String(book.id),book]))
     root.querySelectorAll("[data-library-select]").forEach(button=>{
@@ -2594,8 +2610,6 @@ function setupLibrarySelection(runtime){
       const open=card?.querySelector("[data-open-work]")
       open?.setAttribute("aria-label",`${runtime.librarySelecting?checked==="true"?"Deselect":"Select":"Study"}: ${book.title}`)
     })
-    const visible=shelfSelection(data,runtime.shelf).items.flatMap(book=>isCollection(book)?arr(book.matching_work_ids):libraryMemberIds(book)),selectAll=root.querySelector("[data-library-select-visible]")
-    if(selectAll){selectAll.disabled=!visible.length;selectAll.textContent=visible.length&&visible.every(id=>runtime.librarySelected.has(id))?"Deselect this shelf":"Select this shelf"}
     root.querySelectorAll("[data-library-selection-clear]").forEach(button=>button.disabled=!runtime.librarySelected.size)
   }
   runtime.emitLibrarySelection=(action,extra={})=>{
@@ -2611,6 +2625,9 @@ function setupLibrarySelection(runtime){
   }
   runtime.onLibrarySelectionClick=event=>{
     const target=event.target
+    if(runtime.librarySelecting&&librarySelectionAvailable(runtime.data)&&target.closest(librarySelectionInactiveControls)){
+      event.preventDefault?.();event.stopPropagation?.();return true
+    }
     if(runtime.onStudySetPickerClick?.(event))return true
     const setAction=target.closest("[data-study-set-action]")
     if(setAction&&studySetsAvailable(runtime.data)){
@@ -2629,7 +2646,7 @@ function setupLibrarySelection(runtime){
     const publish=target.closest("[data-library-selection-action=publish_beta]")
     if(publish&&runtime.data.library_selection_enabled){const scope=shelfScope(runtime.data);runtime.emitLibrarySelection("publish_beta",{publication_kind:scope==="dialogue"?"book":scope||"book"});return true}
     if(!librarySelectionAvailable(runtime.data))return false
-    if(target.closest("[data-library-selection-toggle]")){runtime.librarySelecting=!runtime.librarySelecting;runtime.closeBookMenu();runtime.paintLibrarySelection();return true}
+    if(target.closest("[data-library-selection-toggle]")){runtime.setLibrarySelecting(!runtime.librarySelecting);return true}
     if(target.closest("[data-library-selection-clear]")){runtime.setLibrarySelected([]);root.querySelector("[data-library-selection-toggle]")?.focus({preventScroll:true});return true}
     const action=target.closest("[data-library-selection-action]")
     if(action){if(!action.disabled){const kind=action.dataset.librarySelectionAction;if(runtime.data.active_study_set&&["lateral","corpus"].includes(kind))runtime.emitLibrarySelection(`study_set_${kind}`,{selected_only:true});else runtime.emitLibrarySelection(kind)}return true}
@@ -2652,6 +2669,9 @@ function shelfMatches(book,state,{ignoreQuery=false}={}){
   if(["book","lecture","dialogue"].includes(state.kind)&&(isShelfField(book)||(book.content_kind||"book")!==state.kind))return false
   if(state.author&&book.author!==state.author&&!arr(book.author_names).includes(state.author))return false
   if(state.language&&book.language_code!==state.language&&!arr(book.languages).includes(state.language))return false
+  if((state.document_type||state.subject)&&(isShelfField(book)||book.item_type==="study_set"))return false
+  if(state.document_type&&(state.document_type==="unclassified"?Boolean(book.document_type):book.document_type!==state.document_type))return false
+  if(state.subject&&(state.subject==="unclassified"?arr(book.subjects).length>0:!arr(book.subjects).includes(state.subject)))return false
   if(state.layer==="source"&&!book.has_source&&!(isShelfField(book)&&arr(book.layers).includes("SOURCE")))return false
   if(state.layer==="unprocessed"&&(book.has_care||isShelfField(book)))return false
   if(state.layer&&!['source','unprocessed'].includes(state.layer)&&!arr(book.layers).includes(state.layer))return false
@@ -2665,7 +2685,7 @@ function shelfMatches(book,state,{ignoreQuery=false}={}){
     if(state.era==="2000"&&year<2000)return false
   }
   const terms=shelfText(state.query).trim().split(/\s+/).filter(Boolean)
-  return ignoreQuery||terms.every(term=>shelfText([book.title,book.author,book.year,book.language_name,...(isShelfField(book)?[shelfFieldLabel(book.field),book.description,...arr(book.member_titles)]:[])].join(" ")).includes(term))
+  return ignoreQuery||terms.every(term=>shelfText([book.title,book.author,book.year,book.language_name,book.document_type_label,...arr(book.subject_labels),...(isShelfField(book)?[shelfFieldLabel(book.field),book.description,...arr(book.member_titles)]:[])].join(" ")).includes(term))
 }
 function shelfSelection(data,state){
   state=shelfStateFor(data,state)
@@ -2675,10 +2695,10 @@ function shelfSelection(data,state){
     ?arr(data.study_sets).map(set=>({...set,item_type:"study_set"})):[]
   const base=collection?arr(collection.members):state.kind==="study_sets"?sets:[...all,...fields,...sets]
   const selected=base.flatMap(book=>{
-    if(book.item_type==="study_set")return ![state.author,state.language,state.layer,state.era].some(Boolean)&&shelfMatches(book,state)?[book]:[]
+    if(book.item_type==="study_set")return ![state.author,state.language,state.layer,state.era,state.document_type,state.subject].some(Boolean)&&shelfMatches(book,state)?[book]:[]
     if(!collection&&state.kind==="collection"&&!isCollection(book))return []
     if(!isCollection(book))return shelfMatches(book,state)?[book]:[]
-    const groupMatches=shelfMatches({...book,content_kind:["lecture","dialogue"].includes(state.kind)?state.kind:"book"},{...state,author:"",language:"",layer:"",era:""})
+    const groupMatches=shelfMatches({...book,content_kind:["lecture","dialogue"].includes(state.kind)?state.kind:"book"},{...state,author:"",language:"",layer:"",era:"",document_type:"",subject:""})
     const members=shelfLeaves(book.members).filter(member=>shelfMatches(member,state,{ignoreQuery:groupMatches}))
     return members.length?[{...book,matching_members:members.length,matching_work_ids:libraryMemberIds({item_type:"collection",members})}]:[]
   })
@@ -2841,6 +2861,7 @@ function setupBookMenu(runtime){
     if(restoreFocus&&current.anchor?.isConnected!==false)current.anchor?.focus({preventScroll:true})
   }
   runtime.openBookMenu=(card,{anchor=null,x=null,y=null,last=false,pickSet=false}={})=>{
+    if(runtime.librarySelecting&&librarySelectionAvailable(runtime.data))return false
     runtime.closeBookMenu()
     const fieldId=String(card?.dataset.bookField||""),workId=String(card?.dataset.bookWork||""),collectionId=String(card?.dataset.bookCollection||"")
     const book=collectionId&&studySetsAvailable(runtime.data)?arr(runtime.data?.books).find(item=>String(item.id)===collectionId&&isCollection(item)):
@@ -2866,6 +2887,9 @@ function setupBookMenu(runtime){
       actions.unshift(["study_set_add","Add to study set…",'<path d="M3 4h9M3 8h9M3 12h5m6 0h4m-2-2v4"/>'])
       if(runtime.data.active_study_set)actions.splice(1,0,["study_set_remove","Remove from this study set",'<path d="M3 4h9M3 8h9M3 12h5m6 0h4"/>'])
     }
+    if(runtime.data?.source_library){
+      actions.splice(0,actions.length,...arr(book.source_actions).map(item=>[item.action,item.label,'<path d="M3 10h13m-5-5 5 5-5 5"/>']),["copy_title","Copy title",'<rect x="7" y="7" width="10" height="10" rx="2"/>'])
+    }
     const sets=arr(runtime.data?.study_sets)
     const choices=pickSet?[
       ["study_set_back","Back to options",'<path d="M16 10H4m5-5-5 5 5 5"/>'],
@@ -2875,6 +2899,7 @@ function setupBookMenu(runtime){
     if(workId&&runtime.data?.web_study_set_actions)choices.unshift(["web_study_set_add","Add to study set…",'<path d="M3 4h9M3 8h9M3 12h5m6 0h4m-2-2v4"/>'])
     for(const [action,label,path,setId] of choices){
       const button=doc.createElement("button");button.type="button";button.tabIndex=-1;button.setAttribute("role","menuitem");button.setAttribute("data-book-menu-action",action)
+      if(runtime.data?.source_library){const sourceAction=arr(book.source_actions).find(item=>item.action===action);if(sourceAction?.disabled){button.disabled=true;button.title=sourceAction.help||"This source is protected."}}
       if(action==="study_set_add"&&sets.length)button.setAttribute("aria-haspopup","menu")
       if(setId)button.setAttribute("data-book-set-id",setId)
       const icon=doc.createElement("span");icon.className="book-menu-icon";icon.setAttribute("aria-hidden","true");icon.innerHTML=`<svg viewBox="0 0 20 20">${path}</svg>`
@@ -2902,8 +2927,15 @@ function setupBookMenu(runtime){
     current.feedbackTimer=view?.setTimeout(()=>{if(runtime.bookMenu===current){label.textContent="Copy title";current.status.textContent=""}},1800)
   }
   runtime.activateBookMenu=button=>{
+    if(runtime.librarySelecting&&librarySelectionAvailable(runtime.data)){runtime.closeBookMenu();return true}
     const current=runtime.bookMenu,action=button?.dataset.bookMenuAction;if(!current||!action)return false
     if(action==="copy_title"){runtime.copyBookTitle(button);return true}
+    if(runtime.data?.source_library){
+      const sourceAction=arr(current.book.source_actions).find(item=>item.action===action)
+      if(!sourceAction||sourceAction.disabled||button.disabled)return false
+      const work_id=String(current.book.id);runtime.closeBookMenu({restoreFocus:true})
+      runtime.api?.setTriggerValue("book_action",{action,work_id,nonce:`${Date.now()}-${Math.random()}`});return true
+    }
     if(action==="study_set_back"&&current.pickSet)return runtime.openBookMenu(current.card,current.placement)
     if(action==="study_set_add"&&arr(runtime.data.study_sets).length){
       return runtime.openBookMenu(current.card,{...current.placement,pickSet:true})
@@ -2958,6 +2990,7 @@ function setupBookMenu(runtime){
   }
   runtime.onBookContextMenu=event=>{
     const card=cardFor(event.target);if(!card)return
+    if(runtime.librarySelecting&&librarySelectionAvailable(runtime.data)){event.preventDefault();event.stopPropagation();return}
     if(runtime.openBookMenu(card,{anchor:openControl(card),x:event.clientX,y:event.clientY})){event.preventDefault();event.stopPropagation()}
   }
   runtime.onBookMenuKey=event=>{
@@ -2999,8 +3032,9 @@ function setupBookMenu(runtime){
   runtime.onBookMenuScroll=event=>{if(runtime.bookMenu&&!event.target?.closest?.("[data-book-context-menu]"))runtime.closeBookMenu()}
   runtime.onBookMenuResize=()=>runtime.closeBookMenu()
 }
-function shelfHasFilters(state){return Boolean(state.query||state.author||state.language||state.layer||state.era)}
+function shelfHasFilters(state){return Boolean(state.query||state.author||state.language||state.layer||state.era||state.document_type||state.subject)}
 function shelfResults(data,state){
+  if(data?.source_library)return sourceLibraryResults(data,state)
   state=shelfStateFor(data,state)
   const selection=shelfSelection(data,state),count=selection.items.length
   if(data.active_study_set&&!selection.total&&!selection.fieldTotal)return {selection,summary:"",cards:'<div class="library-empty"><strong>Make this set your own</strong><p>Choose “Add from Library” to bring books onto this shelf. You can also add a book or reading from its three-dot menu.</p></div>'}
@@ -3020,6 +3054,7 @@ const SHELF_CONTROL_PATHS={
 }
 const shelfControlIcon=name=>`<svg class="library-control-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="${SHELF_CONTROL_PATHS[name]}"/></svg>`
 function shelfCategory(data,state,collection){
+  if(data?.source_library)return sourceLibraryCategory(data,state)
   if(shelfScope(data))return ""
   const tabs=data.active_study_set?SHELF_TABS.filter(([id])=>id!=="collection"):studySetsAvailable(data)&&!collection?[...SHELF_TABS,["study_sets","Study sets"]]:SHELF_TABS
   const label=tabs.find(([id])=>id===state.kind)?.[1]||"All"
@@ -3170,18 +3205,21 @@ function studySetHeading(set,pickerOpen=false){
   return `<header class="library-head study-set-heading"><div><button type="button" class="library-back" data-study-set-action="study_set_close">← Study sets</button><h2 tabindex="-1">${esc(set.title)}</h2><p>${corpus?`${corpus} ${corpus===1?"book":"books"} with CARE readings`:"Saved CARE readings appear here"}${missing?` · ${missing} unavailable ${missing===1?"item":"items"}`:""}</p></div><div class="study-set-actions"><button type="button" class="study-set-button study-set-primary" data-study-set-picker-toggle data-study-set-action="study_set_picker" data-study-set-id="${esc(set.id)}" aria-expanded="${pickerOpen}"${pickerOpen?' aria-controls="study-set-picker"':""}>${pickerOpen?"Hide Library picker":"+ Add from Library"}</button><button type="button" class="study-set-button" data-study-set-action="study_set_edit">Edit set</button>${wb>=2?'<button type="button" class="study-set-button study-set-lateral" data-study-set-action="study_set_lateral">Prepare lateral</button>':""}${corpus?'<button type="button" class="study-set-button study-set-corpus" data-study-set-action="study_set_corpus">Prepare corpus</button>':""}</div></header>`
 }
 function library(data,state=shelfDefaults()){
+  if(data?.source_library?.compact)return sourceLibrary(data,state)
   state=shelfStateFor(data,state)
   const scope=shelfScope(data),all=scope==='dialogue'?shelfLeaves(data?.books).filter(book=>book.content_kind==='dialogue'):scope?arr(data?.fields).filter(book=>book.field===scope):[...shelfLeaves(data?.books),...arr(data?.fields),...studioShelfBooks(data)],result=shelfResults(data,state),collection=result.selection.collection
   const options=(pairs,value)=>pairs.map(([id,label])=>`<option value="${esc(id)}" ${id===value?"selected":""}>${esc(label)}</option>`).join("")
   const authors=[...new Set(all.flatMap(book=>[book.author,...arr(book.author_names)]).filter(Boolean))].sort((a,b)=>a.localeCompare(b))
   const languages=[...new Map(all.map(book=>[book.language_code,book.language_name||book.language_code]).filter(([code])=>code)).entries()].sort((a,b)=>a[1].localeCompare(b[1]))
-  const filterCount=[state.author,state.language,state.layer,state.era].filter(Boolean).length
+  const documentTypes=[...new Map(all.filter(book=>book.document_type).map(book=>[book.document_type,book.document_type_label||book.document_type])).entries()].sort((a,b)=>a[1].localeCompare(b[1]))
+  const subjects=[...new Map(all.flatMap(book=>arr(book.subjects).map((subject,index)=>[subject,arr(book.subject_labels)[index]||subject]))).entries()].sort((a,b)=>a[1].localeCompare(b[1]))
+  const filterCount=[state.author,state.language,state.layer,state.era,state.document_type,state.subject].filter(Boolean).length
   const filterLabel=`Filters${filterCount?` · ${filterCount}`:""}`
   const setsTab=state.kind==="study_sets",canSelect=!setsTab&&librarySelectionAvailable(data),selecting=canSelect&&librarySelecting(data)
   const selectionLabel=selecting?"Done selecting":"Select books"
   const pickerOpen=Boolean(data.active_study_set)&&Array.isArray(data.study_set_picker_items)
   const shelfResultsMarkup=`<div class="library-summary" data-shelf-summary role="status" aria-live="polite">${result.summary}</div><div class="library-grid" data-shelf-grid>${result.cards}</div>`
-  return `<div class="library-window" data-library-scope="${scope}" data-library-theme="${shelfTheme(data,state)}" data-selecting="${selecting}">
+  return `<div class="library-window${data.source_library?" source-library-window":""}" data-library-scope="${scope}" data-library-theme="${data.source_library?"source":shelfTheme(data,state)}" data-selecting="${selecting}"${data.source_library?` data-source-layout="${state.sourceLayout==="list"?"list":"grid"}" data-source-compact="false"`:""}>
     ${studySetHeading(data.active_study_set,pickerOpen)}
     ${collection?`<header class="library-head"><div><button type="button" class="library-back" data-close-collection>← ${data.active_study_set?"Study set":"All library"}</button><h2>${esc(collection.title)}</h2></div>${collection.user_collection&&canSelect?`<button type="button" class="library-edit-collection" data-library-edit-collection="${esc(collection.id)}">Edit collection</button>`:""}</header>`:""}
     <div class="library-toolbar">
@@ -3190,9 +3228,9 @@ function library(data,state=shelfDefaults()){
         <div class="library-tools">
           <label class="library-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4"/></svg><input type="search" data-shelf-input="query" aria-label="Find on this shelf" placeholder="${setsTab?"Find a study set…":"Find a title or author…"}" value="${esc(state.query)}"></label>
           <div class="library-tool-actions">
-            <label class="library-sort" title="Sort library"><select data-shelf-input="sort" aria-label="Sort library">${options(collection?[["collection","Collection order"],...SHELF_SORTS]:data.active_study_set?[["study_set","Set order"],...SHELF_SORTS]:SHELF_SORTS,state.sort)}</select>${shelfControlIcon("sort")}</label>
+            <label class="library-sort" title="Sort library"><select data-shelf-input="sort" aria-label="Sort library">${options(data.source_library?SHELF_SORTS.filter(([id])=>["title","title-desc","author","added"].includes(id)):collection?[["collection","Collection order"],...SHELF_SORTS]:data.active_study_set?[["study_set","Set order"],...SHELF_SORTS]:SHELF_SORTS,state.sort)}</select>${shelfControlIcon("sort")}</label>
             ${setsTab?`<button type="button" class="study-set-new" data-study-set-action="study_set_new" aria-label="New study set" title="New study set">${shelfControlIcon("add")}<span class="library-control-label">New study set</span></button>`:`<button type="button" class="library-filter-toggle ${filterCount?"active":""}" data-shelf-filters aria-label="${filterLabel}" title="${filterLabel}" aria-expanded="${state.filtersOpen}" aria-controls="shelf-filters">${shelfControlIcon("filter")}<span class="library-control-label">${filterLabel}</span></button>`}
-            ${canSelect?`<button type="button" class="library-select-toggle" data-library-selection-toggle aria-label="${selectionLabel}" title="${selectionLabel}" aria-pressed="${selecting}">${shelfControlIcon("select")}<span class="library-control-label">${selectionLabel}</span></button>`:""}
+            ${data.source_library?sourceLibraryAddControl():canSelect?`<button type="button" class="library-select-toggle" data-library-selection-toggle aria-label="${selectionLabel}" title="${selectionLabel}" aria-pressed="${selecting}">${shelfControlIcon("select")}<span class="library-control-label">${selectionLabel}</span></button>`:""}
             ${data.library_selection_enabled&&!data.studio_embed&&(scope==="corpus"||state.kind==="corpus")?`<button type="button" class="library-select-toggle" data-library-selection-action="compose_corpus" aria-label="Compose corpus" title="Compose corpus">${shelfControlIcon("add")}<span class="library-control-label">Compose corpus</span></button>`:""}
             <details class="library-more" data-shelf-actions>
               <summary aria-label="More library actions"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.45"/><circle cx="10" cy="10" r="1.45"/><circle cx="16" cy="10" r="1.45"/></svg><span>More</span></summary>
@@ -3204,10 +3242,11 @@ function library(data,state=shelfDefaults()){
           </div>
         </div>
       </div>
-      ${canSelect?`<div class="library-selection-tools" data-library-selection-tools ${selecting?"":"hidden"}><button type="button" data-library-select-visible>Select this shelf</button><button type="button" data-library-selection-clear>Clear selection</button><span>Open a collection to choose individual books.</span></div>`:""}
       <div class="library-filters" id="shelf-filters" ${state.filtersOpen?"":"hidden"}>
         <label>Author<select data-shelf-input="author">${options([["","All authors"],...authors.map(author=>[author,author])],state.author)}</select></label>
         <label>Language<select data-shelf-input="language">${options([["","All languages"],...languages],state.language)}</select></label>
+        ${!["lateral","corpus"].includes(scope)?`<label>Document type<select data-shelf-input="document_type">${options([["","All document types"],...documentTypes,["unclassified","Unclassified"]],state.document_type)}</select></label>
+        <label>Subject<select data-shelf-input="subject">${options([["","All subjects"],...subjects,["unclassified","Unclassified"]],state.subject)}</select></label>`:""}
         <label>Available reading<select data-shelf-input="layer">${options([["","Any reading"],["source","Source text"],["CH","Chapter · CH"],["CL","Cluster · CL"],["MC","Macro · MC"],["WB","Whole book · WB"],["unprocessed","Awaiting CARE"]],state.layer)}</select></label>
         <label>Year<select data-shelf-input="era" title="Original writing year">${options([["","All periods"],["before1800","Before 1800"],["1800","1800–1899"],["1900","1900–1999"],["2000","2000 onwards"],["undated","Undated"]],state.era)}</select></label>
       </div>
@@ -3717,6 +3756,14 @@ function setup(root,studioEmbed=false){
   try{const saved=JSON.parse((!studioEmbed&&studyDeskStorage(root,'sessionStorage')?.getItem(SHELF_STATE_KEY))||"{}");if(SHELF_SORTS.some(([id])=>id===saved.sort))runtime.shelf.sort=saved.sort}catch(_){}
   runtime.mainShelfSort=runtime.shelf.sort
   runtime.syncShelf=data=>{
+    if(data?.source_library){
+      const signature=`sources:${data.source_library.identity||"sources"}`
+      if(runtime.shelfSignature===signature)return false
+      runtime.shelfSignature=signature
+      let saved={};try{saved=JSON.parse(studyDeskStorage(root,'sessionStorage')?.getItem(`${SHELF_STATE_KEY}:sources:${data.source_library.identity||"sources"}`)||"{}")}catch(_){}
+      runtime.shelf={...shelfDefaults(),sort:["added","title","title-desc","author"].includes(saved.sort)?saved.sort:"added",sourceScope:SOURCE_LIBRARY_SCOPES.some(([id])=>id===saved.sourceScope)?saved.sourceScope:"all",sourceLayout:saved.sourceLayout==="list"?"list":"grid",sourceArtwork:sourceLibraryArtPreference(root)}
+      return true
+    }
     const setId=String(data?.active_study_set?.id||""),previousSet=runtime.shelfSetId
     const signature=JSON.stringify([shelfScope(data),data?.shelf_request||"",setId])
     if(runtime.shelfSignature===signature)return false
@@ -3731,6 +3778,7 @@ function setup(root,studioEmbed=false){
     return true
   }
   runtime.saveShelf=()=>{
+    if(runtime.data?.source_library){try{studyDeskStorage(root,'sessionStorage')?.setItem(`${SHELF_STATE_KEY}:sources:${runtime.data.source_library.identity||"sources"}`,JSON.stringify(runtime.shelf))}catch(_){};return}
     if(runtime.data?.active_study_set||runtime.shelf.collection)return
     if(SHELF_SORTS.some(([id])=>id===runtime.shelf.sort))runtime.mainShelfSort=runtime.shelf.sort
     try{if(!studioEmbed)studyDeskStorage(root,'sessionStorage')?.setItem(SHELF_STATE_KEY,JSON.stringify({...runtime.shelf,sort:runtime.mainShelfSort}))}catch(_){}
@@ -3748,9 +3796,10 @@ function setup(root,studioEmbed=false){
     })
   }
   runtime.paintShelfTheme=()=>{
-    const theme=shelfTheme(runtime.data,runtime.shelf)
+    const theme=runtime.data?.source_library?"source":shelfTheme(runtime.data,runtime.shelf)
     const shelf=root.querySelector(".library-window")
     if(shelf&&shelf.dataset.libraryTheme!==theme)shelf.dataset.libraryTheme=theme
+    paintFullShelfContinuity(runtime,theme)
     // Only the main Library advertises its local category to the shared chrome.
     const host=root.getRootNode?.()?.host
     if(host&&!studioEmbed&&host.dataset.careShelfTheme!==theme)host.dataset.careShelfTheme=theme
@@ -3767,7 +3816,7 @@ function setup(root,studioEmbed=false){
         summary.setAttribute("aria-label",summary.title)
       }
     })
-    const filterCount=[runtime.shelf.author,runtime.shelf.language,runtime.shelf.layer,runtime.shelf.era].filter(Boolean).length,toggle=root.querySelector("[data-shelf-filters]")
+    const filterCount=[runtime.shelf.author,runtime.shelf.language,runtime.shelf.layer,runtime.shelf.era,runtime.shelf.document_type,runtime.shelf.subject].filter(Boolean).length,toggle=root.querySelector("[data-shelf-filters]")
     if(toggle){
       const text=toggle.querySelector(".library-control-label")
       const label=`Filters${filterCount?` · ${filterCount}`:""}`
@@ -3790,7 +3839,7 @@ function setup(root,studioEmbed=false){
     runtime.paintShelfControls()
     runtime.paintLibrarySelection()
   }
-  runtime.onShelfInput=event=>{if(runtime.onStudySetPickerInput(event))return;const input=event.target.closest?.("[data-shelf-input]");if(!input||!["query","sort","author","language","layer","era"].includes(input.dataset.shelfInput)||runtime.shelf[input.dataset.shelfInput]===input.value)return;runtime.shelf[input.dataset.shelfInput]=input.value;runtime.paintShelf()}
+  runtime.onShelfInput=event=>{if(runtime.onStudySetPickerInput(event))return;const input=event.target.closest?.("[data-shelf-input]");if(!input||!["query","sort","author","language","layer","era","document_type","subject"].includes(input.dataset.shelfInput)||runtime.shelf[input.dataset.shelfInput]===input.value)return;runtime.shelf[input.dataset.shelfInput]=input.value;runtime.paintShelf()}
   runtime.listen=(node,event,handler,options)=>{node.addEventListener(event,handler,options)}
   runtime.onRouteDirectionInput=event=>{
     const input=event.target?.closest?.("[data-route-direction]")
@@ -3818,10 +3867,11 @@ function setup(root,studioEmbed=false){
         })
       }
     }
+    if(runtime.onLibrarySelectionClick(event))return
     if(portraitMenuAction(runtime,event))return
+    if(sourceLibraryClick(runtime,event))return
     if(runtime.onOriginalClick?.(event))return
     if(runtime.onBookMenuClick(event))return
-    if(runtime.onLibrarySelectionClick(event))return
     if(event.target?.closest?.("[data-route-direction-control]"))return
     if(runtime.onSectionsClick(event))return
     const select=event.target.closest("[data-select-axiom],[data-select-passage]")
@@ -4021,6 +4071,9 @@ function setup(root,studioEmbed=false){
     return ()=>{root.removeEventListener("click",click,true);root.removeEventListener("scroll",sliderScroll,true)}
   }
   runtime.onKey=event=>{
+    if(event.key==="Escape"&&runtime.librarySelecting&&librarySelectionAvailable(runtime.data)){
+      event.preventDefault();event.stopPropagation();runtime.setLibrarySelecting(false);root.querySelector("[data-library-selection-toggle]")?.focus({preventScroll:true});return
+    }
     if(runtime.onBookMenuKey(event))return
     const shelfMenu=event.key==="Escape"&&event.target?.closest?.("[data-shelf-actions][open]")
     if(shelfMenu){
@@ -6886,6 +6939,7 @@ function beautifulTypesetSource(source){
     previous={id,last,row}
   }
   if(footer.childElementCount>1){source.append(footer);undo.push(()=>footer.remove())}
+  const setTop=(node,top)=>{if(node&&node.style.top!==top+'px')node.style.top=top+'px'}
   const positionControls=()=>{
     const selected=markers.find(marker=>marker.routes&&!marker.routes.hidden&&Number.isFinite(marker.controlTop))
     const body=source.closest('.window-body')
@@ -6893,12 +6947,11 @@ function beautifulTypesetSource(source){
     const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
     const minimum=(body.getBoundingClientRect().top-bounds.top)/(scale||1)+8
     const top=Math.max(selected.controlTop,minimum)
-    if(selected.mark)selected.mark.style.top=top+'px'
-    selected.routes.style.top=(top+(selected.mark?28:0))+'px'
+    setTop(selected.mark,top)
+    setTop(selected.routes,top+(selected.mark?28:0))
   }
   const paintSelectionRail=()=>{
     const selected=markers.find(marker=>marker.article.getAttribute('aria-pressed')==='true')
-    rail.hidden=!selected
     if(!selected){rail.removeAttribute('data-passage-id');return}
     const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
     const walker=document.createTreeWalker(selected.container,4),range=document.createRange()
@@ -6912,17 +6965,39 @@ function beautifulTypesetSource(source){
     }
     if(!first||!last){rail.hidden=true;return}
     const inset=parseFloat(document.defaultView.getComputedStyle(source).paddingLeft)||0
+    rail.hidden=false
     rail.style.left=Math.max(0,inset-9)+'px'
     rail.style.top=((first.top-bounds.top)/(scale||1)-2)+'px'
     rail.style.height=(Math.max(16,(last.bottom-first.top)/(scale||1)+4))+'px'
     rail.dataset.passageId=selected.article.dataset.refId||''
   }
+  const layoutControls=()=>{
+    let nextControl=-Infinity
+    for(const marker of markers){
+      if(!Number.isFinite(marker.natural))continue
+      const {mark,routes}=marker,controlTop=Math.max(marker.natural,nextControl)
+      marker.controlTop=controlTop
+      setTop(mark,controlTop)
+      setTop(routes,controlTop+(mark?28:0))
+      nextControl=controlTop+(routes&&!routes.hidden?56:28)
+    }
+  }
+  const paintSelection=()=>{
+    if(!source.isConnected)return
+    // Selecting a passage changes its rail and controls, not the chapter's
+    // line geometry. Reuse the last measured positions of every other passage.
+    if(!markers.some(marker=>marker.article.getAttribute('aria-pressed')==='true'))rail.hidden=true
+    paintSelectionRail()
+    layoutControls()
+    positionControls()
+  }
   const layout=()=>{
     if(!source.isConnected)return
     const bounds=source.getBoundingClientRect(),scale=source.offsetWidth?bounds.width/source.offsetWidth:1
-    let previousTop=-Infinity,nextControl=-Infinity
+    // Finish every text measurement before setting any margin positions.
+    // Alternating a Range read and a style write forced layout once per passage.
     for(const marker of markers){
-      const {container,address,mark,routes,studio}=marker
+      const {container}=marker
       const walker=document.createTreeWalker(container,4)
       let node,rect=null
       while(node=walker.nextNode()){
@@ -6932,21 +7007,19 @@ function beautifulTypesetSource(source){
         const candidate=range.getBoundingClientRect()
         if(candidate.height&&candidate.width){rect=candidate;break}
       }
-      if(!rect)continue
-      const natural=(rect.top-bounds.top)/(scale||1),top=Math.max(natural,previousTop+26)
-      address.style.top=top+'px';previousTop=top+(studio?12:0)
-      if(studio){studio.style.top=(top+16)+'px';studio.setAttribute('data-studio-source-positioned','')}
-      const controlTop=Math.max(natural,nextControl)
-      marker.controlTop=controlTop
-      if(mark)mark.style.top=controlTop+'px'
-      if(routes){routes.style.top=(controlTop+(mark?28:0))+'px'}
-      nextControl=controlTop+(routes&&!routes.hidden?56:28)
+      marker.natural=rect?(rect.top-bounds.top)/(scale||1):null
     }
-    positionControls()
-    paintSelectionRail()
+    let previousTop=-Infinity
+    for(const marker of markers){
+      if(!Number.isFinite(marker.natural))continue
+      const {address,studio}=marker,top=Math.max(marker.natural,previousTop+26)
+      setTop(address,top);previousTop=top+(studio?12:0)
+      if(studio){setTop(studio,top+16);studio.setAttribute('data-studio-source-positioned','')}
+    }
+    paintSelection()
   }
   layout()
-  return {layout,positionControls,cleanup(){for(const restore of undo.reverse())restore()}}
+  return {layout,paintSelection,positionControls,cleanup(){for(const restore of undo.reverse())restore()}}
 }
 
 function setupBeautifulText(runtime){
@@ -6957,6 +7030,7 @@ function setupBeautifulText(runtime){
   let disposed=false,observer=null,frame=null,updating=false,marginFrame=null,marginObserver=null,controlFrame=null
   const clearTypesets=()=>{for(const record of typesets.values())record.cleanup();typesets.clear()}
   const layoutMargins=()=>{for(const record of typesets.values())record.layout()}
+  const paintMargins=()=>{for(const record of typesets.values())record.paintSelection()}
   const queueMargins=()=>{if(disposed||!typesets.size||marginFrame!==null)return;marginFrame=view.requestAnimationFrame(()=>{marginFrame=null;if(!disposed)layoutMargins()})}
   const queueControls=()=>{if(disposed||!typesets.size||controlFrame!==null)return;controlFrame=view.requestAnimationFrame(()=>{controlFrame=null;if(!disposed)for(const record of typesets.values())record.positionControls()})}
   const discardChangedProse=records=>{
@@ -7114,7 +7188,7 @@ function setupBeautifulText(runtime){
   if(view.ResizeObserver)marginObserver=new view.ResizeObserver(queueMargins)
   root.ownerDocument.fonts?.ready?.then(()=>{if(!disposed)queueMargins()})
   runtime.paintBeautifulText=refresh
-  runtime.paintBeautifulMargins=layoutMargins
+  runtime.paintBeautifulMargins=paintMargins
   const cleanup=()=>{
     if(disposed)return
     discardChangedProse(observer?.takeRecords?.()||[])
@@ -7131,7 +7205,7 @@ function setupBeautifulText(runtime){
     root.removeAttribute('data-beautiful-text')
     root.querySelectorAll('[data-beautiful-text-toggle]').forEach(button=>button.setAttribute('aria-pressed','false'))
     if(runtime.cleanupBeautifulText===cleanup){runtime.cleanupBeautifulText=null;runtime.paintBeautifulText=null}
-    if(runtime.paintBeautifulMargins===layoutMargins)delete runtime.paintBeautifulMargins
+    if(runtime.paintBeautifulMargins===paintMargins)delete runtime.paintBeautifulMargins
   }
   runtime.cleanupBeautifulText=cleanup
   refresh()
@@ -7367,7 +7441,7 @@ function setupReaderTouchSelection(root){
 }
 function setupAxiomCopy(runtime){
   runtime.cleanupAxiomCopy?.()
-  const root=runtime.root,doc=root.ownerDocument
+  const root=runtime.root,doc=root.ownerDocument,view=doc.defaultView
   const touchSelection=setupReaderTouchSelection(root)
   const textSelector='[data-reader-code],.axiom-text,.passage-text,.passage-address,.route-card-text,.route-card-id,.axiom-trace,.route-card-via,.field-item .item-copy,.field-item .item-prose,.item-address,.item-trace'
   const cardSelector='[data-select-axiom],[data-select-passage],[data-open-item]'
@@ -7375,29 +7449,65 @@ function setupAxiomCopy(runtime){
     const target=event.target,container=target?.closest?.(textSelector)
     if(!container||!root.contains(container)||!doc?.createTreeWalker||!doc?.createRange)return false
     if(target.closest?.('a[href],svg,math,input,textarea,select'))return false
-    // Read text line rectangles without adding wrappers or changing saved prose.
-    // This also handles formatted, wrapped and dynamically loaded text.
+    const containsPoint=rect=>event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom
+    // Native hit testing identifies the text node at this point without walking
+    // a long formatted paragraph. Verify its glyph rectangles because a caret
+    // may be returned for empty space beside a line or underneath a paragraph.
+    let caret=null
+    try{
+      if(doc.caretPositionFromPoint){
+        const scope=root.getRootNode?.(),position=doc.caretPositionFromPoint(event.clientX,event.clientY,scope?.host?{shadowRoots:[scope]}:undefined)
+        if(position)caret={node:position.offsetNode,offset:position.offset}
+      }else if(doc.caretRangeFromPoint){
+        const position=doc.caretRangeFromPoint(event.clientX,event.clientY)
+        if(position)caret={node:position.startContainer,offset:position.startOffset}
+      }
+    }catch(_){}
+    if(caret?.node?.nodeType===3&&container.contains?.(caret.node)){
+      const node=caret.node
+      if(!node.textContent.trim()||node.parentElement?.closest('svg,math,script,style'))return false
+      const range=doc.createRange(),length=node.textContent.length,offset=Math.max(0,Math.min(length,Number(caret.offset)||0))
+      for(const [start,end] of [[Math.max(0,offset-1),offset],[offset,Math.min(length,offset+1)]]){
+        if(start===end)continue
+        range.setStart(node,start);range.setEnd(node,end)
+        if([...range.getClientRects()].some(containsPoint))return true
+      }
+      return false
+    }
+    // Older engines and shadow roots without native caret support retain the
+    // exact line-rectangle fallback, without adding wrappers to saved prose.
     const walker=doc.createTreeWalker(container,4),range=doc.createRange()
     while(walker.nextNode()){
       const node=walker.currentNode
       if(!node.textContent.trim()||node.parentElement?.closest('svg,math,script,style'))continue
       range.selectNodeContents(node)
       for(const rect of range.getClientRects()){
-        if(event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom)return true
+        if(containsPoint(rect))return true
       }
     }
     return false
   }
-  let gesture=null,nativeTextScope=null,cursorTarget=null
-  const clearCursor=()=>{cursorTarget?.removeAttribute('data-reader-text-hit');cursorTarget=null}
-  const hover=event=>{
-    if(event.pointerType==='touch')return
+  let gesture=null,nativeTextScope=null,cursorTarget=null,hoverFrame=null,pendingHover=null
+  const clearCursor=()=>{
+    if(hoverFrame!==null){view?.cancelAnimationFrame?.(hoverFrame);hoverFrame=null}
+    pendingHover=null;cursorTarget?.removeAttribute('data-reader-text-hit');cursorTarget=null
+  }
+  const paintHover=event=>{
     const next=textHit(event)?event.target:null
     if(next===cursorTarget)return
     clearCursor();cursorTarget=next;cursorTarget?.setAttribute('data-reader-text-hit','')
   }
+  const hover=event=>{
+    if(event.pointerType==='touch')return
+    if(!view?.requestAnimationFrame){paintHover(event);return}
+    pendingHover=event
+    if(hoverFrame!==null)return
+    hoverFrame=view.requestAnimationFrame(()=>{hoverFrame=null;const latest=pendingHover;pendingHover=null;if(latest)paintHover(latest)})
+  }
   const down=event=>{
-    nativeTextScope=textHit(event)?event.target.closest(cardSelector)||event.target.closest(textSelector):null
+    // The touch classifier already preserves scroll, pinch and long-press
+    // selection, so finger presses need no synchronous glyph measurement.
+    nativeTextScope=event.pointerType!=='touch'&&textHit(event)?event.target.closest(cardSelector)||event.target.closest(textSelector):null
     gesture=nativeTextScope?{id:event.pointerId}:null
   }
   const cancel=()=>{gesture=null;nativeTextScope=null}
@@ -7407,7 +7517,6 @@ function setupAxiomCopy(runtime){
     const touchTap=touchSelection.classify(event)
     if(touchTap!==null){if(!touchTap)event.stopImmediatePropagation();return}
     const target=event.target,selection=axiomCodeSelection(root)
-    const text=textHit(event)
     const link=target?.closest?.('a[href]')
     const selected=selection?.isCollapsed===false&&Boolean(String(selection))
     // Continuous typeset prose has no card padding to click. A plain click
@@ -7417,7 +7526,7 @@ function setupAxiomCopy(runtime){
     }
     // Suppress only native text gestures, never blank card space or unrelated
     // controls because an earlier text selection happens to remain on screen.
-    if(text||(link&&link.closest(cardSelector))||(startedOnText&&selected))event.stopImmediatePropagation()
+    if((link&&link.closest(cardSelector))||(startedOnText&&selected)||textHit(event))event.stopImmediatePropagation()
   }
   const key=event=>{
     if(!nativeTextScope||!(event.target===nativeTextScope||nativeTextScope.contains(event.target))||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return
@@ -7688,10 +7797,111 @@ function renderStudyDesk(component,localNavigation=false){
     runtime.applyOutline?.()
     const stopContextMenus=mountWorkspaceReaderMenus(runtime,mode==='workspace'&&data.workspace_managed&&!data.corpus_nested&&stack.work?.id?'study:'+stack.work.id:'')
     studyNavigationPrefetch(runtime)
-    return finishRender(()=>{stopPaneKeyFocus();stopContextMenus();stopReadingFocus();stopPaneReading();stopStudioCopy();runtime.cleanupAxiomStudioUses?.();runtime.cleanupAxiomCopy?.();runtime.cleanupTypesetPassageDismissal?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onShelfActionsOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopPaneScrollbar();stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);root.removeEventListener("toggle",runtime.onRouteReadingToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
+    return finishRender(()=>{runtime.releaseLibrarySelectionControls?.();stopPaneKeyFocus();stopContextMenus();stopReadingFocus();stopPaneReading();stopStudioCopy();runtime.cleanupAxiomStudioUses?.();runtime.cleanupAxiomCopy?.();runtime.cleanupTypesetPassageDismissal?.();runtime.cleanupTitleView?.();runtime.cleanupVibrantView?.();runtime.cleanupBeautifulText?.();runtime.cleanupReaderMenus?.();runtime.cleanupConnectionView?.();view?.removeEventListener("care-reference-viewer-ready",runtime.onViewerReady);runtime.closeBookMenu();runtime.cleanupConnectionDiscovery?.();runtime.cleanupBuildVersionMenu?.();runtime.cleanupOriginalDownloads?.();runtime.cleanupOriginalFormats?.();runtime.cleanupSheetVersionMenu?.();runtime.cleanupPaneBookmarks?.();runtime.cleanupSliderJumpMenu?.();root.removeEventListener("contextmenu",runtime.onBookContextMenu);root.removeEventListener("scroll",runtime.onBookMenuScroll,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onBookMenuOutside,true);root.ownerDocument.removeEventListener("pointerdown",runtime.onShelfActionsOutside,true);view?.removeEventListener("resize",runtime.onBookMenuResize);stopPaneScrollbar();stopTrackZoom();stopWorkspaceWatch();stopDialogueWatch();runtime.stopOriginalReader?.();runtime.stopOriginalReader=null;stopWorkspaceFit();resize?.disconnect();const current=INSTANCES.get(parentElement);if(current!==runtime)return;root.removeEventListener("click",runtime.onClick);root.removeEventListener("keydown",runtime.onKey);root.removeEventListener("wheel",runtime.onWheel,true);root.removeEventListener("input",runtime.onShelfInput);root.removeEventListener("change",runtime.onShelfInput);root.removeEventListener("change",runtime.onConnectionChange);root.removeEventListener("change",runtime.onVersionChange);root.removeEventListener("scroll",runtime.onConnectionTabsScroll,true);root.removeEventListener("pointerdown",runtime.onSliderStart);root.ownerDocument.removeEventListener("pointerup",runtime.onSliderEnd);root.ownerDocument.removeEventListener("pointercancel",runtime.onSliderEnd);root.removeEventListener("input",runtime.onSliderInput);root.removeEventListener("change",runtime.onSliderChange);root.removeEventListener("pointerup",runtime.onSliderChange);root.removeEventListener("input",runtime.onRouteDirectionInput);root.removeEventListener("change",runtime.onRouteDirectionChange);root.removeEventListener("scroll",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.queueThreads,true);root.removeEventListener("toggle",runtime.onSectionToggle,true);root.removeEventListener("toggle",runtime.onRouteReadingToggle,true);for(const event of ["pointerover","pointerout","focusin","focusout"])root.removeEventListener(event,runtime.onRouteHover);if(runtime.threadFrame&&view){view.cancelAnimationFrame(runtime.threadFrame);runtime.threadFrame=null}if(runtime.scrollTimer&&view)view.clearTimeout(runtime.scrollTimer);if(runtime.loadTimer&&view)view.clearTimeout(runtime.loadTimer)})
   } catch(error) {
     INSTANCES.get(parentElement)?.disposeDialoguePlayer?.()
     root.innerHTML=`<div class="inspector-empty"><div><b>THE DESK COULD NOT DRAW</b><p>${esc(error?.stack||error)}</p></div></div>`
   }
 }
+
+const SOURCE_LIBRARY_ART_KEY="care-source-library-art-v1"
+const FULL_SHELF_PALETTE_KEY="care-full-shelf-palette-v1"
+const FULL_SHELF_PALETTES={library:{ground:"#121313",toolbar:"#171918",input:"#181e20"},source:{ground:"#262120",toolbar:"#27221f",input:"#1a1512"}}
+function paintFullShelfContinuity(runtime,theme){
+  if(runtime.data?.mode!=="library"||runtime.data?.studio_embed||!["","source"].includes(theme))return
+  const shelf=runtime.root?.querySelector?.(".library-window");if(!shelf)return
+  const mode=theme==="source"?"source":"library",view=runtime.root?.ownerDocument?.defaultView
+  let previous=runtime.fullShelfPalette
+  try{const storage=studyDeskStorage(runtime.root,'sessionStorage');if(!previous)previous=storage?.getItem(FULL_SHELF_PALETTE_KEY);storage?.setItem(FULL_SHELF_PALETTE_KEY,mode)}catch(_){}
+  runtime.fullShelfPalette=mode
+  if(previous===mode||!FULL_SHELF_PALETTES[previous]||view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return
+  for(const animation of runtime.fullShelfPaletteAnimations||[])animation?.cancel?.()
+  const from=FULL_SHELF_PALETTES[previous],to=FULL_SHELF_PALETTES[mode]
+  const targets=[[shelf,"ground"],[runtime.root.querySelector('.library-toolbar'),"toolbar"],...Array.from(runtime.root.querySelectorAll?.('.library-search input,.library-sort select')||[]).map(node=>[node,"input"])]
+  runtime.fullShelfPaletteAnimations=targets.flatMap(([node,part])=>{
+    if(typeof node?.animate!=="function")return []
+    // Both surfaces remain opaque: no content fade, layout animation or wait.
+    try{return [node.animate([{backgroundColor:from[part]},{backgroundColor:to[part]}],{duration:220,easing:'cubic-bezier(.2,.7,.2,1)'})]}catch(_){return []}
+  })
+}
+const sourceLibraryArtChoice=value=>["auto","text","titles"].includes(value)?value:"auto"
+function sourceLibraryArtPreference(root){try{return sourceLibraryArtChoice(studyDeskStorage(root,'localStorage')?.getItem(SOURCE_LIBRARY_ART_KEY))}catch(_){return "auto"}}
+function sourceLibraryTextLines(text,width=54,limit=39){
+  const lines=[]
+  for(const paragraph of String(text||"").split(/\n\s*\n/)){
+    let line=""
+    for(const word of paragraph.trim().split(/\s+/).filter(Boolean)){
+      if(line&&Array.from(line+" "+word).length>width){lines.push(line);line="";if(lines.length>=limit)return lines}
+      const points=Array.from(word)
+      while(points.length>width){if(line){lines.push(line);line=""}lines.push(points.splice(0,width).join(""));if(lines.length>=limit)return lines}
+      line+=(line?" ":"")+points.join("")
+    }
+    if(line)lines.push(line)
+    if(lines.length>=limit)return lines.slice(0,limit)
+    if(lines.length)lines.push("")
+  }
+  return lines.slice(0,limit)
+}
+function sourceLibraryArtwork(book,state={}){
+  const mode=sourceLibraryArtChoice(state.sourceArtwork),preview=book.source_preview||{}
+  if(mode==="titles"||mode==="auto"&&book.cover_url)return shelfBookVolume(mode==="titles"?{...book,cover_url:""}:book)
+  if(!preview.text)return shelfBookVolume(book)
+  const lines=sourceLibraryTextLines(preview.text)
+  return `<span class="source-page-art" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297" focusable="false"><rect x=".7" y=".7" width="208.6" height="295.6" rx="1.4" fill="#3a2d23" stroke="#6c5441" stroke-width="1.4"/><text x="21" y="17" fill="#c7a286" font-size="3" font-family="monospace">${esc(String(preview.title||book.title||"").slice(0,62).toLocaleUpperCase())}</text><path d="M21 22H189" stroke="#b583594a"/>${lines.map((line,index)=>`<text x="21" y="${34+index*5.95}" fill="#efeee8" font-family="Georgia,serif" font-size="3.7">${esc(line)}</text>`).join("")}<text x="189" y="283" text-anchor="end" fill="#bb9d85" font-family="monospace" font-size="3">OPENING TEXT</text></svg></span>`
+}
+const SOURCE_LIBRARY_SCOPES=[["all","All sources"],["waiting","Waiting to run"],["ready","Ready to run"],["running","Running"],["interrupted","Interrupted runs"]]
+const sourceLibraryScopeMatch=(book,scope)=>scope==="waiting"?["ready","review"].includes(book.source_status)&&(!book.source_has_run||book.source_legacy):scope==="ready"?book.source_status==="ready":scope==="running"?["running","preparing"].includes(book.source_status):scope==="interrupted"?book.source_status==="interrupted":true
+function sourceLibraryAddCard(){
+  return `<div class="book-card source-book source-add-card"><button type="button" class="book-open" data-source-library-add aria-label="Add a source. Choose files, or drop them here." aria-describedby="source-add-anywhere"><span class="book-object"><span class="source-page-art source-add-art" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297" focusable="false"><rect class="source-add-outline" x="1.5" y="1.5" width="207" height="294" rx="3"/><rect class="source-add-inset" x="8" y="8" width="194" height="281" rx="1"/><circle class="source-add-halo" cx="105" cy="148.5" r="31"/><path class="source-add-plus" d="M105 132v33m-16.5-16.5h33"/></svg></span></span><span class="book-copy"><strong>Add a source</strong><span class="source-add-help">Choose files or drop a book here.</span><span class="source-add-anywhere" id="source-add-anywhere">You can also drop files anywhere in CARE.</span></span></button></div>`
+}
+function sourceLibraryAddControl(compact=false){
+  return `<button type="button" class="library-select-toggle source-library-add" data-source-library-add title="Add source" aria-label="Add source">${shelfControlIcon("add")}${compact?"":'<span class="library-control-label">Add source</span>'}</button>`
+}
+function sourceLibraryResults(data,state){
+  const all=arr(data.books),scope=state.sourceScope||"all",terms=shelfText(state.query).trim().split(/\s+/).filter(Boolean)
+  const items=all.filter(book=>sourceLibraryScopeMatch(book,scope)&&shelfMatches(book,{...state,kind:"all"},{ignoreQuery:true})&&terms.every(term=>shelfText([book.title,book.author,book.source_name,book.source_project_key].join(" ")).includes(term)))
+  items.sort((a,b)=>state.sort==="author"?shelfText(a.author).localeCompare(shelfText(b.author))||shelfText(a.title).localeCompare(shelfText(b.title)):state.sort==="title-desc"?-shelfText(a.title).localeCompare(shelfText(b.title)):state.sort==="title"?shelfText(a.title).localeCompare(shelfText(b.title)):String(b.ingested_at||"").localeCompare(String(a.ingested_at||""))||shelfText(a.title).localeCompare(shelfText(b.title)))
+  const filtered=Boolean(terms.length||state.author||scope!=="all")
+  return {selection:{items,collection:null,base:all,total:all.length,fieldTotal:0,setTotal:0},summary:`<span>${items.length} ${items.length===1?"source":"sources"}${filtered?` · ${all.length} in CARE Import`:""}</span>${terms.length||state.author?'<button type="button" data-shelf-reset>Clear filters</button>':'<span>Drop files here, or choose + to add a source.</span>'}`,cards:sourceLibraryAddCard()+(items.map(book=>sourceLibraryCard(book,state)).join("")||(all.length?'<div class="library-empty"><strong>No sources match this view</strong><p>Try another title, author, filename or status.</p></div>':""))}
+}
+function sourceLibraryCard(book,state={}){
+  const primary=arr(book.source_actions).find(action=>action.primary),label=primary?.label||"Open source",progress=book.source_progress||{},fraction=Number(progress.total)>0?Math.max(0,Math.min(1,Number(progress.current||0)/Number(progress.total))):0
+  const preparation=book.source_job_id?`<span class="source-preparing-detail">${esc(book.source_message||label)}${Number(progress.total)>0?` · ${Number(progress.current)||0} / ${Number(progress.total)} ${esc(progress.unit||"items")}`:""}</span>${Number(progress.total)>0?`<span class="source-staging-meter" role="progressbar" aria-valuenow="${Math.round(fraction*100)}" aria-valuemin="0" aria-valuemax="100" aria-label="Source preparation"><i style="width:${fraction*100}%"></i></span>`:""}`:""
+  return `<div class="book-card source-book" data-book-work="${esc(book.id)}"><button type="button" class="book-open" data-open-work="${esc(book.id)}" ${primary?.disabled?"disabled":""} aria-busy="${book.source_status==="preparing"}" aria-label="${esc(`${label}: ${book.title}`)}"><span class="book-object">${sourceLibraryArtwork(book,state)}</span><span class="book-copy">${shelfTitle(book.title)}<span>${esc(book.author)}</span><span class="book-layers"><b class="source-state">${esc(book.source_status_label)}</b>${book.source_format?`<b>${esc(book.source_format)}</b>`:""}${book.source_job_id?"":`<b>${Number(book.source_section_count)||0} sections</b>`}</span>${preparation}${book.source_draft_dirty?'<span class="source-draft-label">Unsaved chapter edits</span>':""}<span class="source-open-label">${esc(label)}<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h13m-5-5 5 5-5 5"/></svg></span>${book.source_date_label?`<span class="source-date">${esc(book.source_date_label)}</span>`:""}</span></button>${shelfMenuToggle(book,"Source options")}</div>`
+}
+function sourceLibraryCategory(data,state){
+  const scope=state.sourceScope||"all",label=SOURCE_LIBRARY_SCOPES.find(([id])=>id===scope)?.[1]||"All sources"
+  return `<details class="library-category" data-shelf-category data-shelf-actions><summary aria-label="Browse CARE Import, ${esc(label)}">${shelfControlIcon("category")}<span data-shelf-category-label>${esc(label)}</span></summary><div class="library-more-panel" role="group" aria-label="Source status">${SOURCE_LIBRARY_SCOPES.map(([id,title])=>`<button type="button" data-source-library-scope="${id}" class="${scope===id?"active":""}" aria-pressed="${scope===id}">${title}<span class="source-library-scope-count">${arr(data.books).filter(book=>sourceLibraryScopeMatch(book,id)).length}</span></button>`).join("")}</div></details>`
+}
+function sourceLibraryMore(state){
+  return `<button type="button" data-source-library-add>Add source…</button><button type="button" data-source-library-watch>Watch folders…</button><button type="button" data-source-library-activity>Preparation activity…</button><hr><span class="source-menu-label">Source artwork</span>${[["auto","Source cover or page"],["text","Opening text"],["titles","Title covers"]].map(([id,label])=>`<button type="button" data-source-library-art="${id}" class="${sourceLibraryArtChoice(state.sourceArtwork)===id?"active":""}" aria-pressed="${sourceLibraryArtChoice(state.sourceArtwork)===id}">${label}</button>`).join("")}<hr><button type="button" data-source-library-layout="grid" class="${state.sourceLayout!=="list"?"active":""}">Page grid</button><button type="button" data-source-library-layout="list" class="${state.sourceLayout==="list"?"active":""}">Compact list</button><button type="button" data-source-library-refresh>Refresh sources</button>`
+}
+function sourceLibrary(data,state){
+  const result=sourceLibraryResults(data,state),scope=state.sourceScope||"all",layout=state.sourceLayout==="list"?"list":"grid"
+  const label=SOURCE_LIBRARY_SCOPES.find(([id])=>id===scope)?.[1]||"All sources"
+  const options=(pairs,value)=>pairs.map(([id,label])=>`<option value="${esc(id)}" ${id===value?"selected":""}>${esc(label)}</option>`).join("")
+  const authors=[...new Set(arr(data.books).map(book=>book.author).filter(Boolean))].sort((a,b)=>a.localeCompare(b))
+  return `<div class="library-window source-library-window" data-library-theme="source" data-source-layout="${layout}" data-source-compact="${Boolean(data.source_library?.compact)}">
+    <div class="library-toolbar"><div class="library-controls">${sourceLibraryCategory(data,state)}
+    <div class="library-tools"><label class="library-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4"/></svg><input type="search" data-shelf-input="query" aria-label="Find a source" placeholder="Find a title, author or filename…" value="${esc(state.query||"")}"></label><div class="library-tool-actions"><button type="button" class="source-library-add" data-source-library-add aria-label="Add source" title="Add source">${shelfControlIcon("add")}</button><label class="library-sort" title="Sort sources">${shelfControlIcon("sort")}<select data-shelf-input="sort" aria-label="Sort sources">${options([["added","Recent first"],["title","Title"],["author","Author"]],state.sort||"added")}</select></label><button type="button" class="library-filter-toggle ${state.author?"active":""}" data-shelf-filters title="Filter authors" aria-label="Filter authors" aria-expanded="${Boolean(state.filtersOpen)}">${shelfControlIcon("filter")}</button><span class="source-library-layout" role="group" aria-label="Source layout"><button type="button" data-source-library-layout="grid" class="${layout==="grid"?"active":""}" aria-label="Cover grid" title="Cover grid" aria-pressed="${layout==="grid"}"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="5" height="6" rx="1"/><rect x="12" y="3" width="5" height="6" rx="1"/><rect x="3" y="12" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/></svg></button><button type="button" data-source-library-layout="list" class="${layout==="list"?"active":""}" aria-label="Compact list" title="Compact list" aria-pressed="${layout==="list"}"><svg viewBox="0 0 20 20"><path d="M7 4h10M7 10h10M7 16h10M3 4h1M3 10h1M3 16h1"/></svg></button></span><button type="button" data-source-library-refresh title="Refresh sources" aria-label="Refresh sources"><svg class="library-control-icon" viewBox="0 0 20 20"><path d="M3 9a7 7 0 1 1 1 6M3 3v6h6"/></svg></button><details class="library-more" data-shelf-actions><summary aria-label="Source view and tools" title="Source view and tools"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.45"/><circle cx="10" cy="10" r="1.45"/><circle cx="16" cy="10" r="1.45"/></svg></summary><div class="library-more-panel">${sourceLibraryMore(state)}</div></details></div></div></div><div class="library-filters" ${state.filtersOpen?"":"hidden"}><label>Author<select data-shelf-input="author">${options([["","All authors"],...authors.map(author=>[author,author])],state.author||"")}</select></label></div></div>
+    <div class="library-summary" data-shelf-summary role="status" aria-live="polite">${result.summary}</div><div class="library-grid" data-shelf-grid>${result.cards}</div></div>`
+}
+function sourceLibraryClick(runtime,event){
+  if(!runtime.data?.source_library)return false
+  if(event.target.closest?.("[data-shelf-reset]")){runtime.shelf={...shelfDefaults(),sort:runtime.shelf.sort,sourceScope:runtime.shelf.sourceScope,sourceLayout:runtime.shelf.sourceLayout,sourceArtwork:runtime.shelf.sourceArtwork,filtersOpen:runtime.shelf.filtersOpen};runtime.paintShelf(true);runtime.root?.querySelector?.("[data-shelf-input='query']")?.focus();return true}
+  const scope=event.target.closest?.("[data-source-library-scope]"),layout=event.target.closest?.("[data-source-library-layout]")
+  const art=event.target.closest?.("[data-source-library-art]")
+  if(art){runtime.shelf.sourceArtwork=sourceLibraryArtChoice(art.dataset.sourceLibraryArt);try{studyDeskStorage(runtime.root,'localStorage')?.setItem(SOURCE_LIBRARY_ART_KEY,runtime.shelf.sourceArtwork)}catch(_){};runtime.paintShelf(true);return true}
+  if(scope||layout){if(scope)runtime.shelf.sourceScope=scope.dataset.sourceLibraryScope;if(layout)runtime.shelf.sourceLayout=layout.dataset.sourceLibraryLayout;runtime.paintShelf(true);return true}
+  if(event.target.closest?.("[data-source-library-add]")){
+    const input=runtime.root?.ownerDocument?.querySelector?.('.st-key-care_source_global_drop input[type="file"]')
+    if(input&&!input.disabled){runtime.root?.querySelectorAll?.("[data-shelf-actions][open]").forEach(menu=>{menu.open=false});input.click();return true}
+    runtime.api?.setTriggerValue("book_action",{action:"source_add",nonce:`${Date.now()}-${Math.random()}`});return true
+  }
+  if(event.target.closest?.("[data-source-library-watch]")){runtime.api?.setTriggerValue("book_action",{action:"source_watch",nonce:`${Date.now()}-${Math.random()}`});return true}
+  if(event.target.closest?.("[data-source-library-refresh]")){runtime.api?.setTriggerValue("book_action",{action:"source_refresh",nonce:`${Date.now()}-${Math.random()}`});return true}
+  if(event.target.closest?.("[data-source-library-activity]")){runtime.api?.setTriggerValue("book_action",{action:"source_activity",nonce:`${Date.now()}-${Math.random()}`});return true}
+  return false
+}
+
 export default function(component){return renderStudyDesk(component)}

@@ -1,5 +1,5 @@
 // Browser-local collections use the same Saved library surface as the Mac app.
-import mountNativeSaved, {css, html} from './native/saved-library.mjs?v=82e4a049abe7cf57';
+import mountNativeSaved, {css, html} from './native/saved-library.mjs?v=8d2763a9327f47d2';
 
 export const SAVED_READING_ID = 'saved:library';
 export const SAVED_READING_STYLE = {label:'Saved library',color:'#b75260',icon:'<path d="M6 3h12v18l-6-4-6 4z"/>'};

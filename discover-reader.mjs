@@ -1,9 +1,9 @@
 /* The Discover page mounts CARE's shipped reader against the selected public
  * collection. No authoring, generation, account or private-library API is used. */
-import mountReader from './native/study-desk.mjs?v=82e4a049abe7cf57';
-import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=82e4a049abe7cf57';
+import mountReader from './native/study-desk.mjs?v=8d2763a9327f47d2';
+import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=8d2763a9327f47d2';
 import {mountDiscoverBookPicker} from './discover-book-picker.mjs?v=20261016-books';
-import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=82e4a049abe7cf57';
+import {loadPublicField,loadFieldMembers} from './public-fields.mjs?v=8d2763a9327f47d2';
 import {loadLibrary} from './library-loader.mjs';
 
 export const DISCOVER_EXAMPLES = Object.freeze({
@@ -95,8 +95,9 @@ export function createDiscoverController(data) {
     if(kind==='connection_action'&&value?.action==='open')return open({book:'lateral'});
     const next=adapter.reduce(state,kind,value);
     if(next===state)return getState();
-    state=normalise(next);
-    if(kind!=='selected_axiom'&&kind!=='open_outline_sheet')remember();
+    const selectionOnly=kind==='selected_axiom'||kind==='connection_action'&&value?.action==='select_axiom';
+    state=selectionOnly?next:normalise(next);
+    if(!selectionOnly&&kind!=='open_outline_sheet')remember();
     return getState();
   }
   function getState(){return copy(state);}
@@ -171,8 +172,8 @@ export async function mountDiscoverReader(host,options={}) {
     };
     const [library,css,scope]=await Promise.all([
       options.library||loadLibrary(options.fetch?{fetch:options.fetch}:{}),
-      readText('./native/study-desk.css?v=82e4a049abe7cf57'),
-      readText('./native/public-scope.css?v=82e4a049abe7cf57'),
+      readText('./native/study-desk.css?v=8d2763a9327f47d2'),
+      readText('./native/public-scope.css?v=8d2763a9327f47d2'),
     ]);
     const data=await prepareDiscoverReading(library);
     const controller=data.works?.length?createDiscoverController(data):null;
@@ -209,7 +210,7 @@ export async function mountDiscoverReader(host,options={}) {
     function dispatch(kind,value){
       if(kind==='open_work'){open({book:controller?.adapter.workFor(value)?.slug||value});return;}
       if(kind==='open_field'&&value===data.lateral?.id||kind==='connection_action'&&value?.action==='open'){open({book:'lateral'});return;}
-      try{controller?.dispatch(kind,value);queuePaint();}catch(error){notify(error.message);}
+      try{controller?.dispatch(kind,value);if(kind!=='selected_axiom'&&!(kind==='connection_action'&&value?.action==='select_axiom'))queuePaint();}catch(error){notify(error.message);}
     }
     async function open(request={}){
       const version=++requestVersion;
@@ -220,7 +221,7 @@ export async function mountDiscoverReader(host,options={}) {
           if(!published)throw Error('This reading is no longer in the public collection.');
           if(fieldApi?.status().fieldId===identity){fieldApi.open({...request,fieldId:identity});publish();return;}
           host.setAttribute('aria-busy','true');notify('Opening the saved reading…');
-          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=82e4a049abe7cf57')]);
+          const [field,module]=await Promise.all([loadPublicField(published,fetcher),import('./discover-field-reader.mjs?v=8d2763a9327f47d2')]);
           if(destroyed||version!==requestVersion)return;
           await loadFieldMembers(field,library);
           if(destroyed||version!==requestVersion)return;
