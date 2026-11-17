@@ -9,7 +9,7 @@ function readerHelpers(name){
   const start=source.indexOf('const VIBRANT_VIEW_KEY=');
   const end=source.indexOf('\nfunction axiomCopyAttributes',start);
   assert.ok(start>=0&&end>start);
-  return new Function((name==='study-desk'?source.slice(0,source.indexOf('const INSTANCES =')):'')+source.slice(start,end)+';return {setup:setupVibrantView,control:vibrantViewControl};')();
+  return new Function(source.slice(source.indexOf('const EPHEMERAL_READER_STORES ='),source.indexOf('const INSTANCES ='))+source.slice(start,end)+';return {setup:setupVibrantView,control:vibrantViewControl};')();
 }
 function viewerSetup(){
   const source=read('native/reference-viewer.mjs');
