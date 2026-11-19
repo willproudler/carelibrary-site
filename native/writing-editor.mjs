@@ -6115,7 +6115,7 @@ function paintWritingParagraphStyleMenu(runtime) {
 // Explicit plain-text paste keeps the destination's typography and never
 // interprets copied Library tokens or shared-footnote metadata.
 function insertWritingMatchStyle(runtime, target, text) {
-  if (typeof text !== "string" || !text || !currentClipboardTarget(runtime, target)) return;
+  if (typeof text !== "string" || !text || !currentWritingMatchStyleTarget(runtime, target)) return;
   const normalized = text.replace(/\r\n?/g, "\n");
   if (target.range && selectedFootnotes(runtime.paper, target.range).length) {
     // Replacing an existing citation must use the ordinary citation transaction
@@ -6128,17 +6128,34 @@ function insertWritingMatchStyle(runtime, target, text) {
   return insertClipboard(runtime, target, normalized);
 }
 
+function currentWritingMatchStyleTarget(runtime, target) {
+  return currentClipboardTarget(runtime, target) && !runtime.binder?.bookOverviewId &&
+    runtime.paper.contentEditable === "true" && (!target.range || rangeInPaper(runtime.paper, target.range));
+}
+
 async function pasteWritingAndMatchStyle(runtime, providedText = null) {
+  runtime.matchStylePasteTarget = null;
   if (runtime.binder?.bookOverviewId) return pasteBinderBookFromMenu(runtime, providedText);
   const target = clipboardTarget(runtime);
-  if (!currentClipboardTarget(runtime, target) || runtime.paper.contentEditable !== "true") return;
-  let text = providedText;
-  if (text == null) {
-    try { text = await navigator.clipboard.readText(); }
-    catch { /* The explicit paste dialog also works without clipboard access. */ }
+  if (!currentWritingMatchStyleTarget(runtime, target)) return;
+  if (typeof providedText === "string") return insertWritingMatchStyle(runtime, target, providedText);
+  runtime.matchStylePasteTarget = target;
+  let text;
+  try {
+    text = await runtime.paper.ownerDocument.defaultView.navigator.clipboard.readText();
+  } catch {
+    if (runtime.matchStylePasteTarget !== target) return;
+    if (!currentWritingMatchStyleTarget(runtime, target)) {
+      runtime.matchStylePasteTarget = null;
+      return;
+    }
+    target.range = restoreSelection(runtime, target.range).cloneRange();
+    status(runtime, "Press Ctrl+V or ⌘V to paste and match style at the cursor.");
+    return;
   }
-  if (typeof text === "string") return insertWritingMatchStyle(runtime, target, text);
-  showClipboardDialog(runtime, target, "paste-match");
+  if (runtime.matchStylePasteTarget !== target) return;
+  runtime.matchStylePasteTarget = null;
+  return insertWritingMatchStyle(runtime, target, text);
 }
 
 function writingPasteMatchAtFocus(runtime, event, target) {
@@ -6168,6 +6185,18 @@ function installWritingPasteMatch(runtime) {
     paste.addEventListener("click", () => void pasteWritingAndMatchStyle(runtime), {signal});
     options.append(paste);
   }
+  doc.addEventListener("paste", event => {
+    const target = runtime.matchStylePasteTarget;
+    if (!target) return;
+    runtime.matchStylePasteTarget = null;
+    const focused = event.composedPath?.()[0] || event.target;
+    if (!currentWritingMatchStyleTarget(runtime, target) ||
+        !runtime.paper.contains(focused) || !event.clipboardData) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    insertWritingMatchStyle(runtime, target, event.clipboardData.getData("text/plain"));
+  }, {capture: true, signal});
+  doc.addEventListener("pointerdown", () => { runtime.matchStylePasteTarget = null; }, {capture: true, signal});
   doc.addEventListener("care-native-edit-command", event => {
     if (event.detail?.command !== "paste-match-style") return;
     writingPasteMatchAtFocus(runtime, event,
@@ -6175,6 +6204,8 @@ function installWritingPasteMatch(runtime) {
   }, {signal});
   doc.addEventListener("keydown", event => {
     const key = event.code === "KeyV" || String(event.key || "").toLowerCase() === "v";
+    const ordinaryPaste = key && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+    if (!ordinaryPaste && !["Meta", "Control", "Alt", "Shift"].includes(event.key)) runtime.matchStylePasteTarget = null;
     if (!key || !event.metaKey || event.ctrlKey || !event.altKey || !event.shiftKey ||
         event.isComposing || event.getModifierState?.("AltGraph")) return;
     writingPasteMatchAtFocus(runtime, event, writingShortcutTarget(runtime, event));
@@ -9463,6 +9494,7 @@ function loadDocument(runtime, doc, blockId, initialQuery, acknowledgement) {
   if (runtime.binder && runtime.docId !== String(doc?.id || "")) closeBinderReading(runtime, false);
   if (runtime.docId) storeRecovery(runtime);
   runtime.clipboardEpoch += 1;
+  runtime.matchStylePasteTarget = null;
   if (runtime.clipboardDialog.open) runtime.clipboardDialog.close();
   runtime.docId = String(doc?.id || "");
   runtime.revision = doc?.revision ?? 0;
@@ -13045,12 +13077,10 @@ function clipboardEdit(command, value = null) {
 function showClipboardDialog(runtime, target, mode, text = "") {
   if (!currentClipboardTarget(runtime, target) || runtime.clipboardDialog.open) return;
   runtime.clipboardTarget = target;
-  runtime.clipboardMatchStyle = mode === "paste-match";
   runtime.clipboardField.value = text;
   runtime.clipboardField.readOnly = mode === "copy";
   runtime.clipboardField.setAttribute("aria-label", mode === "copy" ? "Text to copy" : "Text to paste");
-  runtime.clipboardDialog.querySelector("[data-clipboard-title]").textContent = mode === "copy" ? "Copy text" :
-    mode === "paste-match" ? "Paste and Match Style" : "Paste text";
+  runtime.clipboardDialog.querySelector("[data-clipboard-title]").textContent = mode === "copy" ? "Copy text" : "Paste text";
   runtime.clipboardDialog.querySelector("[data-clipboard-hint]").textContent = mode === "copy"
     ? "Press ⌘C to copy the selected text."
     : "Press ⌘V here, then choose Insert text.";
@@ -14509,17 +14539,13 @@ function setup(root, api) {
     event.preventDefault();
     const target = runtime.clipboardTarget;
     const text = runtime.clipboardField.value;
-    const matchStyle = runtime.clipboardMatchStyle;
     runtime.clipboardDialog.close();
-    if (target) {
-      if (matchStyle) insertWritingMatchStyle(runtime, target, text);
-      else insertClipboard(runtime, target, text);
-    }
+    if (target) insertClipboard(runtime, target, text);
   });
   on(runtime.clipboardField, "paste", event => {
     const clipboard = event.clipboardData;
     const target = runtime.clipboardTarget;
-    if (!clipboard || !target || runtime.clipboardField.readOnly || runtime.clipboardMatchStyle) return;
+    if (!clipboard || !target || runtime.clipboardField.readOnly) return;
     const source = studioClipboardSource(runtime,
       clipboard.getData("text/plain"), clipboard.getData("text/html"), clipboard.getData(studioSourceMime), clipboard.getData(studioFragmentMime));
     if (!source) return;
@@ -14531,7 +14557,6 @@ function setup(root, api) {
   on(runtime.clipboardDialog, "close", () => {
     const target = runtime.clipboardTarget;
     runtime.clipboardTarget = null;
-    runtime.clipboardMatchStyle = false;
     runtime.clipboardField.value = "";
     if (target && currentClipboardTarget(runtime, target) && !runtime.paper.matches(":focus")) {
       restoreSelection(runtime, target.range);

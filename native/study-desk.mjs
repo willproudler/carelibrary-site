@@ -2299,7 +2299,7 @@ function sourcePane(data,selectedId,reference,bookmarks=null,presentation=null){
     return `<div class="passage-row${bookmarks||mark?" reader-has-mark":""}"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}"${presentation?.item(passage,chapter.raw_unit_id,"passage")||""} data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||'')}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(passage.beautiful_reading_block_html||'')}" data-beautiful-original-html="${passage.beautiful_reading_block_html?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false"${presentation?"":' aria-describedby="desk-selection-help"'}><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article>${route}${mark}</div>`
   }).join("")
   const kicker=manuscript?(chapter.studio_book_page_kind==="chapter"?`CHAPTER ${chapter.chapter_number}`:chapter.studio_book_page_kind==="part"?chapter.slider_stop_label:chapter.title):`CHAPTER ${chapter.chapter_number||""} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}`
-  return bookReadingPane("desk-window source-pane","source",`data-layer="SOURCE" data-studio-manuscript="${manuscript}" data-studio-source-variant="${esc(chapter.source_rendition_type||"canonical")}" style="--pane-accent:#8a431d"`,`<div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong>${slider?.heading||""}<span>${manuscript?"SAVED SOURCE":`${arr(chapter.passages).length} PASSAGES`}</span>${presentation?presentation.bookmark(chapter):bookmarks?sourceBookmarkButton(chapter.raw_unit_id,"",bookmarks,chapter.title):""}</div>${slider?.rail||""}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(arr(chapter.reading_heading_titles).length?chapter.reading_heading_titles:[chapter.reading_title||chapter.title]))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>${esc(kicker)}</span>${presentation?"":sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${contents||passages||(manuscript?'<p class="trace-empty">This saved page is blank.</p>':'<p class="trace-empty">No registered passages in this chapter.</p>')}</main></div></div>`,presentation)
+  return bookReadingPane("desk-window source-pane","source",`data-layer="SOURCE" data-studio-manuscript="${manuscript}" data-studio-source-variant="${esc(chapter.source_rendition_type||"canonical")}" style="--pane-accent:#8a431d"`,`<div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong>${slider?.heading||""}<span>${manuscript?"SAVED SOURCE":`${arr(chapter.passages).length} PASSAGES`}</span>${presentation?presentation.bookmark(chapter):bookmarks?sourceBookmarkButton(chapter.raw_unit_id,"",bookmarks,chapter.title):""}</div>${slider?.rail||""}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(beautifulTextChapterTitles(chapter)))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>${esc(kicker)}</span>${presentation?"":sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${contents||passages||(manuscript?'<p class="trace-empty">This saved page is blank.</p>':'<p class="trace-empty">No registered passages in this chapter.</p>')}</main></div></div>`,presentation)
 }
 function traceLabel(item,layer){
   if(String(layer).toUpperCase()==="SOURCE")return "Saved source passage"
@@ -6681,14 +6681,83 @@ function beautifulTextOpeningLabel(value,semanticHeading=false){
   return ''
 }
 
-function beautifulTextHeadingKey(value){return String(value??'').normalize('NFC').replace(/\s+/g,' ').trim().replace(/(?<!\.)\.$/u,'').toLowerCase()}
+function beautifulTextHeadingKey(value){return String(value??'').normalize('NFC').replace(/\.(?=\d)/g,'. ').replace(/\s+/g,' ').trim().replace(/(?<!\.)\.$/u,'').toLowerCase()}
+
+function beautifulTextChapterTitles(chapter){
+  const titles=Array.isArray(chapter.reading_heading_titles)&&chapter.reading_heading_titles.length?[...chapter.reading_heading_titles]:[chapter.reading_title||chapter.title]
+  const original=chapter.original_title,unit=String(chapter.raw_unit_id||'')
+  if(!original||!unit)return titles
+  const heading=value=>{
+    const match=String(value||'').trim().match(/^#{1,6}[ \t]+([^\r\n]+?)(?:[ \t]+#+)?$/)
+    return match&&match[1].length<=300?match[1]:''
+  }
+  // Two saved translations may name the same heading differently. Trust only
+  // an exact, aligned original heading from this chapter, never word synonyms.
+  for(const passage of (Array.isArray(chapter.passages)?chapter.passages:[]).slice(0,8)){
+    if(passage.route_available===false||!String(passage.id||'').startsWith(unit+':'))continue
+    const source=heading(passage.original_text),translated=heading(passage.text)
+    if(source&&translated&&beautifulTextHeadingKey(source)===beautifulTextHeadingKey(original))titles.push(translated)
+  }
+  return [...new Set(titles)]
+}
+
+function beautifulTextHeadingParts(value){
+  const key=beautifulTextHeadingKey(value),words=['one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve'],ordinals=['first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth','eleventh','twelfth']
+  const ordinal='(?:\\d{1,4}|[ivxlcdm]+|'+words.join('|')+'|'+ordinals.join('|')+')',division='(?:chapter|part|book|section|canto|lecture|main division)'
+  const match=key.match(new RegExp('^(?:'+division+'\\s+('+ordinal+')|('+ordinal+')\\s+'+division+')[\\s.:–—-]+(.+)$','i'))
+  if(!match)return null
+  const label=match[1]||match[2],body=match[3]
+  // A translated division label may differ; its number and substantive title
+  // must still agree. Never match a different chapter or an ordinary sentence.
+  if(body.length<20||body.split(/\s+/).length<4||/[!?;]|\.\s/.test(body))return null
+  let number=Number(label)||words.indexOf(label)+1||ordinals.indexOf(label)+1
+  if(!number){const roman={i:1,v:5,x:10,l:50,c:100,d:500,m:1000};number=[...label].reduce((total,char,index)=>total+(roman[char]<roman[label[index+1]]?-roman[char]:roman[char]),0)}
+  return Number.isFinite(number)&&number>0?{number,body}:null
+}
+
+function beautifulTextHeadingMatches(value,titles,semanticHeading=false){
+  if(!titles)return false
+  const key=beautifulTextHeadingKey(value)
+  if(titles.has(key))return true
+  const equivalent=candidate=>{
+    const parts=beautifulTextHeadingParts(candidate)
+    if(!parts)return false
+    return [...titles].some(title=>{const known=beautifulTextHeadingParts(title);return known&&known.number===parts.number&&known.body===parts.body})
+  }
+  if(equivalent(key))return true
+  // An imported semantic heading may contain embedded print line/page numbers.
+  // Only fold it if every remaining word exactly matches the declared title;
+  // this is never a general number-removal rule for prose or source records.
+  if(!semanticHeading||key.length>300)return false
+  if(key.split(/\s+/).length<8&&!/^[\p{L} ]+\.\s+\d{1,4}$/u.test(key))return false
+  const parts=beautifulTextHeadingParts(key),body=parts?.body||key
+  const numbers=[...body.matchAll(/(?<!\S)\d{1,4}(?!\S)/gu)]
+  if(!numbers.length||numbers.length>2)return false
+  // Try bounded omissions so an authored numeral already present in the
+  // declared title is retained. Every remaining word must agree exactly.
+  for(let mask=1;mask<(1<<numbers.length);mask++){
+    let clean=body
+    for(let index=numbers.length-1;index>=0;index--)if(mask&(1<<index))clean=clean.slice(0,numbers[index].index)+clean.slice(numbers[index].index+numbers[index][0].length)
+    clean=beautifulTextHeadingKey(clean)
+    if(parts?equivalent('chapter '+parts.number+'. '+clean):titles.has(clean)||equivalent(clean))return true
+  }
+  return false
+}
 
 function beautifulTextOpeningTitles(source){
   const encoded=source.dataset.beautifulOpeningTitles??source.querySelector(':scope>.source-head')?.dataset.beautifulOpeningTitles
   const title=source.querySelector(':scope>.source-head h2 .reader-full-title')?.textContent
   let titles=[]
   try{const saved=JSON.parse(encoded||'[]');if(Array.isArray(saved))titles=saved}catch(_){}
-  return new Set([title,...titles].filter(value=>typeof value==='string'&&value.trim()&&value.length<=300).map(beautifulTextHeadingKey))
+  const keys=[title,...titles].filter(value=>typeof value==='string'&&value.trim()&&value.length<=300).map(beautifulTextHeadingKey)
+  // An imported chapter heading can split its number from its title.
+  for(const key of [...keys]){
+    const match=key.match(/^(?:chapter|part|book|section|canto|lecture)\s+(\d{1,4}|[ivxlcdm]+)\b[\s:–—.-]*(.*)$/i)
+    if(match){keys.push(match[1]);if(match[2])keys.push(match[2])}
+    const parts=beautifulTextHeadingParts(key)
+    if(parts){keys.push(String(parts.number));keys.push(parts.body)}
+  }
+  return new Set(keys)
 }
 
 const BEAUTIFUL_HEADING='h1,h2,h3,h4,h5,h6'
@@ -6699,7 +6768,7 @@ function beautifulTextOpeningKind(container,verifiedTitles=null){
   const blocks=container.querySelectorAll('p,'+BEAUTIFUL_HEADING)
   if(blocks.length>1)return ''
   const heading=container.matches?.(BEAUTIFUL_HEADING)?container:container.querySelector(BEAUTIFUL_HEADING),text=container.textContent.trim()
-  if(text&&verifiedTitles?.has(beautifulTextHeadingKey(text)))return beautifulTextOpeningLabel(text,true)||'heading'
+  if(text&&beautifulTextHeadingMatches(text,verifiedTitles,!!heading&&heading.textContent.trim()===text))return beautifulTextOpeningLabel(text,true)||'heading'
   return beautifulTextOpeningLabel(text,!!heading&&heading.textContent.trim()===text)
 }
 
@@ -6710,9 +6779,17 @@ function beautifulTextMixedOpening(container,titles){
   let opening=blocks.length>0
   for(const block of blocks){
     if(!block.matches?.('p,'+BEAUTIFUL_HEADING)||!beautifulTextOpeningKind(block,titles)){opening=false;break}
-    if(titles.has(beautifulTextHeadingKey(block.textContent)))duplicates.push(block)
+    if(beautifulTextHeadingMatches(block.textContent,titles,block.matches(BEAUTIFUL_HEADING)))duplicates.push(block)
   }
   return {duplicates,opening,onlyDuplicates:duplicates.length>0&&duplicates.length===blocks.length}
+}
+
+function beautifulTextOpeningByline(articles,index,author){
+  const name=beautifulTextHeadingKey(author)
+  if(!name)return false
+  const label=position=>beautifulTextHeadingKey(articles[position]?.querySelector(':scope>.passage-text')?.textContent)
+  const by=value=>/^(?:by|von|par)$/.test(value)
+  return by(label(index))&&label(index+1)===name||label(index)===name&&by(label(index-1))
 }
 
 function beautifulSourceDetail(passage){
@@ -7097,12 +7174,12 @@ function setupBeautifulText(runtime){
       if(studioFiltered(source)||source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
       const leading=[...source.querySelectorAll(':scope>.passage-row>.passage,:scope>.passage')],titles=openingTitles.get(source)
       let count=0
-      for(const article of leading.slice(0,8)){
+      for(const [index,article] of leading.slice(0,8).entries()){
         if(article.dataset.beautifulCompact==='true')continue
         const text=article.querySelector(':scope>.passage-text'),kind=beautifulTextOpeningKind(text,titles)
         if(kind){
           setOpening(article,'data-beautiful-opening',kind);count++
-          if(article.dataset.beautifulOpeningFoldable==='true'&&titles.has(beautifulTextHeadingKey(text.textContent)))headingDuplicates.add(article)
+          if(article.dataset.beautifulOpeningFoldable==='true'&&beautifulTextHeadingMatches(text.textContent,titles,!!text.querySelector(BEAUTIFUL_HEADING)))headingDuplicates.add(article)
           continue
         }
         const {duplicates,opening,onlyDuplicates}=beautifulTextMixedOpening(text,titles)
@@ -7112,7 +7189,7 @@ function setupBeautifulText(runtime){
           // A mixed passage keeps its address and all remaining source blocks.
           for(const heading of duplicates)setOpening(heading,'data-beautiful-duplicate-heading','')
         }
-        if(!opening)break
+        if(!opening&&!(count&&beautifulTextOpeningByline(leading,index,runtime.data?.stack?.work?.author||runtime.data?.work?.author)))break
       }
       if(count)setOpening(source,'data-beautiful-opening','true')
     }

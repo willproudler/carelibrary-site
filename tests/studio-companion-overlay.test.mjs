@@ -31,6 +31,10 @@ function fixture() {
   const doc = new Element(), body = doc.body = new Element();
   const win = doc.defaultView = new Element();
   win.CustomEvent = class {constructor(type, options = {}) {this.type = type; this.detail = options.detail;}};
+  const timers = new Map();
+  let timerId = 0;
+  win.setTimeout = (callback, delay) => {timers.set(++timerId, {callback, delay});return timerId;};
+  win.clearTimeout = id => timers.delete(id);
   const observed = [];
   win.MutationObserver = win.ResizeObserver = class {
     constructor(callback) {this.callback = callback; observed.push(this);}
@@ -56,7 +60,7 @@ function fixture() {
   const workspace = new Element(); workspace.queries = {'.studio-web__native-editor': native};
   workspace.getBoundingClientRect = () => ({top: 116, left: 0, width: 1200, height: 600});
   doc.queries = {'#studio-workspace': workspace, '.care-numo-companion': host};
-  return {doc, win, host, body, page, panel, map, resume, close, minimize, toolbar, workspace, observed,
+  return {doc, win, host, body, page, panel, map, resume, close, minimize, toolbar, workspace, observed, timers,
     fullscreen(value) {fullscreen = value;}};
 }
 
@@ -72,17 +76,21 @@ test('NUMO opens over a fixed draft in both writing modes and resumes the same l
   assert.equal(f.host.parentNode, f.body, 'Only the overlay leaves the page stacking context');
   companion.setVisible(true, 'studio:draft');
   const editorTools = new Element(); editorTools.append(f.host.careNumoResume);
-  assert.equal(f.resume.hidden, false); assert.equal(f.resume.attributes.get('aria-label'), 'Open NUMO');
-  f.resume.onclick(); await loaded();
+  assert.equal(f.resume.hidden, true, 'A fresh Studio keeps NUMO out of the editor tools');
+  companion.open(); await loaded();
   assert.equal(f.panel.hidden, false); assert.equal(mounts, 1);
+  assert.equal(f.timers.size, 0, 'An open panel has no expiry timer');
   assert.equal(f.host.style.values.get('--numo-dock-top'), '116px');
   assert.deepEqual(draft, before, 'Opening NUMO does not resize, scroll or rewrite the document');
   f.host.dispatchEvent({type: 'click', target: f.minimize});
   assert.equal(f.panel.hidden, true); assert.equal(unmounts, 0, 'Minimizing retains the loaded map');
+  assert.equal(f.resume.hidden, false, 'Only a minimized map can be resumed');
   assert.equal(f.resume.attributes.get('aria-label'), 'Resume NUMO');
+  assert.equal(f.timers.size, 1);
   f.fullscreen(true);
   f.resume.onclick(); await loaded();
   assert.equal(f.panel.hidden, false); assert.equal(mounts, 1);
+  assert.equal(f.timers.size, 0, 'Reopening cancels the previous expiry');
   assert.equal(f.host.style.values.get('--numo-dock-top'), '46px', 'The overlay clears the writing toolbar');
   assert.equal(f.doc.documentElement.hasAttribute('data-care-writing-fullscreen'), true);
   f.doc.dispatchEvent(new f.win.CustomEvent('care:numogram-companion-minimize'));
@@ -91,11 +99,37 @@ test('NUMO opens over a fixed draft in both writing modes and resumes the same l
   f.resume.onclick(); await loaded();
   f.host.dispatchEvent({type: 'click', target: f.close});
   assert.equal(f.panel.hidden, true); assert.equal(unmounts, 1);
-  assert.equal(f.resume.hidden, false); assert.equal(f.resume.attributes.get('aria-label'), 'Open NUMO');
+  assert.equal(f.resume.hidden, true, 'Closing hides even the button moved into editor tools');
   assert.deepEqual(draft, before);
   assert.equal(beforeOpen, 3);
   companion.destroy();
   assert(f.observed.every(observer => observer.disconnected));
+});
+
+test('the minimized NUMO shortcut expires and releases the map without blocking a new open', async () => {
+  const f = fixture();
+  let mounts = 0, unmounts = 0;
+  const companion = createNumoCompanion(f.host, {
+    loadNumogram: async () => ({default: () => {mounts++; return {openReference() {}, unmount() {unmounts++;}};}}),
+    draftLines: () => [], showAQMargins: () => () => {}, beforeOpen() {},
+  });
+  const loaded = () => new Promise(resolve => setImmediate(resolve));
+  companion.setVisible(true, 'studio:draft');
+  companion.open(); await loaded();
+  companion.minimize();
+  const [{callback, delay}] = f.timers.values();
+  assert.equal(delay, 10 * 60 * 1000);
+  callback();
+  assert.equal(f.resume.hidden, true);
+  assert.equal(f.host.careNumoDockState.mode, 'closed');
+  assert.equal(unmounts, 1);
+  assert.equal(f.timers.size, 0);
+  companion.open(); await loaded();
+  assert.equal(mounts, 2);
+  assert.equal(f.panel.hidden, false);
+  companion.minimize();
+  companion.destroy();
+  assert.equal(f.timers.size, 0, 'Unmounting cancels the timer');
 });
 
 test('companion placement follows writing geometry without changing the workspace', () => {

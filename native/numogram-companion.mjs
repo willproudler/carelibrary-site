@@ -1,3 +1,5 @@
+const NUMOGRAM_RESUME_TIMEOUT_MS = 10 * 60 * 1000;
+
 export function numogramCompanionLayout(doc) {
   const fullscreen = doc.documentElement.hasAttribute('data-care-writing-fullscreen');
   const workspace = doc.querySelector('#studio-workspace');
@@ -44,6 +46,7 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   const panel = $('aside'), resume = $('[data-action="resume"]');
   host.careNumoResume = resume;
   host.careNumoDockState = {mode: 'closed'};
+  resume.hidden = true;
   // A native writing view is fixed above the page. Keep this overlay out of
   // the page's own stacking contexts, without moving or resizing the draft.
   doc.body?.append(host);
@@ -52,6 +55,7 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   let surface = 'map', phase = 'closed', visible = false, libraryOpen = false, librarianOpen = false, instrument, module, opening;
   const marginToggle = $('[data-action="margins"]');
   let generation = 0, clearMargins, draftKey;
+  let resumeTimer, resumeUntil = 0;
   function hideMargins() {
     clearMargins?.();
     clearMargins = null;
@@ -61,7 +65,7 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   function paint() {
     host.hidden = !visible || phase === 'closed';
     panel.hidden = phase !== 'open';
-    resume.hidden = !visible || phase === 'open';
+    resume.hidden = !visible || phase !== 'minimized';
     const label = phase === 'minimized' ? 'Resume NUMO' : 'Open NUMO';
     resume.title = label;
     resume.setAttribute('aria-label', label);
@@ -112,9 +116,18 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
   }
 
   function setPhase(next) {
+    if (resumeTimer !== undefined) win.clearTimeout(resumeTimer);
+    resumeTimer = undefined;
+    resumeUntil = 0;
     phase = next;
-    if (phase === 'closed') stop();
-    if (phase === 'closed') hideMargins();
+    if (phase === 'minimized') {
+      resumeUntil = Date.now() + NUMOGRAM_RESUME_TIMEOUT_MS;
+      resumeTimer = win.setTimeout(() => setPhase('closed'), NUMOGRAM_RESUME_TIMEOUT_MS);
+    }
+    if (phase === 'closed') {
+      stop();
+      hideMargins();
+    }
     paint();
   }
 
@@ -162,7 +175,10 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
     void showMap();
   }
 
-  resume.onclick = open;
+  resume.onclick = () => {
+    if (phase === 'minimized' && resumeUntil > Date.now()) open();
+    else setPhase('closed');
+  };
 
   host.addEventListener('click', event => {
     const button = event.target.closest('button');
@@ -255,7 +271,8 @@ export function createNumoCompanion(host, {loadNumogram, draftLines, showAQMargi
       if (visible && phase === 'open') void showMap();
     },
     destroy() {
-      stop(); hideMargins(); fullscreenWatch?.disconnect(); sizeObserver?.disconnect();
+      setPhase('closed');
+      fullscreenWatch?.disconnect(); sizeObserver?.disconnect();
       win.removeEventListener('resize', fit);
       doc.removeEventListener('care:numogram-companion-minimize', minimizeFromWriting);
       host.careNumoVisible = false;
