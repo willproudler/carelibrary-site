@@ -6992,14 +6992,15 @@ function beautifulTypesetSource(source){
     const wrapper=container.querySelector(':scope>.care-reading-text')||container
     const blocks=[...wrapper.children].filter(node=>!node.matches('.beautiful-source-notes'))
     const first=blocks[0],last=blocks.at(-1),id=article.dataset.refId||article.dataset.beautifulPassageId
-    const inlineFigure=article.dataset.beautifulInlineFigure==='true'&&blocks.length===1&&first?.tagName==='FIGURE'&&Boolean(first.querySelector('img'))
+    const figure=blocks.length===1&&first?.tagName==='FIGURE'&&first.querySelector('img')?first:null
+    const inlineFigure=figure&&article.dataset.beautifulInlineFigure==='true'
     for(const note of container.querySelectorAll(':scope>.beautiful-source-notes')){
       const parent=note.parentNode,next=note.nextSibling,label=note.querySelector('summary'),labelText=label?.textContent
       if(label)label.textContent='Passage '+(article.dataset.beautifulPassageNumber||id?.split(':').at(-1)||'')+' · '+labelText
       footer.append(note)
       undo.push(()=>{if(source.contains(parent)){parent.insertBefore(note,next?.parentNode===parent?next:null);if(label)label.textContent=labelText}})
     }
-    if(article.dataset.beautifulFolded==='true'||!first||!inlineFigure&&!wrapper.textContent.trim())continue
+    if(article.dataset.beautifulFolded==='true'||!first||!figure&&!wrapper.textContent.trim())continue
     for(const block of blocks){
       if(!opening)break
       const label=block.textContent.trim()
@@ -7025,7 +7026,7 @@ function beautifulTypesetSource(source){
       undo.push(()=>{address.textContent=text;style===null?address.removeAttribute('style'):address.setAttribute('style',style)})
       for(const control of [mark,routes,studio].filter(Boolean)){const style=control.getAttribute('style');undo.push(()=>style===null?control.removeAttribute('style'):control.setAttribute('style',style))}
       if(studio)undo.push(()=>studio.removeAttribute('data-studio-source-positioned'))
-      markers.push({article,container,address,mark,routes,studio,figure:inlineFigure?first:null})
+      markers.push({article,container,address,mark,routes,studio,figure})
     }
     if(!inlineFigure)previous={id,last,row}
   }

@@ -26,11 +26,20 @@ function publicSourceDetailHint(canonical, passage) {
  */
 import {ancestors, indexLibrary, incoming, selectionFor} from './library-core.mjs?v=8d2763a9327f47d2';
 import * as publicReadingViews from './native/reading-views.mjs?v=9c8696364f758716';
-import {publicSourceFormatting as sourceOpeningFormatting, publicSourceDisplayTitle} from './native/source-opening-views.mjs?v=d89a1f2e7177fd1f';
-const {publicReadingText, publicSourcePresentation = () => ({}), publicSourceFormatting: existingSourceFormatting = () => ({})} = publicReadingViews;
+import {publicSourceFormatting as sourceOpeningFormatting, publicSourceDisplayTitle as sourceOpeningTitle} from './native/source-opening-views.mjs?v=cc067bd2323f9b67';
+const {
+  publicReadingText,
+  publicSourcePresentation = () => ({}),
+  publicSourceFormatting: existingSourceFormatting = () => ({}),
+  publicSourceDisplayTitle: existingSourceTitle = () => '',
+} = publicReadingViews;
 function publicSourceFormatting(source, reading) {
   const opening = sourceOpeningFormatting(source, reading);
-  return opening.chapter ? opening : existingSourceFormatting(source, reading);
+  if (opening.chapter?.beautiful_typeset || Object.keys(opening.passages || {}).length) return opening;
+  return existingSourceFormatting(source, reading);
+}
+function publicSourceDisplayTitle(source, workId) {
+  return sourceOpeningTitle(source, workId) || existingSourceTitle(source, workId);
 }
 import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=8d2763a9327f47d2';
 

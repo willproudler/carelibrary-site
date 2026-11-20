@@ -1,5 +1,5 @@
 {
-  "version": "care-study-desk/2.143-beta-headings_1-source-opening_1-monas-theorems_1",
+  "version": "care-study-desk/2.143-beta-headings_1-source-opening_1-monas-theorems_1-source-display_1",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
@@ -8,9 +8,9 @@
   ],
   "assets": {
     "study-desk.css": "4d4beb36e47074dc78bc5c6d52d3db61233b923344099679116d40a746165f9a",
-    "study-desk.mjs": "9a459c6ce60adeeca8be31071b2a5faa0ba6cedc5c0bba2846164ffaaa0b604b",
+    "study-desk.mjs": "67f1a1b7016bad22f9fae09b7bafdef1c049a1fcfe5cbe6ba5a86384c6f64274",
     "reading-views.mjs": "9c8696364f758716c213bf3c366093336c600ce6197a5e3ca9de5949df20cd9b",
-    "source-opening-views.mjs": "d89a1f2e7177fd1fc6c2aef326bb2aae35e346984ee6f6bfaa066c229cb1b758"
+    "source-opening-views.mjs": "cc067bd2323f9b672ed718c3a635e5ef05424786d2dfb3e1d0f3d7f4614feb78"
   },
   "reading_presentation": "care-item-presentation/7",
   "source_typography": "care-study-desk/2.74"
