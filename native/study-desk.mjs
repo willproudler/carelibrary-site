@@ -1854,12 +1854,13 @@ const sliderHeadingOriginals=new WeakMap()
 function paintSliderHeading(input,option,index){
   const pane=input.closest?.("[data-pane]")
   if(!pane?.querySelector)return
+  const body=pane.querySelector("[data-reading-id]")
   let original=sliderHeadingOriginals.get(pane)
-  if(!original){
+  if(!original||original.body!==body){
     const fields={}
     for(const name of ["title","simple","kicker","context"]){const node=pane.querySelector(`[data-slider-preview-${name}]`);if(node)fields[name]={node,text:node.textContent}}
     if(!Object.keys(fields).length)return
-    original={id:String(pane.querySelector("[data-reading-id]")?.dataset?.readingId||""),fields}
+    original={id:String(body?.dataset?.readingId||""),body,fields}
     sliderHeadingOriginals.set(pane,original)
   }
   const layer=String(input.dataset.sheetSlider).split(":")[0],identity=option.identity||{},source=layer==="SOURCE"
@@ -2285,7 +2286,7 @@ function bookReadingPane(classes,id,attributes,body,presentation){
 function sourceBeautifulPassageAttributes(passage,detailsInUse=false){
   const projection=passage.beautiful_reading_block_html||''
   const number=passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||''
-  return `data-beautiful-passage-id="${esc(passage.id)}" data-beautiful-compact="${!detailsInUse&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(number)}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(projection)}" data-beautiful-original-html="${projection?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!detailsInUse&&beautifulHeadingDetail(passage)}"${passage.beautiful_title_page_role?` data-beautiful-title-page-role="${esc(passage.beautiful_title_page_role)}"`:''}`
+  return `data-beautiful-passage-id="${esc(passage.id)}" data-beautiful-compact="${!detailsInUse&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(number)}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(projection)}" data-beautiful-original-html="${projection?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!detailsInUse&&beautifulHeadingDetail(passage)}"${passage.beautiful_title_page_role?` data-beautiful-title-page-role="${esc(passage.beautiful_title_page_role)}"`:''}${passage.beautiful_inline_figure===true?' data-beautiful-inline-figure="true"':''}`
 }
 function sourcePane(data,selectedId,reference,bookmarks=null,presentation=null){
   if(isRouteReference(reference))return sourceRoutePane(data,selectedId,reference)
@@ -4055,7 +4056,13 @@ function setup(root,studioEmbed=false){
   runtime.refreshSliders=(scope=root)=>scope.querySelectorAll("[data-sheet-slider]").forEach(input=>{
     const track=input.closest("[data-slider-track]"),saved=runtime.sliderScrollPositions.get(sliderMemoryKey(input))
     if(track&&saved!==undefined)track.scrollLeft=saved
-    runtime.paintSlider(input,input.value,!runtime.sliderGesture)
+    // A reused rail may still point to the previous sheet when a different
+    // pane navigates. Only the rail currently being dragged owns a preview.
+    const layer=input.dataset.sheetSlider
+    const readingId=layer!=="ORIGINAL"&&runtime.sliderGesture!==input&&!input.closest("[data-connection-book]")
+      ? input.closest("[data-pane]")?.querySelector("[data-reading-id]")?.dataset?.readingId : null
+    const index=readingId ? sliderOptions(runtime.data?.stack,layer).findIndex(option=>String(option.id)===readingId) : -1
+    runtime.paintSlider(input,index>=0?index:input.value,!runtime.sliderGesture)
   })
   runtime.attachPaneKeyFocus=()=>{
     const click=event=>{
@@ -6984,14 +6991,15 @@ function beautifulTypesetSource(source){
     const studio=row.querySelector(':scope>.studio-passage-use')
     const wrapper=container.querySelector(':scope>.care-reading-text')||container
     const blocks=[...wrapper.children].filter(node=>!node.matches('.beautiful-source-notes'))
-    const first=blocks[0],last=blocks.at(-1),id=article.dataset.refId
+    const first=blocks[0],last=blocks.at(-1),id=article.dataset.refId||article.dataset.beautifulPassageId
+    const inlineFigure=article.dataset.beautifulInlineFigure==='true'&&blocks.length===1&&first?.tagName==='FIGURE'&&Boolean(first.querySelector('img'))
     for(const note of container.querySelectorAll(':scope>.beautiful-source-notes')){
       const parent=note.parentNode,next=note.nextSibling,label=note.querySelector('summary'),labelText=label?.textContent
       if(label)label.textContent='Passage '+(article.dataset.beautifulPassageNumber||id?.split(':').at(-1)||'')+' · '+labelText
       footer.append(note)
       undo.push(()=>{if(source.contains(parent)){parent.insertBefore(note,next?.parentNode===parent?next:null);if(label)label.textContent=labelText}})
     }
-    if(article.dataset.beautifulFolded==='true'||!first||!wrapper.textContent.trim())continue
+    if(article.dataset.beautifulFolded==='true'||!first||!inlineFigure&&!wrapper.textContent.trim())continue
     for(const block of blocks){
       if(!opening)break
       const label=block.textContent.trim()
@@ -7017,9 +7025,9 @@ function beautifulTypesetSource(source){
       undo.push(()=>{address.textContent=text;style===null?address.removeAttribute('style'):address.setAttribute('style',style)})
       for(const control of [mark,routes,studio].filter(Boolean)){const style=control.getAttribute('style');undo.push(()=>style===null?control.removeAttribute('style'):control.setAttribute('style',style))}
       if(studio)undo.push(()=>studio.removeAttribute('data-studio-source-positioned'))
-      markers.push({article,container,address,mark,routes,studio})
+      markers.push({article,container,address,mark,routes,studio,figure:inlineFigure?first:null})
     }
-    previous={id,last,row}
+    if(!inlineFigure)previous={id,last,row}
   }
   if(footer.childElementCount>1){source.append(footer);undo.push(()=>footer.remove())}
   const setTop=(node,top)=>{if(node&&node.style.top!==top+'px')node.style.top=top+'px'}
@@ -7046,6 +7054,7 @@ function beautifulTypesetSource(source){
       const lines=[...range.getClientRects()].filter(rect=>rect.width&&rect.height)
       if(lines.length){first??=lines[0];last=lines.at(-1)}
     }
+    if(selected.figure&&!first)first=last=selected.figure.getBoundingClientRect()
     if(!first||!last){rail.hidden=true;return}
     const inset=parseFloat(document.defaultView.getComputedStyle(source).paddingLeft)||0
     rail.hidden=false
@@ -7090,6 +7099,7 @@ function beautifulTypesetSource(source){
         const candidate=range.getBoundingClientRect()
         if(candidate.height&&candidate.width){rect=candidate;break}
       }
+      if(!rect&&marker.figure)rect=marker.figure.getBoundingClientRect()
       marker.natural=rect?(rect.top-bounds.top)/(scale||1):null
     }
     let previousTop=-Infinity

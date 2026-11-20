@@ -2153,6 +2153,8 @@ button{border-radius:999px}
 .field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage-text p[data-beautiful-flow]{display:inline;margin:0}
 .field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage-text p[data-beautiful-paragraph][data-beautiful-flow="start"]::before{content:"";display:inline-block;inline-size:1.15em}
 .field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage-text p[data-beautiful-flow="end"]::after{content:"";display:block;height:1.05em}
+.field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage[data-beautiful-inline-figure] figure{display:inline-block;width:clamp(2.25rem,8%,4rem);margin:.1em .3em;vertical-align:middle}
+.field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage[data-beautiful-inline-figure] img{display:block;width:100%;height:auto;margin:0}
 .field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset>.passage-row>.passage:focus-visible{outline:none;box-shadow:none}
 .field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage .passage-text p{background:none;box-shadow:none}
 .field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage:hover .passage-address,.field-desk[data-library-book-panes][data-beautiful-text="true"] .beautiful-typeset .passage.selected .passage-address{color:var(--beautiful-address);opacity:1}

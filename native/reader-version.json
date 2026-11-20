@@ -1,5 +1,5 @@
 {
-  "version": "care-study-desk/2.143-beta-headings_1-source-opening_1",
+  "version": "care-study-desk/2.143-beta-headings_1-source-opening_1-monas-theorems_1",
   "source": "care_platform/study_desk_component.py",
   "compatibility_changes": [
     "Keep unaligned source translations readable without inventing passage routes",
@@ -7,10 +7,10 @@
     "Reuse shelf menus for published author browsing and private study sets"
   ],
   "assets": {
-    "study-desk.css": "45c8314c94bec0dee5d30af7b0f8a2921c17733e7f50366076b5040a694e285d",
-    "study-desk.mjs": "c07150dc3851e6f28f1d1c4a9ddf08c433b0b0113151f5095a2955a80e336366",
+    "study-desk.css": "4d4beb36e47074dc78bc5c6d52d3db61233b923344099679116d40a746165f9a",
+    "study-desk.mjs": "9a459c6ce60adeeca8be31071b2a5faa0ba6cedc5c0bba2846164ffaaa0b604b",
     "reading-views.mjs": "9c8696364f758716c213bf3c366093336c600ce6197a5e3ca9de5949df20cd9b",
-    "source-opening-views.mjs": "1e3ee3500eb412e15310d180dc713347b287f065607e5c09b54c729aac93eca3"
+    "source-opening-views.mjs": "d89a1f2e7177fd1fc6c2aef326bb2aae35e346984ee6f6bfaa066c229cb1b758"
   },
   "reading_presentation": "care-item-presentation/7",
   "source_typography": "care-study-desk/2.74"
