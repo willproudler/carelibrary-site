@@ -133,7 +133,7 @@ test('arrow navigation reaches Advanced appearance and skips its closed toggle',
 
 const bootURL=new URL('../boot.mjs',import.meta.url);
 test('boot paints the current preference before loading the reader',{skip:!existsSync(bootURL)},()=>{
-  const source=readFileSync(bootURL,'utf8'),load=source.indexOf("import('./public-app.mjs");
+  const source=readFileSync(bootURL,'utf8'),load=source.indexOf('async function openLibrary()');
   assert.ok(load>0);
   const boot=new Function('document','localStorage',source.slice(0,load));
   for(const [entries,expected] of [

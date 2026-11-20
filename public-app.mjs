@@ -9,7 +9,6 @@ function publicReaderCardCache(limit=1536){
   };
 }
 
-import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {readingStorageKey} from './auth.mjs';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord,bookBookmarkRecord} from './saved-library.mjs?v=8d2763a9327f47d2';
@@ -41,7 +40,7 @@ const saveLocal = (key,value) => {try{localStorage.setItem(storageKey(key),JSON.
 let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
-async function start(){
+export async function start(loader, css, scope){
  const initialSearchRoute=readSearchPageRoute(document);
  const initialPathname=location.pathname,initialTitle=document.title,initialCanonical=document.querySelector('link[rel="canonical"]')?.href;
  const bookAddressing=createBookAddressing(document);
@@ -73,7 +72,6 @@ async function start(){
   libraryMenu.hidden=true;
   libraryMenu.after(shelf);
  }
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=8d2763a9327f47d2'),loadText('./native/public-scope.css?v=8d2763a9327f47d2')]);
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
@@ -1228,6 +1226,7 @@ async function start(){
   if(!(bookPath&&(!target.hash||workspaceRoute)||target.pathname==='/library.html'&&workspaceRoute))return;
   event.preventDefault();openReadingRoute(target.pathname+target.search+target.hash);
  });
- addEventListener('hashchange',routeChanged);await routeFromURL();
+ addEventListener('hashchange',routeChanged);
+ window.CARELibraryBoot?.openingRoute?.();
+ await routeFromURL();
 }
-start().then(()=>window.CARELibraryBoot?.ready()).catch(error=>{if(window.CARELibraryBoot){window.CARELibraryBoot.fail(error);return;}const host=$('#reader');host.textContent=error.message||'CARE Library could not load.';host.classList.add('loading');const retry=document.createElement('button');retry.textContent='Try again';retry.onclick=()=>location.reload();host.append(document.createElement('br'),retry);});
