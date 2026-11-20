@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {createPublicReaderAdapter} from '../public-reader-adapter.mjs';
+import {publicSourceDisplayTitle, publicSourceFormatting} from '../native/source-opening-views.mjs';
 
 const data = JSON.parse(readFileSync(new URL('../data/library.json',import.meta.url)));
 const digest = () => createHash('sha256').update(JSON.stringify(data)).digest('hex');
@@ -21,7 +22,7 @@ test('every saved English chapter title is shared by its header, jump menu and l
       assert.equal(stack.chapters.find(row=>row.id === source.id).title,chapter.title,source.id);
       assert.equal(chapter.source_versions.title,chapter.title,source.id);
       assert.equal(adapter.stack(work.id,{...state,rawUnitId:source.id}).active_chapter.title,chapter.title,source.id);
-      const originalTitle = adapter.chapter(source.id,original(work)).title, label = source.original_title || source.title;
+      const originalTitle = adapter.chapter(source.id,original(work)).title, label = publicSourceDisplayTitle(source,work.id) || source.original_title || source.title;
       assert.ok(originalTitle === label || originalTitle.endsWith(' · ' + label.replace(/\.$/,'')),source.id);
     }
     for(const unit of work.units){
@@ -32,7 +33,7 @@ test('every saved English chapter title is shared by its header, jump menu and l
       assert.equal(projected.identity.title,projected.title,unit.id);
       assert.equal(projected.sheet_versions.title,projected.title,unit.id);
       assert.deepEqual(projected.sections.map(row=>row.name),variant.sections.map(row=>row.name),unit.id);
-      const originalTitle = adapter.unit(unit.id,original(work)).title, label = unit.original_title || unit.title;
+      const originalTitle = adapter.unit(unit.id,original(work)).title, label = (unit.layer === 'CH' && publicSourceDisplayTitle(work.sources.find(source => source.chapter_id === unit.id),work.id)) || unit.original_title || unit.title;
       assert.ok(originalTitle === label || unit.layer === 'CH' && originalTitle.endsWith(' · ' + label.replace(/\.$/,'')),unit.id);
       assert.deepEqual(adapter.unit(unit.id,original(work)).sections.map(row=>row.name),unit.sections.map(row=>row.original_name || row.name),unit.id);
     }
@@ -54,6 +55,29 @@ test('cluster and metacluster headings use the English book name and restore the
     assert.equal(adapter.stack(monas.id,english(monas)).work.title,'The Hieroglyphic Monad');
     assert.equal(adapter.stack(monas.id,original(monas)).work.title,'Monas Hieroglyphica');
   }
+});
+
+test('the attested Monas edition opens on its printed dedication and preserves canonical routing', {skip:!monas}, () => {
+  const source = monas.sources[0];
+  assert.equal(source.id, 'RAW_MHON_FROM');
+  const opening = source.id + ':P0019';
+  assert.equal(source.title, 'Front matter');
+  assert.equal(publicSourceDisplayTitle({...source,text:source.text + ' Changed'},monas.id),'');
+  for (const state of [english(monas), original(monas)]) {
+    const chapter = adapter.chapter(source.id,state);
+    assert.equal(chapter.title,'Dedication to Maximilian');
+    assert.equal(chapter.beautiful_opening_passage_id,opening);
+    const visibleTitle = chapter.passages.find(row => row.id === opening);
+    assert.ok(visibleTitle.beautiful_reading_block_html.startsWith('<article class="care-reading-text"><h2>'));
+    const engraving = chapter.passages.find(row => row.beautiful_title_page_role === 'engraving');
+    assert.ok(engraving.beautiful_reading_block_html.includes('data:image/png;base64,'));
+    assert.equal(chapter.passages[28].beautiful_apparatus_only,true);
+    const registered = source.paragraphs.find(row => row.id === opening);
+    assert.equal(visibleTitle.original_text,registered.text);
+    assert.equal(adapter.card(opening,{state}).id,registered.id);
+  }
+  const edited = {...source,paragraphs:source.paragraphs.map((row,i) => i === 30 ? {...row,text:row.text + ' Changed'} : row)};
+  assert.deepEqual(publicSourceFormatting(source,edited,monas.id),{});
 });
 
 test('the English Monas reader shows theorem headings without OCR spacing or Theory mistranslations',{skip:!monas},()=>{

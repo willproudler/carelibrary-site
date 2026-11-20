@@ -26,7 +26,12 @@ function publicSourceDetailHint(canonical, passage) {
  */
 import {ancestors, indexLibrary, incoming, selectionFor} from './library-core.mjs?v=8d2763a9327f47d2';
 import * as publicReadingViews from './native/reading-views.mjs?v=9c8696364f758716';
-const {publicReadingText, publicSourcePresentation = () => ({}), publicSourceFormatting = () => ({})} = publicReadingViews;
+import {publicSourceFormatting as sourceOpeningFormatting, publicSourceDisplayTitle} from './native/source-opening-views.mjs?v=1e3ee3500eb412e1';
+const {publicReadingText, publicSourcePresentation = () => ({}), publicSourceFormatting: existingSourceFormatting = () => ({})} = publicReadingViews;
+function publicSourceFormatting(source, reading) {
+  const opening = sourceOpeningFormatting(source, reading);
+  return opening.chapter ? opening : existingSourceFormatting(source, reading);
+}
 import {ORIGINAL, selectedVariant, originalLabels, paneTitle, paneReadingTitle, bookTitle, paneIdentity, sourceReadingText, paneLanguages as describePaneLanguages, bookLanguages as describeBookLanguages} from './saved-translations.mjs?v=8d2763a9327f47d2';
 
 const array = value => Array.isArray(value) ? value : [];
@@ -138,12 +143,18 @@ export function createPublicReaderAdapter(data) {
     };
   }
 
+  function readingPaneTitle(pane, work, state) {
+    const source = pane.layer === 'SOURCE' || pane.chapter_id ? pane : pane.layer === 'CH'
+      ? array(pane.parents).map(id => index.units.get(id)).find(parent => parent?.layer === 'SOURCE' && parent.chapter_id === pane.id) : null;
+    return publicSourceDisplayTitle(source, work?.id) || paneTitle(pane,work,state);
+  }
+
   function unit(id, state = {}) {
     const original = index.units.get(id);
     if (!original || original.layer === 'SOURCE') throw new Error('This CARE sheet is not in the public collection.');
     const variant = selectedVariant(original, original.work, state), reading = variant || original;
     const renditionType = variant ? variant.rendition_type || 'machine' : 'canonical';
-    const showOriginalLabels = !variant && originalLabels(original,original.work,state), title = paneTitle(original,original.work,state);
+    const showOriginalLabels = !variant && originalLabels(original,original.work,state), title = readingPaneTitle(original,original.work,state);
     const cacheKey = `${id}\0${variant?.id || ORIGINAL}\0${showOriginalLabels}`;
     if (unitCache.has(cacheKey)) return unitCache.get(cacheKey);
     const projected = {
@@ -151,7 +162,7 @@ export function createPublicReaderAdapter(data) {
       label:title, title, version:original.revision || '',
       sequence_number:original.order, chapter_number:original.layer === 'CH' ? original.order : undefined,
       mc_level:mcLevel(original),
-      sheet_versions:describePaneLanguages(original,original.work,state),
+      sheet_versions:{...describePaneLanguages(original,original.work,state),title},
       sections:array(reading.sections).map(section => {
         const displayed = showOriginalLabels ? {...section,name:section.original_name || section.name} : section;
         return {number:text(displayed.number),name:displayed.name,
@@ -176,12 +187,14 @@ export function createPublicReaderAdapter(data) {
     const sourceTypesetting = publicSourcePresentation(source, reading);
     const sourceFormatting = publicSourceFormatting(source, reading);
     const canonicalPositions = new Map(array(source.paragraphs).map((row, position) => [row.id, position]));
+    const displayTitle = publicSourceDisplayTitle(source);
     const result = {
       raw_unit_id:source.id, care_unit_id:source.chapter_id, chapter_number:source.order,
-      sequence_number:source.order, ...paneReadingTitle(source,source.work,state), label:paneTitle(source,source.work,state),
+      sequence_number:source.order, ...paneReadingTitle(source,source.work,state), label:readingPaneTitle(source,source.work,state),
+      ...(displayTitle ? {title:displayTitle, reading_title:displayTitle} : {}),
       source_rendition_type:renditionType,
       ...(sourceTypesetting.chapter || {}), ...(sourceFormatting.chapter || {}),
-      passage_count:rows.length, source_versions:describePaneLanguages(source,source.work,state),
+      passage_count:rows.length, source_versions:{...describePaneLanguages(source,source.work,state), ...(displayTitle ? {title:displayTitle} : {})},
       passages:rows.map((passage, position) => {
         const display = sourceReadingText(passage.text,source,source.work,state);
         const {reading_block_html, reading_text, ...formatHints} = sourceFormatting.passages?.[passage.id] || {};
@@ -196,6 +209,7 @@ export function createPublicReaderAdapter(data) {
             && value.startsWith(prefix + '\n\n') && value.slice(prefix.length + 2).trim()) ? prefix : '';
         return {
         id:passage.id, text:passage.text, rendition_type:renditionType,
+        ...(canonical ? {original_text:canonical.text} : {}),
         ...(omitPrefix ? {beautiful_omit_prefix:omitPrefix} : {}),
         ...(sourceDetail ? {beautiful_source_detail:sourceDetail} : {}),
         ...(sourceTypesetting.passages?.[passage.id] || {}), ...formatHints,
@@ -223,12 +237,12 @@ export function createPublicReaderAdapter(data) {
       work:{id:work.id, title:bookTitle(work,state), author:work.author, cover_url:work.cover_url},
       edition_label:work.edition,
       chapters:work.sources.map(source => ({id:source.id, raw_unit_id:source.id, care_unit_id:source.chapter_id,
-        chapter_number:source.order, sequence_number:source.order, title:paneTitle(source,work,state), readable:true})),
+        chapter_number:source.order, sequence_number:source.order, title:readingPaneTitle(source,work,state), readable:true})),
       active_chapter:chapter(selected.SOURCE.id,state),
       care_path:BASE_LAYERS.flatMap(layer => layer === 'MC' ? metaclusterPath(work, selected, selectedId)
         : selected[layer] ? [selected[layer]] : []).map(row => unit(row.id,state)),
       sheet_options:Object.fromEntries(BASE_LAYERS.map(layer => [layer, work.units.filter(row => row.layer === layer).map(row => ({
-        id:row.id, type:layer, title:paneTitle(row,work,state), available:true, sequence_number:row.order,
+        id:row.id, type:layer, title:readingPaneTitle(row,work,state), available:true, sequence_number:row.order,
         chapter_number:layer === 'CH' ? row.order : undefined, mc_level:mcLevel(row),
       }))])),
       active_raw_unit_id:selected.SOURCE.id,

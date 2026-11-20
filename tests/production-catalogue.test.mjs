@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {indexLibrary,incoming,selectionFor} from '../library-core.mjs';
 import {createPublicReaderAdapter} from '../public-reader-adapter.mjs';
+import {publicSourceDisplayTitle} from '../native/source-opening-views.mjs';
 import {createDiscoverController} from '../discover-reader.mjs';
 import {buildAtlasModel,atlasView} from '../discover-atlas.mjs';
 import {publicFields} from '../public-fields.mjs';
@@ -90,7 +91,7 @@ test('every release source and CARE sheet projects its original text and declare
     assert.deepEqual(identity,canonicalIdentity);
     const chapter=work.sources.find(source=>source.chapter_id===unit.id), reading=chapter&&adapter.chapter(chapter.id,state);
     const label=unit.original_title || unit.title, contextual=/^[IVXLCDM\d]+\.?$/.test(label) && reading?.reading_title?.includes(' · ');
-    assert.equal(title,contextual ? reading.reading_title : label);
+    assert.equal(title,publicSourceDisplayTitle(chapter,work.id) || (contextual ? reading.reading_title : label));
     assert.equal(context,contextual && reading.reading_title_context || unit.identity.original_context || originalContext);
    }
    const outline=adapter.outline(work.id,{id:unit.id,layer:unit.layer,request_id:'release-sheet'},state);

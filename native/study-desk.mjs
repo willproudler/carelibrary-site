@@ -2282,6 +2282,11 @@ function sourceRoutePane(data,selectedId,reference){
 function bookReadingPane(classes,id,attributes,body,presentation){
   return presentation?presentation.pane(classes,attributes,body):`<section class="${classes}" data-pane="${esc(id)}" ${attributes}>${body}</section>`
 }
+function sourceBeautifulPassageAttributes(passage,detailsInUse=false){
+  const projection=passage.beautiful_reading_block_html||''
+  const number=passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||''
+  return `data-beautiful-passage-id="${esc(passage.id)}" data-beautiful-compact="${!detailsInUse&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(number)}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(projection)}" data-beautiful-original-html="${projection?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!detailsInUse&&beautifulHeadingDetail(passage)}"${passage.beautiful_title_page_role?` data-beautiful-title-page-role="${esc(passage.beautiful_title_page_role)}"`:''}`
+}
 function sourcePane(data,selectedId,reference,bookmarks=null,presentation=null){
   if(isRouteReference(reference))return sourceRoutePane(data,selectedId,reference)
   const chapter=data?.active_chapter
@@ -2293,13 +2298,13 @@ function sourcePane(data,selectedId,reference,bookmarks=null,presentation=null){
   const sourceDetailsInUse=new Set(arr(data.care_path).flatMap(unit=>[...arr(unit.items),...arr(unit.sections).flatMap(section=>arr(section.items))]).flatMap(item=>[...arr(item.source_trace),...arr(item.deep_source_trace),...arr(item.matrix_trace),...arr(item.passage_trace_ids)]).map(String))
   const contents=manuscript&&Array.isArray(chapter.studio_contents)?`<nav class="manuscript-contents" aria-label="Contents">${chapter.studio_contents.map(row=>`<button type="button" class="manuscript-contents-entry" data-chapter-id="${esc(row.raw_unit_id)}" data-contents-kind="${esc(row.kind)}" style="--contents-depth:${Math.max(0,Math.min(3,Number(row.depth)||0))}"><span>${esc(row.title)}</span><span aria-hidden="true">↗</span></button>`).join("")}</nav>`:""
   const passages=arr(chapter.passages).map(passage=>{
-    if(passage.route_available===false)return `<div class="passage-row"><article class="passage" data-beautiful-opening-foldable="${beautifulHeadingDetail(passage)}"><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`
+    if(passage.route_available===false)return `<div class="passage-row"><article class="passage" ${sourceBeautifulPassageAttributes(passage,sourceDetailsInUse.has(String(passage.id)))}><span class="passage-address">${esc(passage.address||"Translated paragraph")}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article></div>`
     const mark=presentation?presentation.mark(passage,chapter.raw_unit_id,"SOURCE"):bookmarks?sourceBookmarkButton(chapter.raw_unit_id,passage.id,bookmarks,passage.address||passage.id):""
     const route=presentation?presentation.route(passage):`<button type="button" class="axiom-routes passage-routes" data-open-passage-routes="${esc(passage.id)}" aria-label="Open Routes for ${esc(passage.id)}" hidden>Routes →</button>`
-    return `<div class="passage-row${bookmarks||mark?" reader-has-mark":""}"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}"${presentation?.item(passage,chapter.raw_unit_id,"passage")||""} data-beautiful-compact="${!sourceDetailsInUse.has(String(passage.id))&&beautifulSourceDetail(passage)}" data-beautiful-join-previous="${esc(passage.beautiful_join_previous||'')}" data-beautiful-passage-number="${esc(passage.sequence||String(passage.id).match(/:P0*(\d+)$/)?.[1]||String(passage.address||'').split('.').at(-1)||'')}" data-beautiful-omit-prefix="${esc(passage.beautiful_omit_prefix||'')}" data-beautiful-reading-html="${esc(passage.beautiful_reading_block_html||'')}" data-beautiful-original-html="${passage.beautiful_reading_block_html?esc(passage.reading_block_html||''):''}" data-beautiful-opening-foldable="${!sourceDetailsInUse.has(String(passage.id))&&beautifulHeadingDetail(passage)}" role="button" tabindex="0" aria-pressed="false"${presentation?"":' aria-describedby="desk-selection-help"'}><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article>${route}${mark}</div>`
+    return `<div class="passage-row${bookmarks||mark?" reader-has-mark":""}"><article class="passage ${String(passage.id)===selectedId?"selected":""}" data-ref-id="${esc(passage.id)}" data-select-passage="${esc(passage.id)}" data-source-unit="${esc(chapter.raw_unit_id)}"${presentation?.item(passage,chapter.raw_unit_id,"passage")||""} ${sourceBeautifulPassageAttributes(passage,sourceDetailsInUse.has(String(passage.id)))} role="button" tabindex="0" aria-pressed="false"${presentation?"":' aria-describedby="desk-selection-help"'}><span class="passage-address">${esc(passage.address||passage.id)}</span><div class="passage-text" dir="auto">${passage.reading_block_html ?? esc(passage.text)}</div></article>${route}${mark}</div>`
   }).join("")
   const kicker=manuscript?(chapter.studio_book_page_kind==="chapter"?`CHAPTER ${chapter.chapter_number}`:chapter.studio_book_page_kind==="part"?chapter.slider_stop_label:chapter.title):`CHAPTER ${chapter.chapter_number||""} · ${chapter.source_rendition_type==="machine"?"MACHINE TRANSLATION":chapter.source_rendition_type==="supplied"?"SUPPLIED TRANSLATION":"EXACT SOURCE"}`
-  return bookReadingPane("desk-window source-pane","source",`data-layer="SOURCE" data-studio-manuscript="${manuscript}" data-studio-source-variant="${esc(chapter.source_rendition_type||"canonical")}" style="--pane-accent:#8a431d"`,`<div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong>${slider?.heading||""}<span>${manuscript?"SAVED SOURCE":`${arr(chapter.passages).length} PASSAGES`}</span>${presentation?presentation.bookmark(chapter):bookmarks?sourceBookmarkButton(chapter.raw_unit_id,"",bookmarks,chapter.title):""}</div>${slider?.rail||""}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(beautifulTextChapterTitles(chapter)))}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>${esc(kicker)}</span>${presentation?"":sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${contents||passages||(manuscript?'<p class="trace-empty">This saved page is blank.</p>':'<p class="trace-empty">No registered passages in this chapter.</p>')}</main></div></div>`,presentation)
+  return bookReadingPane("desk-window source-pane","source",`data-layer="SOURCE" data-studio-manuscript="${manuscript}" data-studio-source-variant="${esc(chapter.source_rendition_type||"canonical")}" style="--pane-accent:#8a431d"`,`<div class="window-titlebar"><strong><span class="reader-full-title">SOURCE / ${esc(chapter.label||chapter.title)}</span><span class="reader-simple-title">SOURCE${chapter.chapter_number?` / ${esc(chapter.chapter_number)}`:""}</span></strong>${slider?.heading||""}<span>${manuscript?"SAVED SOURCE":`${arr(chapter.passages).length} PASSAGES`}</span>${presentation?presentation.bookmark(chapter):bookmarks?sourceBookmarkButton(chapter.raw_unit_id,"",bookmarks,chapter.title):""}</div>${slider?.rail||""}<div class="window-body" data-reading-id="${esc(chapter.raw_unit_id)}"><div class="source-layout"><main class="source-copy" data-beautiful-typeset-ready="${chapter.beautiful_typeset!==false}" data-beautiful-opening-titles="${esc(JSON.stringify(beautifulTextChapterTitles(chapter)))}" data-beautiful-opening-passage-id="${esc(chapter.beautiful_opening_passage_id||'')}"><header class="source-head"><span class="pane-kicker" data-slider-preview-kicker>${esc(kicker)}</span>${presentation?"":sheetVersionTrigger(sourceTranslationSheet(chapter),{pane:true})}${chapter.reading_title_context?`<p class="source-heading-context">${esc(chapter.reading_title_context)}</p>`:""}<h2><span class="reader-full-title" data-slider-preview-title>${esc(chapter.reading_title||chapter.title)}</span><span class="reader-simple-title" data-slider-preview-simple>${esc(paneSimpleTitle(chapter,data,"SOURCE"))}</span></h2>${readerPaneImprint(chapter,"SOURCE")}<p>${esc(data?.work?.author||"")}</p></header>${contents||passages||(manuscript?'<p class="trace-empty">This saved page is blank.</p>':'<p class="trace-empty">No registered passages in this chapter.</p>')}</main></div></div>`,presentation)
 }
 function traceLabel(item,layer){
   if(String(layer).toUpperCase()==="SOURCE")return "Saved source passage"
@@ -6793,8 +6798,9 @@ function beautifulTextOpeningByline(articles,index,author){
 }
 
 function beautifulSourceDetail(passage){
-  if(!beautifulHeadingDetail(passage)||passage.route_available===false)return false
+  if(!beautifulHeadingDetail(passage))return false
   if(passage.beautiful_apparatus_only===true)return true
+  if(passage.route_available===false)return false
   const text=String(passage.text??passage.reading_text??'').trim()
   // Context-dependent folios and running heads are classified against the
   // canonical source upstream. Never infer them from a short translated line.
@@ -7099,6 +7105,26 @@ function beautifulTypesetSource(source){
   return {layout,paintSelection,positionControls,cleanup(){for(const restore of undo.reverse())restore()}}
 }
 
+function beautifulTextPDFLabel(value){
+  return /^(?:Figure\s*[·•:]\s*PDF page \d+,\s*region \d+|\[Visual material:\s*PDF page \d+,\s*region \d+\])\s*$/iu.test(String(value||'').trim())
+}
+
+function beautifulTextScanCoverRows(texts){
+  // Generated scan markers and the archive stamp together identify a run of
+  // cover metadata. A gap inside the work or an authored short number stays.
+  const cover=[]
+  let figure=false,credit=false
+  for(const [index,value] of texts.slice(0,24).entries()){
+    const text=value.replace(/\s+/g,' ').trim()
+    if(beautifulTextPDFLabel(text)&&/\bpage [1-6],/i.test(text))figure=true
+    else if(/^Digitized by the Internet Archive(?: in \d{4})?(?: with funding from .{1,180})?\.?$/i.test(text))credit=true
+    else if(!/^(?:\[illegible\]|Illegible in the source scan|PDF page [1-6] · \d+ unreadable regions?|https?:\/\/archive\.org\/details\/[\w.-]+)$/i.test(text))break
+    cover.push(index)
+  }
+  const firstText=texts[cover.length]
+  return figure&&credit&&cover.length<24&&firstText&&/\p{L}{3}/u.test(firstText)?cover:[]
+}
+
 function setupBeautifulText(runtime){
   runtime.cleanupBeautifulText?.()
   const root=runtime.root,view=root?.ownerDocument?.defaultView
@@ -7124,7 +7150,7 @@ function setupBeautifulText(runtime){
   }
   const read=()=>{const fallback=(runtime.data?.ephemeral_workspace?undefined:beautifulTextSessions.get(view))??runtime.beautifulText??true;try{return beautifulTextPreference(studyDeskStorage(root,'localStorage')?.getItem(BEAUTIFUL_TEXT_KEY),fallback)}catch(_){return fallback}}
   let enabled=read()
-  const watch=()=>observer?.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-beautiful-compact','data-beautiful-opening-foldable','data-beautiful-opening-titles']})
+  const watch=()=>observer?.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-beautiful-compact','data-beautiful-opening-foldable','data-beautiful-opening-titles','data-beautiful-opening-passage-id']})
   const mutate=callback=>{discardChangedProse(observer?.takeRecords?.()||[]);observer?.disconnect();updating=true;try{return callback()}finally{updating=false;if(!disposed)watch()}}
   const routeContext=()=>!!(runtime.data?.reference||runtime.data?.connection?.reference)
   const studioFiltered=node=>Boolean(node.closest('[data-studio-filtered]'))
@@ -7163,6 +7189,10 @@ function setupBeautifulText(runtime){
     if(!enabled){runtime.paintSelection?.();return}
     const sources=[...root.querySelectorAll('.source-copy')]
     const openingTitles=new Map(sources.map(source=>[source,beautifulTextOpeningTitles(source)]))
+    const printedTitleFor=article=>{
+      const opening=article?.closest?.('.source-copy')?.dataset.beautifulOpeningPassageId
+      return !!opening&&opening===(article.dataset.beautifulPassageId||article.dataset.refId)
+    }
     for(const container of root.querySelectorAll('.source-copy .passage>.passage-text')){
       if(container.closest('.route-pane,.route-source-card,.inspector-pane,.inspect-card')||originals.has(container)||prepared.has(container))continue
       const clone=beautifulTextProseClone(container,openingTitles.get(container.closest('.source-copy')))
@@ -7173,8 +7203,20 @@ function setupBeautifulText(runtime){
     for(const source of sources){
       if(studioFiltered(source)||source.closest('.route-pane,.inspector-pane,.inspect-card'))continue
       const leading=[...source.querySelectorAll(':scope>.passage-row>.passage,:scope>.passage')],titles=openingTitles.get(source)
+      const printedTitle=!routeContext()&&leading.find(printedTitleFor)
+      const hasPrintedTitle=Boolean(printedTitle?.querySelector('.passage-text h2'))
+      if(hasPrintedTitle){
+        setOpening(source,'data-beautiful-title-page','')
+        setOpening(printedTitle,'data-beautiful-printed-title','')
+      }
+      const coverTexts=leading.slice(0,25).map(article=>article.querySelector(':scope>.passage-text')?.textContent||'')
+      for(const index of beautifulTextScanCoverRows(coverTexts)){
+        const article=leading[index]
+        if(article.dataset.beautifulOpeningFoldable==='true'&&!printedTitleFor(article))headingDuplicates.add(article)
+      }
       let count=0
       for(const [index,article] of leading.slice(0,8).entries()){
+        if(printedTitleFor(article))break
         if(article.dataset.beautifulCompact==='true')continue
         const text=article.querySelector(':scope>.passage-text'),kind=beautifulTextOpeningKind(text,titles)
         if(kind){
@@ -7191,7 +7233,7 @@ function setupBeautifulText(runtime){
         }
         if(!opening&&!(count&&beautifulTextOpeningByline(leading,index,runtime.data?.stack?.work?.author||runtime.data?.work?.author)))break
       }
-      if(count)setOpening(source,'data-beautiful-opening','true')
+      if(count&&!hasPrintedTitle)setOpening(source,'data-beautiful-opening','true')
     }
     for(const [article,record] of details)if(record.kind==='heading'&&!headingDuplicates.has(article)){restoreDetail(article,record);details.delete(article)}
     const candidates=[...[...root.querySelectorAll('.source-copy .passage[data-beautiful-compact="true"]')].map(article=>({article,kind:'source'})),...[...headingDuplicates].map(article=>({article,kind:'heading'}))]
@@ -7246,7 +7288,7 @@ function setupBeautifulText(runtime){
       if(record.type==='attributes'){
         // Selection paints class/aria on every passage. They cannot change
         // prose or fold eligibility and must not trigger a whole-book scan.
-        if(record.attributeName==='data-beautiful-opening-titles'&&target?.matches?.('.source-copy,.source-copy>.source-head'))relevant=true
+        if(['data-beautiful-opening-titles','data-beautiful-opening-passage-id'].includes(record.attributeName)&&target?.matches?.('.source-copy,.source-copy>.source-head'))relevant=true
         if(['data-beautiful-compact','data-beautiful-opening-foldable'].includes(record.attributeName)&&target?.closest?.('.source-copy')){
           relevant=true
         }
