@@ -82,7 +82,7 @@ function setup(parentElement, root, setTriggerValue, eventRoot=null, eventScope=
     draftUsesTab:root.querySelector(".crv-draft-uses-tab"),draftUsesCount:root.querySelector(".crv-draft-uses-count"),draftUsesSurface:root.querySelector(".crv-draft-uses-surface"),draftUsesAxiom:root.querySelector(".crv-draft-axiom"),draftUsesStatus:root.querySelector(".crv-draft-uses-status"),draftUsesList:root.querySelector(".crv-draft-uses-list"),draftUsesRetry:root.querySelector(".crv-draft-uses-retry"),workspaceUses:root.querySelector(".crv-workspace-uses"),
     annotations:root.querySelector(".crv-annotations"),annotationGroups:root.querySelector(".crv-annotation-groups"),annotationComposer:root.querySelector(".crv-annotation-composer"),annotationForm:root.querySelector(".crv-annotation-form"),
     annotationType:root.querySelector(".crv-annotation-type"),annotationUseLabel:root.querySelector(".crv-annotation-use-label"),annotationUse:root.querySelector(".crv-annotation-use"),annotationText:root.querySelector(".crv-annotation-text"),annotationStatus:root.querySelector(".crv-annotation-status"),annotationSave:root.querySelector(".crv-annotation-save"),annotationDrafts:new Map(),
-    title:root.querySelector(".crv-title"),meta:root.querySelector(".crv-meta"),text:root.querySelector(".crv-text"),citation:root.querySelector(".crv-citation"),openLink:root.querySelector(".crv-open"),sheetLink:root.querySelector(".crv-open-sheet"),clear:root.querySelector(".crv-clear"),
+    cleanSource:root.querySelector(".crv-clean-source"),title:root.querySelector(".crv-title"),meta:root.querySelector(".crv-meta"),text:root.querySelector(".crv-text"),citation:root.querySelector(".crv-citation"),openLink:root.querySelector(".crv-open"),sheetLink:root.querySelector(".crv-open-sheet"),clear:root.querySelector(".crv-clear"),
     copyText:root.querySelector(".crv-copy-text"),copyCitation:root.querySelector(".crv-copy-citation"),copyShortCitation:root.querySelector(".crv-copy-short-citation"),copyIbidCitation:root.querySelector(".crv-copy-ibid-citation"),
     write:root.querySelector(".crv-write"),send:root.querySelector(".crv-send"),
     toolHome:root.querySelector(".crv-tool-home"),rateScreen:root.querySelector(".crv-rate-screen"),qualityScreen:root.querySelector(".crv-quality-screen"),historyScreen:root.querySelector(".crv-history-screen"),sheetScreen:root.querySelector(".crv-sheet-screen"),
@@ -336,8 +336,15 @@ function setup(parentElement, root, setTriggerValue, eventRoot=null, eventScope=
       runtime.draftUsesList.append(card)
     }
   }
+  runtime.requestCleanSource = type => {
+    const ref = runtime.selected, view = root.ownerDocument.defaultView
+    if (ref?.kind !== "passage" || !view?.CustomEvent) return false
+    return !view.dispatchEvent(new view.CustomEvent(type, {cancelable:true, detail:{id:ref.id, scope:ref.scope || ""}}))
+  }
+  runtime.onCleanSource = () => { if (runtime.requestCleanSource("care-open-clean-source")) runtime.onClose() }
   runtime.render = () => {
     const ref = runtime.selected
+    runtime.cleanSource.hidden = !runtime.requestCleanSource("care-can-open-clean-source")
     runtime.write.hidden = !ref?.writing_available
     runtime.send.hidden = !ref?.send_available
     runtime.write.textContent = ref?.kind === "passage" ? "Write beside this passage" : "Write beside this axiom"
@@ -785,6 +792,7 @@ const detail=event.detail||{},selected=runtime.selected;if(!selected||keyFor(sel
   runtime.previous.addEventListener("click",runtime.onPrevious);runtime.next.addEventListener("click",runtime.onNext)
   runtime.clear.addEventListener("click", runtime.onClear); runtime.copyId.addEventListener("click", runtime.onCopyId); runtime.copyText.addEventListener("click", runtime.onCopyText)
   for (const link of runtime.readingLinks) link.addEventListener("click", runtime.onCopyReading)
+  runtime.cleanSource.addEventListener("click",runtime.onCleanSource)
   runtime.openLink.addEventListener("click",runtime.onOpenReference);runtime.sheetLink.addEventListener("click",runtime.onOpenSheet)
   runtime.copyCitation.addEventListener("click", runtime.onCopyCitation)
   runtime.copyShortCitation.addEventListener("click", runtime.onCopyShortCitation)
@@ -832,6 +840,7 @@ function teardown(parentElement, runtime) {
   runtime.previous.removeEventListener("click",runtime.onPrevious);runtime.next.removeEventListener("click",runtime.onNext)
   runtime.clear.removeEventListener("click", runtime.onClear); runtime.copyId.removeEventListener("click", runtime.onCopyId); runtime.copyText.removeEventListener("click", runtime.onCopyText)
   for (const link of runtime.readingLinks) link.removeEventListener("click", runtime.onCopyReading)
+  runtime.cleanSource.removeEventListener("click",runtime.onCleanSource)
   runtime.openLink.removeEventListener("click",runtime.onOpenReference);runtime.sheetLink.removeEventListener("click",runtime.onOpenSheet)
   runtime.copyCitation.removeEventListener("click", runtime.onCopyCitation)
   runtime.copyShortCitation.removeEventListener("click", runtime.onCopyShortCitation)

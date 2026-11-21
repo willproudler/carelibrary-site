@@ -9,8 +9,8 @@ function publicReaderCardCache(limit=1536){
   };
 }
 
-import {loadLibrary} from './library-loader.mjs?v=20261018';
 import {readingStorageKey} from './auth.mjs';
+import {chooseBookOpening,bindBookOpeningPreference} from './book-opening.mjs';
 import {loadText} from './resource-loader.mjs?v=20261018';
 import mountSavedLibrary, {SAVED_READING_ID,SAVED_READING_STYLE,normalizeSavedState,normalizeFieldSavedState,collectSavedItems,removeSavedItem,savedItemTarget,withSavedFavourite,withSavedBookmark,fieldSavedRecord,bookBookmarkRecord} from './saved-library.mjs?v=8d2763a9327f47d2';
 import {publicFields,fieldPayload,fieldMemberFor,fieldMemberCard,fieldReferenceState,loadPublicField,loadFieldMembers,fieldViewerReferences} from './public-fields.mjs?v=8d2763a9327f47d2';
@@ -19,7 +19,7 @@ import mountReader from './native/study-desk.mjs?v=8d2763a9327f47d2';
 import {createPublicReaderAdapter} from './public-reader-adapter.mjs?v=8d2763a9327f47d2';
 import {librarySortMetadata,createLibrarySort} from './library-sort.mjs?v=8d2763a9327f47d2';
 import {reconcileReadings,closeReading,standaloneBookState,READING_STYLES} from './reading-workspace.mjs';
-import {createTabMenus,createWorkspaceHistory,createBookAddressing,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,bookRouteUnitState,createSearchPageReady} from './web-workspace.mjs?v=20261111-fixed-workbench';
+import {createTabMenus,createWorkspaceHistory,createBookAddressing,cleanSourceHref,paneSourceEdition,manuscriptHash,updateLibraryMenu,installFixedWorkbenchPreferences,NUMOGRAM_READING_STYLE,numogramDemonTarget,readSearchPageRoute,searchPageRouteParams,bookRouteUnitState,createSearchPageReady} from './web-workspace.mjs?v=20261121-source-reader';
 import {copyStudioLibraryReference,copyStudioSource,createStudioWorkspace} from './studio-workspace.mjs';
 import {bindWorkspaceBackHistory} from './native/workspace-history-menu.mjs';
 import {createNumoCompanion} from './native/numogram-companion.mjs';
@@ -41,7 +41,7 @@ const saveLocal = (key,value) => {try{localStorage.setItem(storageKey(key),JSON.
 let noticeTimer;
 function notice(message){const el=$('#notice');el.textContent=message;el.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.hidden=true,4300);}
 
-async function start(){
+export async function start(loader, css, scope){
  const initialSearchRoute=readSearchPageRoute(document);
  const initialPathname=location.pathname,initialTitle=document.title,initialCanonical=document.querySelector('link[rel="canonical"]')?.href;
  const bookAddressing=createBookAddressing(document);
@@ -56,7 +56,7 @@ async function start(){
  const addressKey=()=>location.pathname+location.search+location.hash;
  let routedAddress='',paintedAddress='';
  function currentSearchRoute(){return location.pathname===initialPathname&&initialSearchRoute?initialSearchRoute:bookAddressing.route(location.pathname);}
- function readingAddress(destination){return bookAddressing.href(destination,{pathname:location.pathname,search:location.search,embedded});}
+ function readingAddress(destination){return bookAddressing.href(destination,{pathname:location.pathname,search:location.search,embedded:embedded||!initialSearchRoute});}
  function replaceWorkspaceAddress(destination){workspaceHistory.replace(destination);routedAddress=addressKey();}
  const copyStudioPacket=(packet,tryNative)=>copyStudioSource(window,packet,tryNative);
  const splitDraftId=documentSplitCompanion?companionRequest.get('care_studio_split_draft')||'':'';
@@ -73,8 +73,47 @@ async function start(){
   libraryMenu.hidden=true;
   libraryMenu.after(shelf);
  }
- const [loader,css,scope]=await Promise.all([loadLibrary(),loadText('./native/study-desk.css?v=8d2763a9327f47d2'),loadText('./native/public-scope.css?v=8d2763a9327f47d2')]);
+ const settings=document.querySelector('#workbench-settings .workbench-menu');
+ if(settings){
+  const preference=document.createElement('label');
+  preference.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px';
+  preference.innerHTML='Open books in <select data-book-opening-preference aria-label="Open books in"><option value="ask">Ask each time</option><option value="reader">Reader</option><option value="library">CARE Library</option></select>';
+  settings.prepend(preference);
+  bindBookOpeningPreference(document,preference.querySelector('select'));
+ }
  const data=loader.data;let adapter=createPublicReaderAdapter(data),index=adapter.index;
+ const cleanSourceDocument=request=>paneSourceEdition(bookAddressing,index,request,document.documentElement.dataset.careSourcePublic==='true');
+ function cleanSourceReturn({sourceId,passageId,mounted,originSourceId}){
+  const source=index.units.get(sourceId),passage=index.nodes.get(passageId);
+  if(source?.layer!=='SOURCE'||!source.work)return false;
+  const id=passage?.kind==='passage'&&passage.unit.id===source.id?passage.id:'';
+  if(sourceId!==originSourceId||source.work.id!==state.workId){
+   if(mounted&&state.connectionId)return false;
+   const params=new URLSearchParams({book:source.work.slug,source:sourceId});
+   if(id)params.set('focus',id);
+   openReadingRoute('#'+params);
+   return true;
+  }
+  if(id&&mounted&&!state.connectionId&&!state.referenceId){
+   state.selectedAxiom={work_id:source.work.id,unit_id:sourceId,passage_id:id};
+   state.rawUnitId=sourceId;state.unitId='';
+   syncURL();saveState();
+  }
+  return false;
+ }
+ function revealSourceFocus(request,passageId){
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+   if(request!==routeRequest||state.selectedAxiom?.passage_id!==passageId)return;
+   const row=shadow.querySelector('.source-pane [data-select-passage="'+CSS.escape(passageId)+'"]');
+   const body=row?.closest('.window-body');
+   if(!body?.clientHeight)return;
+   const bounds=body.getBoundingClientRect(),text=row.getBoundingClientRect();
+   if(text.bottom<=bounds.top||text.top>=bounds.bottom){
+    const scale=bounds.height/body.offsetHeight||1;
+    body.scrollTop+=(text.top-bounds.top)/scale-body.clientHeight*.15;
+   }
+  }));
+ }
  let indexedWorks=[...data.works],indexedLateral=data.lateral;
  function refreshAdapter(){
   if(indexedLateral===data.lateral&&indexedWorks.length===data.works.length&&indexedWorks.every((work,i)=>work===data.works[i]))return;
@@ -437,6 +476,33 @@ async function start(){
   opened=reconcileReadings(opened.filter(key=>key!==data.lateral.id&&!data.works.some(work=>work.id===key&&key!==workId)),workId);
   showReading(workId);
  }
+ let pendingBookReader = null;
+ async function openShelfBook(work, override = '') {
+  const destination = '#book=' + encodeURIComponent(work.slug);
+  if (embedded || !work.sources?.length) {openReadingRoute(destination); return;}
+  const published = document.documentElement.dataset.careSourcePublic === 'true';
+  const edition = published && bookAddressing.book(work.id)?.url;
+  const mode = override || await chooseBookOpening(document, {
+   title:work.title, author:work.author,
+  });
+  if (!mode) return;
+  const saved = bookStates.get(work.id);
+  const sourceId = saved?.rawUnitId || '';
+  const passage = index.nodes.get(saved?.selectedAxiom?.passage_id || saved?.savedFocus?.passage_id);
+  const passageId = passage?.kind === 'passage' && passage.work?.id === work.id
+   && (!sourceId || passage.unit.id === sourceId) ? passage.id : '';
+  if (mode === 'reader' && edition) {
+   const url = new URL(edition, location.href);
+   url.searchParams.set('from','library');
+   if(passageId)url.hash='ref='+encodeURIComponent(passageId);
+   else if(sourceId)url.hash='source-'+encodeURIComponent(sourceId);
+   location.assign(url.href);
+   return;
+  }
+  pendingBookReader = mode === 'reader' ? {workId:work.id,sourceId:sourceId || work.sources[0].id, passageId} : null;
+  openReadingRoute(destination + (pendingBookReader ? '&source=' + encodeURIComponent(pendingBookReader.sourceId) : '')
+   + (pendingBookReader?.passageId ? '&focus=' + encodeURIComponent(pendingBookReader.passageId) : ''));
+ }
  function openReadingRoute(destination){
   const address=readingAddress(destination);
   if(libraryCompanion){
@@ -460,7 +526,10 @@ async function start(){
    const reference=reading.connectionReferenceId||reading.referenceId;
    if(reference)params.set('ref',reference);
    else if(reading.unitId)params.set('unit',reading.unitId);
-   else if(reading.rawUnitId)params.set('source',reading.rawUnitId);
+   else if(reading.rawUnitId){
+    params.set('source',reading.rawUnitId);
+    if(reading.selectedAxiom?.unit_id===reading.rawUnitId&&reading.selectedAxiom.passage_id)params.set('focus',reading.selectedAxiom.passage_id);
+   }
   }
   return '#'+params;
  }
@@ -631,7 +700,10 @@ async function start(){
   if(state.connectionId)p.set(field?'field':'lateral',state.connectionId);else p.set('book',w.slug);
   if(field){if(state.fieldReference){p.set('ref',state.fieldReference.id);if(state.fieldReference.source_pane)p.set('scope',state.fieldReference.source_pane);else if(state.fieldReference.work_id)p.set('work',state.fieldReference.work_id);}}
   else if(state.connectionReferenceId||state.referenceId)p.set('ref',state.connectionReferenceId||state.referenceId);
-  else if(state.unitId)p.set('unit',state.unitId);else if(state.rawUnitId)p.set('source',state.rawUnitId);
+  else if(state.unitId)p.set('unit',state.unitId);else if(state.rawUnitId){
+   p.set('source',state.rawUnitId);
+   if(state.selectedAxiom?.unit_id===state.rawUnitId&&state.selectedAxiom.passage_id)p.set('focus',state.selectedAxiom.passage_id);
+  }
   replaceWorkspaceAddress(readingAddress('#'+p));
   studio.syncBesideRoute();
  }
@@ -698,6 +770,7 @@ async function start(){
   if(activeField){
    state.fieldSaved=normalizeFieldSavedState(readLocal('care-public-field-saved:'+activeField.id,{}));
    const payload=fieldPayload(activeField,adapter,state);
+   Object.assign(payload,{cleanSourceDocument,cleanSourceReturn});
    if(!libraryCompanion&&studio.canWriteBeside)Object.assign(payload,{
     write_beside_available:true,writing_clipboard_request:studio.besideRequest,
    });
@@ -705,7 +778,8 @@ async function start(){
    cleanup=mountField({parentElement:shadow,data:payload,setStateValue:()=>{},setTriggerValue:(kind,value)=>{if(kind==='action')dispatchField(activeField,value);}});
    syncTabMenus('field:'+activeField.id);paintFieldViewer(activeField);saveState();return;
   }
-  const payload=view==='workspace'?adapter.workspace(state):{mode:'library',books,fields,library_scope:view==='laterals'?'lateral':view==='corpuses'?'corpus':'',shelf_request:view,workspace_managed:true,web_study_sets:!libraryCompanion,web_study_set_actions:!libraryCompanion&&Boolean(account)};
+  const payload=view==='workspace'?adapter.workspace(state):{mode:'library',books,fields,library_scope:view==='laterals'?'lateral':view==='corpuses'?'corpus':'',shelf_request:view,workspace_managed:true,book_opening_modes:!embedded,web_study_sets:!libraryCompanion,web_study_set_actions:!libraryCompanion&&Boolean(account)};
+  if(view==='workspace')Object.assign(payload,{cleanSourceDocument,cleanSourceReturn});
   if(citationCompanion||libraryCompanion)Object.assign(payload,{studio_embed:true,studio_axiom_draft_counts:{},copy_studio_source:citationCompanion?copyStudioPacket:null});
   else if(view==='workspace'&&studio.canWriteBeside)Object.assign(payload,{
    write_beside_available:true,writing_clipboard_request:studio.besideRequest,copy_studio_source:studio.besideRequest?copyStudioPacket:null,
@@ -739,18 +813,20 @@ async function start(){
    ['Available panes',[(work.sources.length?'Source':''),...layers].filter(Boolean).join(' · ')],
   ].filter(([,value])=>value);
   const destination=readingAddress('#book='+encodeURIComponent(work.slug));
+  const cleanHref=cleanSourceHref(bookAddressing,work.id,{enabled:document.documentElement.dataset.careSourcePublic==='true',embedded});
   const source=typeof work.source_url==='string'&&/^https?:\/\//i.test(work.source_url)?work.source_url:'';
   dialog.innerHTML=`<div class="dialog-heading"><h2 id="book-info-title">${esc(work.title)}</h2><button type="button" aria-label="Close book info">×</button></div>
    <div class="book-info-overview"><div>${work.cover_url?`<img src="${esc(work.cover_url)}" alt="">`:''}</div>
    <dl>${facts.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl></div>
    ${work.description?`<p>${esc(work.description)}</p>`:''}
    <p>${work.sources.length} source chapters · ${work.units.length} CARE readings</p>
-   <div class="book-info-actions"><a href="${destination}">Open book</a><button type="button" data-copy-book-link>Copy beta link</button>${source?`<a href="${esc(source)}" target="_blank" rel="noopener noreferrer">View source edition ↗</a>`:''}</div>`;
+   <div class="book-info-actions"><a href="${destination}">Open book</a>${cleanHref?`<a href="${esc(cleanHref)}" data-clean-source>Read clean text</a>`:''}<button type="button" data-copy-book-link>Copy beta link</button>${source?`<a href="${esc(source)}" target="_blank" rel="noopener noreferrer">View source edition ↗</a>`:''}</div>`;
   dialog.querySelector('.dialog-heading button').onclick=()=>dialog.close();
   dialog.querySelector('.book-info-actions a').onclick=()=>dialog.close();
   const copy=dialog.querySelector('[data-copy-book-link]');
   copy.onclick=async()=>{
-   const url=new URL(destination,location.href);
+   const share=cleanHref&&bookAddressing.book(work.id)?.url;
+   const url=new URL(share||destination,location.href);
    try{await navigator.clipboard.writeText(url.href);copy.textContent='Link copied';}
    catch{
     const input=document.createElement('input');input.readOnly=true;input.value=url.href;input.setAttribute('aria-label','Beta link');
@@ -843,7 +919,15 @@ async function start(){
  async function dispatch(kind,value){
   try{
    if(kind==='connection_action'&&value.action==='close'){openReadingMenu(data.lateral.id,shadow.querySelector('[data-connection-close]'));return;}
-   if(kind==='open_work'){const w=adapter.workFor(value);if(w)openReadingRoute('#book='+w.slug);return;}
+   if(kind==='open_work'){
+    const work=adapter.workFor(value);
+    if(work && view==='library')await openShelfBook(work);
+    else if(work)openReadingRoute('#book='+encodeURIComponent(work.slug));
+    return;
+   }
+   if(kind==='open_book_mode'&&['library','reader'].includes(value?.mode)){
+    const work=adapter.workFor(value.work_id);if(work)await openShelfBook(work,value.mode);return;
+   }
    if(kind==='open_field'){if(fieldFor(value))openReadingRoute('#field='+encodeURIComponent(value));else if(value===data.lateral.id)openReadingRoute('#lateral='+value);return;}
    if(kind==='open_study_sets'){
     if(libraryCompanion)return;
@@ -927,6 +1011,7 @@ async function start(){
   workspaceHistory.observe();
   const request=++routeRequest;saveState();setLoadStatus();
   const p=searchPageRouteParams(location.hash,currentSearchRoute()),field=fieldFor(p.get('field')),lateral=p.get('lateral'),work=adapter.workFor(p.get('book'));
+  if(pendingBookReader?.workId!==work?.id)pendingBookReader=null;
   if(!embedded){
    const originalSemantic=location.pathname===initialPathname&&initialSearchRoute&&
     !['view','book','field','lateral','compare'].some(key=>new URLSearchParams(location.hash.slice(1)).has(key));
@@ -1010,7 +1095,14 @@ async function start(){
     setLoadStatus('Opening the comparison…');await Promise.all([loader.ensureLateral(),ensureViewer()]);if(request!==routeRequest)return;refreshAdapter();
     state={workId:adapter.savedConnection.members[0]?.id||data.works[0]?.id||'',...bookStates.get(data.lateral.id),connectionId:data.lateral.id,connectionReferenceId:p.get('ref')||'',referenceId:''};view='workspace';
    }else if(work){
-    setLoadStatus('Opening '+work.title+'…');await Promise.all([loader.ensureWork(work.id),ensureViewer()]);if(request!==routeRequest)return;refreshAdapter();state=standaloneBookState(work.id,bookStates.get(work.id));view='workspace';
+    setLoadStatus('Opening '+work.title+'…');
+    const openingReader=pendingBookReader?.workId===work.id;
+    if(openingReader){
+     // This window only needs the source. Load CARE's reference inspector alongside it.
+     void ensureViewer().then(()=>{if(request===routeRequest && view==='workspace')paintViewer();}).catch(()=>{});
+     await loader.ensureWork(work.id);
+    }else await Promise.all([loader.ensureWork(work.id),ensureViewer()]);
+    if(request!==routeRequest)return;refreshAdapter();state=standaloneBookState(work.id,bookStates.get(work.id));view='workspace';
    }else{view=['laterals','corpuses'].includes(p.get('view'))?p.get('view'):'library';paint();signalLibraryCompanion();if(['library','laterals','corpuses'].includes(p.get('view')))searchPageReady({view});return;}
    if(p.has('unit')&&p.get('unit')!==data.lateral.id){
     if(work&&!state.connectionId)state={...state,...bookRouteUnitState(p,adapter.workFor(work.id),index,{
@@ -1033,7 +1125,15 @@ async function start(){
     if(field){const next=fieldReferenceState(field,adapter,state,{id:p.get('ref'),scope:p.get('scope')||'',workId:p.get('work')||''});if(!next)throw Error('This route is not included in the published reading.');state=next;}
     else{if(state.connectionId)state.connectionReferenceId=p.get('ref');else state.referenceId=p.get('ref');remember();}
    }
-   setLoadStatus();paint();searchPageReady({view,book:work?.slug||'',source:p.get('source')||'',unit:p.get('unit')||'',ref:p.get('ref')||''});signalLibraryCompanion(!state.connectionId&&adapter.workFor(state.workId),field?.title,index.nodes.get(p.get('focus')||p.get('ref')));
+   setLoadStatus();paint();
+   if(p.has('focus')&&state.selectedAxiom?.passage_id===p.get('focus'))revealSourceFocus(request,p.get('focus'));
+   if(pendingBookReader && pendingBookReader.workId===work?.id && !state.connectionId){
+    const sourceId=pendingBookReader.sourceId;
+    pendingBookReader=null;
+    const opened=!window.dispatchEvent(new CustomEvent('care-open-clean-source',{cancelable:true,detail:{id:p.get('focus')||'',sourceId,opening:'book'}}));
+    if(!opened)notice('This source is available in the CARE Library pane.');
+   }
+   searchPageReady({view,book:work?.slug||'',source:p.get('source')||'',unit:p.get('unit')||'',ref:p.get('ref')||''});signalLibraryCompanion(!state.connectionId&&adapter.workFor(state.workId),field?.title,index.nodes.get(p.get('focus')||p.get('ref')));
   }catch(error){if(request!==routeRequest)return;console.error(error);view='library';paint();signalLibraryCompanion();setLoadStatus(error.message||'This reading could not load.',()=>routeFromURL());}
  }
  function signalLibraryCompanion(work,fieldTitle,target){
@@ -1219,7 +1319,7 @@ async function start(){
  document.addEventListener('click',event=>{
   if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
   const link=event.composedPath().find(node=>node?.localName==='a');
-  if(!link||link.target||link.hasAttribute('download'))return;
+  if(!link||link.target||link.hasAttribute('download')||link.hasAttribute('data-clean-source'))return;
   const target=new URL(link.href,location.href);
   if(target.origin!==location.origin)return;
   const params=new URLSearchParams(target.hash.slice(1));
@@ -1228,6 +1328,7 @@ async function start(){
   if(!(bookPath&&(!target.hash||workspaceRoute)||target.pathname==='/library.html'&&workspaceRoute))return;
   event.preventDefault();openReadingRoute(target.pathname+target.search+target.hash);
  });
- addEventListener('hashchange',routeChanged);await routeFromURL();
+ addEventListener('hashchange',routeChanged);
+ window.CARELibraryBoot?.openingRoute?.();
+ await routeFromURL();
 }
-start().then(()=>window.CARELibraryBoot?.ready()).catch(error=>{if(window.CARELibraryBoot){window.CARELibraryBoot.fail(error);return;}const host=$('#reader');host.textContent=error.message||'CARE Library could not load.';host.classList.add('loading');const retry=document.createElement('button');retry.textContent='Try again';retry.onclick=()=>location.reload();host.append(document.createElement('br'),retry);});

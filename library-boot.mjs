@@ -1,7 +1,8 @@
 import {session, loginURL, bindLogout, watchSession, prepareAccountStorage, preparePublicStorage, showSessionNavigation} from './auth.mjs';
 
 try {
-  const current = await session();
+  const current = await session(globalThis.fetch, {retryTransient:true});
+  document.documentElement.dataset.careSourcePublic = String(current.beta_enabled === false);
   if (!current.authenticated && current.beta_enabled !== false) {
     location.replace(loginURL(location.pathname + location.search + location.hash));
   } else {
@@ -18,7 +19,12 @@ try {
     showSessionNavigation(current);
     bindLogout();
     watchSession(current, {library:true});
-    await import('./boot.mjs?v=8d2763a9327f47d2');
+    try {
+      await import('./boot.mjs?v=8d2763a9327f47d2');
+    } catch (error) {
+      if (!window.CARELibraryBoot) throw error;
+      window.CARELibraryBoot.retryStartup(error);
+    }
   }
 } catch (error) {
   if(window.CARELibraryBoot){window.CARELibraryBoot.fail(error);}else{

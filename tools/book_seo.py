@@ -1,8 +1,7 @@
 """Readable book pages from the exact attested website export, never local drafts.
 
-Book URLs always use a small metadata page and the existing reader shell.
-Each source-section URL has its own public metadata page and a bounded text
-variant which the server may select only when the existing beta gate is off.
+Book and source-section URLs have metadata pages and standalone original-text
+variants which the server selects only when the existing beta gate is off.
 A static host must not publish text variants while keeping the library private.
 """
 from __future__ import annotations
@@ -457,6 +456,9 @@ def _scoped_css() -> str:
 def build(source: Path, destination: Path | None = None, *, origin: str = "https://carelibrary.org") -> list[dict]:
     """Build only attested books; return canonical URLs for the shared sitemap."""
     from book_landings import source_label
+    from source_editions import book_edition_downloads
+    from source_reader import reader_assets, source_page
+    from source_languages import source_language_editions, edition_record
 
     source = Path(source).resolve(strict=True)
     destination = Path(destination or source).absolute()
@@ -486,6 +488,8 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
     try:
         entries, chapters, sitemap = [], [], [{"loc": origin + "/books/"}]
         _write(temporary / "books.css", _scoped_css())
+        for name, contents in reader_assets().items():
+            _write(temporary / name, contents)
         # Import only the shared site-shell builder. It supplies the existing
         # CARE reader DOM/assets and keeps the static reference as fallback.
         from seo_shell import embed_library
@@ -494,10 +498,27 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
             route_slug = routes[work["id"]]
             url = _book_url(route_slug)
             route = {"book": work["slug"], "view": "workspace", "sources": [source["id"] for source in _sources(work)]}
+            languages = source_language_editions(work)
+            original_edition = {"language_code": work.get("language_code") or "und",
+                                "language_name": work.get("language_name") or "Original", "kind": "original"}
+            edition_definitions = [original_edition, *languages]
+            edition_files = book_edition_downloads(work, edition_definitions, slug, route_slug, temporary, origin)
+            editions = [{**edition_record(item, slug, route_slug), **edition_files[item['language_code']]} for item in edition_definitions]
+            downloads = editions[0]['downloads']
             _write(temporary / slug / "index.html", _with_book_routes(embed_library(source, _book_page(work, route_slug, origin), route),compact_mapping))
+            _write(temporary / slug / "text.html", source_page(work, route_slug, origin, downloads, editions=editions))
+            for edition in languages:
+                record = edition_record(edition, slug, route_slug)
+                _write(temporary / record["path"].removeprefix("books/"), source_page(
+                    edition["work"], route_slug, origin, edition_files[edition["language_code"]]["downloads"], editions=editions,
+                    active_language=edition["language_code"], canonical_override=record["url"]))
+                sitemap.append({"loc": origin + record["url"]})
             resource = f"books/{slug}/index.html"
             entries.append({"slug": slug, "route_slug": route_slug, "work_id": work["id"], "reader_slug": work["slug"], "url": url,
                             "path": resource, "aliases": _aliases(resource, url), "chapter_count": len(_sources(work)),
+                            "text_path": f"books/{slug}/text.html", "has_text": any(_source_text(item) for item in _sources(work)),
+                            "downloads": downloads,
+                            "editions": editions,
                             "title": work["title"], "author": work["author"], "year": _text(work.get("year")),
                             "edition": _text(work.get("edition")), "language": _text(work.get("language_code")),
                             "language_name": _text(work.get("language_name"))})
@@ -508,13 +529,23 @@ def build(source: Path, destination: Path | None = None, *, origin: str = "https
                 chapter_url = _chapter_url(route_slug, chapter_slug)
                 chapter_route = {**route, "source": section["id"]}
                 prefix = f"books/{slug}/{chapter_slug}"
+                chapter_records = [edition_record(item, slug, route_slug, chapter_slug) for item in edition_definitions]
+                chapter_editions = [{**record, **edition_files[record['language_code']]} for record in chapter_records]
                 _write(temporary / slug / chapter_slug / "index.html", _with_book_routes(embed_library(source, _chapter_page(work, route_slug, section, chapter_slug, origin, include_text=False), chapter_route),compact_mapping))
-                _write(temporary / slug / chapter_slug / "text.html", _with_book_routes(embed_library(source, _chapter_page(work, route_slug, section, chapter_slug, origin, include_text=True), chapter_route),compact_mapping))
+                _write(temporary / slug / chapter_slug / "text.html", source_page(work, route_slug, origin, downloads, section=section, editions=chapter_editions))
+                for edition in languages:
+                    record = edition_record(edition, slug, route_slug, chapter_slug)
+                    translated_section = next(item for item in edition["work"]["sources"] if item["id"] == section["id"])
+                    _write(temporary / record["path"].removeprefix("books/"), source_page(
+                        edition["work"], route_slug, origin, edition_files[edition["language_code"]]["downloads"], section=translated_section,
+                        editions=chapter_editions, active_language=edition["language_code"], canonical_override=record["url"]))
+                    sitemap.append({"loc": origin + record["url"]})
                 chapters.append({"book_slug": slug, "route_slug": route_slug, "slug": chapter_slug, "work_id": work["id"], "reader_slug": work["slug"],
                                  "source_id": section["id"], "source_order": source_index, "url": chapter_url,
                                  "path": prefix + "/index.html", "text_path": prefix + "/text.html",
                                  "aliases": _aliases(prefix + "/index.html", chapter_url),
                                  "has_text": bool(_source_text(section)), "title": source_label(work, section),
+                                 "editions": chapter_records,
                                  "source_language": _text(section.get("language_code")) or _text(work.get("language_code")),
                                  "source_language_name": _text(section.get("language_name")) or _text(work.get("language_name"))})
                 sitemap.append({"loc": origin + chapter_url})

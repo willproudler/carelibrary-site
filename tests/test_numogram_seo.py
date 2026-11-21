@@ -127,10 +127,10 @@ class SearchRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get("/numogram/lurgo")).headers["location"],"/numogram/lurgo/")
         self.assertEqual((await self.client.get("/numogram/not-a-demon/")).status_code,404)
         self.assertEqual((await self.client.get("/numogram/private.json")).status_code,404)
-        for name in ("numogram-atlas.mjs","numogram-instrument.mjs","numogram-reference.mjs"):
+        for name in ("numogram-atlas.mjs","numogram-instrument.mjs","numogram-reference.mjs","study-desk.mjs"):
             self.assertEqual((await self.client.get("/native/"+name)).status_code,200)
-        for name in ("study-desk.mjs","reading-views.mjs"):
-            self.assertEqual((await self.client.get("/native/"+name)).status_code,401)
+        # The About page uses the desk renderer. Saved reading data retains its gate.
+        self.assertEqual((await self.client.get("/native/reading-views.mjs")).status_code,401)
 
     async def test_original_book_text_follows_live_public_mode_without_caching_gate(self):
         self.assertEqual((await self.client.get("/books/book/")).text,"Public metadata only")

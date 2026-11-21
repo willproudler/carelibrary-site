@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 from urllib.parse import quote, unquote
 
+from .source_downloads import download_records
+
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_READING_MANIFEST_BYTES = 16 * 1024 * 1024
 
@@ -20,6 +22,9 @@ class SearchPage:
     redirect: bool = False
     document_canonical: str | None = None
     alternates: tuple[tuple[str, str], ...] = ()
+    download_filename: str | None = None
+    media_type: str | None = None
+    source_reader: bool = False
 
 
 @dataclass(frozen=True)
@@ -110,8 +115,9 @@ def _book_index(name: str, stamp: tuple) -> dict:
             elif (not isinstance(route_slug,str) or not re.fullmatch(r"[a-z0-9]{1,224}",route_slug)
                   or decoded!=(f"/{route_slug}" if kind=="books" else f"/{route_slug}/{slug}/")):
                 continue
-            text=item.get("text_path") if kind=="chapters" else None
-            if kind=="chapters" and text!=folder+"text.html":
+            text=item.get("text_path")
+            if (kind=="chapters" and text!=folder+"text.html"
+                    or kind=="books" and text is not None and text!=folder+"text.html"):
                 continue
             legacy="/"+folder
             aliases={legacy,legacy.rstrip("/"),"/"+resource,
@@ -137,6 +143,180 @@ def _book_routes(root: Path) -> dict:
         return _book_index(str(path),stamp)
     except OSError:
         return {}
+
+
+def _source_language_records(item: dict, folder: str, canonical: str) -> tuple | None:
+    """Validate a bounded edition menu, including its original-language entry."""
+    editions = item.get("editions", [])
+    if not isinstance(editions, list) or len(editions) > 256:
+        return None
+    seen, records = set(), []
+    required = {"language_code", "language_name", "kind", "path", "url"}
+    optional = {"rendition_type", "review_status", "downloads", "axiom_downloads"}
+    for edition in editions:
+        if (not isinstance(edition, dict) or not required <= set(edition) <= required | optional
+                or not isinstance(edition.get("language_code"), str)
+                or len(edition["language_code"]) > 63
+                or not re.fullmatch(r"[a-z]{2,8}(?:-[a-z0-9]{1,8})*", edition["language_code"])
+                or edition["language_code"] in seen
+                or not isinstance(edition.get("language_name"), str) or not edition["language_name"].strip()
+                or len(edition["language_name"]) > 240
+                or not isinstance(edition.get("kind"), str) or edition["kind"] not in {"original", "translation"}
+                or any(not isinstance(edition.get(key, ""), str) or len(edition.get(key, "")) > 240
+                       or any(ord(char) < 32 or ord(char) == 127 for char in edition.get(key, ""))
+                       for key in ("language_name", "rendition_type", "review_status"))):
+            return None
+        code = edition["language_code"]
+        seen.add(code)
+        if edition["kind"] == "original":
+            expected_path, expected_url = folder + "text.html", canonical
+        else:
+            expected_path = folder + f"languages/{code}/index.html"
+            expected_url = canonical.rstrip("/") + f"/language/{code}/"
+        if edition.get("path") != expected_path or edition.get("url") != expected_url:
+            return None
+        records.append((code, edition["kind"], expected_path, expected_url))
+    return tuple(records)
+
+
+@lru_cache(maxsize=4)
+def _source_language_index(name: str, stamp: tuple, audit_name: str, audit_stamp: tuple) -> dict:
+    """Compile exact complete-language routes from the current publication."""
+    manifest, audit = _manifest(name, stamp), _manifest(audit_name, audit_stamp)
+    digest = manifest.get("source_sha256")
+    if (manifest.get("schema") != "care-book-search-pages/1"
+            or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            or audit.get("sha256") != digest or not isinstance(manifest.get("books"), list)
+            or not isinstance(manifest.get("chapters", []), list)):
+        return {}
+    originals = _book_index(name, stamp)
+    routes, books = {}, {}
+
+    def register(records):
+        for _, kind, resource, canonical in records:
+            if kind != "translation":
+                continue
+            page = SearchPage(resource, canonical, document_canonical=canonical, source_reader=True)
+            physical = "/" + resource.removesuffix("index.html")
+            aliases = {unquote(canonical), unquote(canonical.rstrip("/")), unquote(canonical + "index.html"),
+                       physical, physical.rstrip("/"), "/" + resource}
+            for alias in aliases:
+                if alias in routes and routes[alias] != page:
+                    routes[alias] = None
+                else:
+                    routes[alias] = page
+
+    for book in manifest["books"]:
+        if not isinstance(book, dict):
+            continue
+        slug, route, canonical = book.get("slug"), book.get("route_slug"), book.get("url")
+        if (not _component(slug) or not isinstance(route, str)
+                or not re.fullmatch(r"[a-z0-9]{1,224}", route) or canonical != "/" + route
+                or book.get("work_id") is not None and not isinstance(book["work_id"], str)):
+            continue
+        folder = f"books/{slug}/"
+        owner = originals.get(canonical)
+        if (owner is None or owner[0] != folder + "index.html"
+                or book.get("has_text") is not True or book.get("text_path") != folder + "text.html"):
+            continue
+        records = _source_language_records(book, folder, canonical)
+        key = (slug, route, book.get("work_id"))
+        if key in books:
+            return {}
+        books[key] = records
+        if records is not None:
+            register(records)
+    for chapter in manifest.get("chapters", []):
+        if not isinstance(chapter, dict):
+            continue
+        slug, route, book_slug = chapter.get("slug"), chapter.get("route_slug"), chapter.get("book_slug")
+        if (not _component(slug) or not _component(book_slug) or not isinstance(route, str)
+                or chapter.get("work_id") is not None and not isinstance(chapter["work_id"], str)):
+            continue
+        book_records = books.get((book_slug, route, chapter.get("work_id")))
+        if book_records is None:
+            continue
+        folder = f"books/{book_slug}/{slug}/"
+        canonical = "/" + route + "/" + quote(slug, safe="-") + "/"
+        owner = originals.get(unquote(canonical))
+        if (owner is None or owner[0] != folder + "index.html" or chapter.get("url") != canonical
+                or chapter.get("has_text") is not True or chapter.get("text_path") != folder + "text.html"):
+            continue
+        records = _source_language_records(chapter, folder, canonical)
+        complete = {code for code, kind, _, _ in book_records if kind == "translation"}
+        if records is None or any(kind == "translation" and code not in complete for code, kind, _, _ in records):
+            continue
+        register(records)
+    return routes
+
+
+def _source_language_routes(root: Path) -> dict:
+    names = (root / "books/manifest.json", root / "data/export-audit.json")
+    stamps = []
+    try:
+        for path in names:
+            stat = path.stat()
+            if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+                return {}
+            stamps.append((stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size))
+    except OSError:
+        return {}
+    return _source_language_index(str(names[0]), stamps[0], str(names[1]), stamps[1])
+
+
+def _source_download_declarations(root: Path) -> dict:
+    """Only exact original-edition exports in the attested book registry route."""
+    manifest = _read(root, "books/manifest.json")
+    digest = manifest.get("source_sha256")
+    audit = _read(root, "data/export-audit.json")
+    if (manifest.get("schema") != "care-book-search-pages/1"
+            or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            or audit.get("sha256") != digest or not isinstance(manifest.get("books"), list)):
+        return {}
+    routes = {}
+    for book in manifest["books"]:
+        if not isinstance(book,dict):
+            continue
+        try:
+            records = download_records(book)
+        except ValueError:
+            continue
+        for item, canonical, filename in records:
+            page = SearchPage(item['path'], item['url'], document_canonical=canonical,
+                              alternates=((canonical,'text/html'),), download_filename=filename, media_type=item['media_type'])
+            for alias in (item['url'], '/' + item['path']):
+                routes[alias] = None if alias in routes else (page,item['sha256'],item['bytes'])
+    return routes
+
+
+@lru_cache(maxsize=16)
+def _download_digest(name: str, stamp: tuple, digest: str) -> bool:
+    try:
+        return hashlib.sha256(Path(name).read_bytes()).hexdigest() == digest
+    except OSError:
+        return False
+
+
+def _source_download(root: Path, request_path: str) -> SearchPage | None:
+    declaration = _source_download_declarations(root).get(request_path)
+    if declaration is None:
+        return None
+    page, digest, size = declaration
+    path = root
+    try:
+        for part in Path(page.resource).parts:
+            path = path / part
+            if path.is_symlink():
+                return None
+        stat = path.stat()
+        if not path.is_file() or stat.st_size != size or not path.resolve().is_relative_to(root.resolve()):
+            return None
+        stamp = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+        if not _download_digest(str(path), stamp, digest):
+            return None
+    except OSError:
+        return None
+    return replace(page, redirect=request_path != page.canonical)
 
 
 def _recorded_source_paths(item: dict, folder: str, canonical: str) -> tuple | None:
@@ -341,7 +521,7 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
     if (not request_path.startswith("/") or "\\" in request_path or "//" in request_path
             or any(part in {".",".."} or part.startswith(".") for part in request_path.split("/") if part)):
         return None
-    if request_path in {"/numogram/numogram.css","/books/books.css","/books/readings.css"}:
+    if request_path in {"/numogram/numogram.css","/books/books.css","/books/readings.css", "/books/source-reader.css", "/books/source-reader.mjs", "/books/source-reader-pages.mjs"}:
         return SearchPage(request_path[1:],request_path)
     if request_path=="/book-routes.json":
         return SearchPage("book-routes.json",request_path) if _read(root,"book-routes.json").get("schema")=="care-book-routes/1" else None
@@ -367,6 +547,13 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
         return None
     decoded = unquote(request_path)
     components = decoded.strip("/").split("/")
+    if "downloads" in components:
+        return _source_download(root, decoded) if full_text else None
+    if "language" in components or first == "books" and "languages" in components:
+        if not full_text:
+            return None
+        edition = _source_language_routes(root).get(decoded)
+        return replace(edition, redirect=request_path != edition.canonical) if edition is not None else None
     summary = (len(components) == 2 and components[1] in {"summary.md", "summary.json", "summary.txt"}
                and decoded == f"/{components[0]}/{components[1]}")
     if (summary or (len(components) >= 2 and components[1] == "readings")
@@ -406,4 +593,4 @@ def search_page(root: Path, request_path: str, *, full_text: bool) -> SearchPage
     if direct_text:
         return SearchPage(text,canonical,True) if full_text and has_text else None
     selected=text if text and full_text and has_text else resource
-    return SearchPage(selected,canonical,request_path!=decoded)
+    return SearchPage(selected,canonical,request_path!=decoded,source_reader=selected==text)

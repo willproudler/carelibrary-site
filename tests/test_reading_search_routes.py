@@ -170,6 +170,7 @@ class ReadingSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         books = json.loads(books_path.read_text())
         other_book = {**books["books"][0], "work_id": "OTHER_WORK", "reader_slug": "other-reader",
                       "route_slug": "otherbook", "slug": "other-book", "path": "books/other-book/index.html",
+                      "text_path": "books/other-book/text.html", "downloads": [],
                       "url": "/otherbook", "aliases": []}
         books["books"].append(other_book)
         books_path.write_text(json.dumps(books))

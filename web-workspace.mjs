@@ -70,6 +70,26 @@ export function manuscriptHash(mode, draftId = '') {
 
 // Generated alongside the public book pages. Reuse the exact route assigned to
 // each work; author/title spellings and collision rules belong to the exporter.
+export function cleanSourceHref(addressing, workId, {enabled=false, embedded=false, sourceId=''}={}) {
+  const route=addressing.book(workId);
+  if(!enabled||embedded||!route||!/^\/[a-z0-9]{2,224}$/.test(route.url||''))return '';
+  return route.url+'?from=library'+(sourceId?'#source-'+encodeURIComponent(sourceId):'');
+}
+
+// Only the mounted canonical source can enter an original-language book at
+// this position. A saved pane rendition uses its own text in the local reader.
+export function paneSourceEdition(addressing, index, {pane, sourceId, passageId, fromBook}, enabled) {
+  if (!enabled || (pane.dataset.studioSourceVariant && pane.dataset.studioSourceVariant !== 'canonical')) return null;
+  const passage = index.nodes.get(passageId);
+  const source = index.units.get(sourceId) || (passage?.kind === 'passage' && index.units.get(passage.unit.id));
+  if (source?.layer !== 'SOURCE' || !source.work) return null;
+  const route = addressing.book(source.work.id);
+  if (!route || !/^\/[a-z0-9]{2,224}$/.test(route.url)) return null;
+  const exact = passage?.kind === 'passage' && passage.unit.id === source.id ? passage.id : '';
+  const anchor = exact ? '#ref=' + encodeURIComponent(exact) : fromBook ? '' : '#source-' + encodeURIComponent(source.id);
+  return {url:route.url + anchor, passageId:exact};
+}
+
 export function createBookAddressing(document) {
   const byBook=new Map(),byPath=new Map();
   try {

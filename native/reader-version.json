@@ -7,8 +7,8 @@
     "Reuse shelf menus for published author browsing and private study sets"
   ],
   "assets": {
-    "study-desk.css": "4d4beb36e47074dc78bc5c6d52d3db61233b923344099679116d40a746165f9a",
-    "study-desk.mjs": "67f1a1b7016bad22f9fae09b7bafdef1c049a1fcfe5cbe6ba5a86384c6f64274",
+    "study-desk.css": "956cf28c8aa65caadfd0fe0c4f93c97322f9b42a9142249987010e11ddccb988",
+    "study-desk.mjs": "96aab2d0f9e0f79de4607b9af935e3ecbec462074066f70a506194d69dedc83b",
     "reading-views.mjs": "9c8696364f758716c213bf3c366093336c600ce6197a5e3ca9de5949df20cd9b",
     "source-opening-views.mjs": "cc067bd2323f9b672ed718c3a635e5ef05424786d2dfb3e1d0f3d7f4614feb78"
   },

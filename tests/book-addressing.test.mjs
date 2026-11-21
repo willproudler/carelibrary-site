@@ -1,13 +1,41 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createBookAddressing,createWorkspaceHistory,searchPageRouteParams} from '../web-workspace.mjs';
+import {createBookAddressing,createWorkspaceHistory,searchPageRouteParams,cleanSourceHref,paneSourceEdition} from '../web-workspace.mjs';
 
 const books=[
  {work_id:'PLATO_TIMAEUS',reader_slug:'plato-timaeus',url:'/platotimaeus',aliases:['/books/timaeus-plato/']},
  {work_id:'HUME',reader_slug:'hume',url:'/humetreatiseofhumannature',aliases:['/books/a-treatise-david-hume/']},
 ];
 const addresses=()=>createBookAddressing({querySelector:()=>({textContent:JSON.stringify({schema:'care-book-routes/1',books})})});
+
+test('the pane opens its own published edition and only passes a matching passage to the reader',()=>{
+ const chapter={id:'source:1',layer:'SOURCE',work:{id:'HUME'}};
+ const passage={id:'p:1',kind:'passage',unit:chapter};
+ const index={units:new Map([[chapter.id,chapter]]),nodes:new Map([[passage.id,passage]])};
+ const input={pane:{dataset:{studioSourceVariant:'canonical'}},sourceId:chapter.id,passageId:passage.id};
+ const resolve=(request,enabled=true)=>paneSourceEdition(addresses(),index,request,enabled);
+ assert.deepEqual(resolve(input),{url:'/humetreatiseofhumannature#ref=p%3A1',passageId:'p:1'});
+ assert.equal(resolve({...input,passageId:'',fromBook:true}).url,'/humetreatiseofhumannature');
+ assert.deepEqual(resolve({...input,sourceId:''}),resolve(input));
+ assert.equal(resolve({...input,passageId:'unknown'}).passageId,'');
+ assert.equal(resolve({...input,pane:{dataset:{studioSourceVariant:'machine'}}}),null);
+ assert.equal(resolve(input,false),null);
+ assert.equal(resolve({...input,sourceId:'unknown',passageId:'unknown'}),null);
+});
+
+test('clean source entry is explicit, public, and returns to the same original section',()=>{
+ const routes=addresses();
+ assert.equal(cleanSourceHref(routes,'HUME'), '');
+ assert.equal(cleanSourceHref(routes,'HUME',{enabled:true,embedded:true}), '');
+ assert.equal(cleanSourceHref(routes,'unknown',{enabled:true}), '');
+ assert.equal(cleanSourceHref(routes,'HUME',{enabled:true}), '/humetreatiseofhumannature?from=library');
+ assert.equal(cleanSourceHref(routes,'PLATO_TIMAEUS',{enabled:true,sourceId:'RAW:001'}), '/platotimaeus?from=library#source-RAW%3A001');
+ assert.equal(routes.href('#book=hume&source=RAW:001',{pathname:'/library.html',embedded:true}), '#book=hume&source=RAW%3A001');
+ const app=readFileSync(new URL('../public-app.mjs',import.meta.url),'utf8');
+ assert.match(app,/embedded:embedded\|\|!initialSearchRoute/);
+ assert.match(app,/link\.hasAttribute\('data-clean-source'\)/);
+});
 
 test('generated book paths replace reader slugs without changing exact source and route identities',()=>{
  const routes=addresses();

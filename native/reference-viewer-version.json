@@ -4,8 +4,8 @@
     "Resolve the keyboard event origin across the standalone desk ShadowRoot"
   ],
   "assets": {
-    "reference-viewer.html": "52f5f262f5393149525e9d05ada4a8909dd9a1bcc40bb5f83a94a5a1752c4e14",
+    "reference-viewer.html": "17134e26c111aa27d35c73f07d8a099ac82cc817e64c0617d47c6c82ba99de7f",
     "reference-viewer.css": "585c5109327f171ffe86d2f436d6d89102847c30dacf3ddefc5d745321296a80",
-    "reference-viewer.mjs": "1a2e954683eeeffa087b140752f2df1009172aa243e8db30302ae00b19cfae58"
+    "reference-viewer.mjs": "fd6f4192a48d0fd15d5e1221ad850c47b8bf4adededb40a44a38bb6aa3c705e9"
   }
 }

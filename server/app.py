@@ -169,7 +169,7 @@ class SecurityBoundary:
                     policy = NO_STORE
                 headers[b"cache-control"] = policy.encode()
                 headers[b"cdn-cache-control"] = (policy if policy == PUBLIC_ASSET else NO_STORE).encode()
-                if scope.get("care_library_companion") and message["status"] in {200, 206}:
+                if scope.get("care_same_origin_reader") and message["status"] in {200, 206, 304}:
                     headers[b"x-frame-options"] = b"SAMEORIGIN"
                     headers[b"content-security-policy"] = b"frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
                 if scope.get("scheme") == "https":
@@ -525,24 +525,31 @@ async def static_file(request):
                   else "text/javascript" if suffix in {".mjs", ".js"}
                   else "text/markdown" if suffix == ".md"
                   else mimetypes.guess_type(str(path))[0] or "application/octet-stream")
+    if search and search.media_type:
+        media_type = search.media_type
     headers = {"Vary": "Accept-Encoding" if unconditional_asset else "Cookie, Accept-Encoding"}
+    if search and search.download_filename:
+        headers["Content-Disposition"] = 'attachment; filename="' + search.download_filename + '"'
     if crawlable and suffix == ".html":
         headers["Link"] = '</llms.txt>; rel="describedby"; type="text/markdown"'
     if relative == "library.html":
         headers["Link"] = ", ".join(filter(None, [headers.get("Link"), '</library.html>; rel="canonical"']))
-    if search and (suffix in {".html", ".md", ".txt"} or suffix == ".json" and search.document_canonical):
+    if search and (suffix in {".html", ".md", ".txt"} or search.download_filename
+                   or suffix == ".json" and search.document_canonical):
         links = [f'<{search.document_canonical or search.canonical}>; rel="canonical"']
         links.extend(f'<{url}>; rel="alternate"; type="{kind}"' for url, kind in search.alternates)
         headers["Link"] = ", ".join(filter(None, [headers.get("Link"), *links]))
     if not crawlable:
         headers["X-Robots-Tag"] = "noindex"
-    # The workspace companions follow the same access rules as the main Library.
-    # The draft, login and settings endpoints retain the anti-framing headers.
-    if companion:
-        request.scope["care_library_companion"] = True
+    # Only Library companions and the registered, public clean edition can
+    # appear inside a reader frame. Both have passed their usual access checks.
+    if companion or (search and search.source_reader):
+        request.scope["care_same_origin_reader"] = True
     # Built gzip copies are served only after the same authorization checks.
     accepted = request.headers.get("accept-encoding", "")
-    if any(item.strip().lower() == "gzip" for item in accepted.split(",")) and Path(str(path) + ".gz").exists():
+    if (not (search and search.download_filename)
+            and any(item.strip().lower() == "gzip" for item in accepted.split(","))
+            and Path(str(path) + ".gz").exists()):
         path = resource_path(root, resource + ".gz")
         headers["Content-Encoding"] = "gzip"
     policy = (PUBLIC_ASSET if unconditional_asset else REVALIDATE_READING

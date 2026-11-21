@@ -1242,6 +1242,15 @@ button{border-radius:999px}
 }
 .care-pane-controls button[data-pane-control="sections"]{--pane-control-tone:color-mix(in srgb,#c2ae7a 89%,var(--pane-accent,var(--color,#736486)))}
 .care-pane-controls button[data-pane-control="size"]{--pane-control-tone:color-mix(in srgb,#b5c2a7 92%,var(--pane-accent,var(--color,#736486)))}
+.care-pane-controls button[data-pane-reader]{
+  --pane-control-tone:color-mix(in srgb,#56816a 94%,var(--pane-accent,#73513c));
+}
+.care-pane-controls button[data-pane-reader] svg{fill:currentColor;stroke:none}
+.study-desk[data-beautiful-text="true"][data-skin] .source-pane:is([data-pane-size="wide"],[data-pane-size="full"]) .source-copy.beautiful-typeset,
+.study-desk[data-beautiful-text="true"][data-skin][data-pane-reading="true"] .source-pane .source-copy.beautiful-typeset{
+  --typeset-top:clamp(4.5rem,8vh,6.75rem);
+  padding-block-start:var(--typeset-top);
+}
 /* Size belongs to one pane; its neighbours and the workspace stay mounted. */
 :is(.desk-window,.field-pane)[data-pane-size]:not(.care-pane-minimized):not([data-original-expanded="true"] > [data-strip] > .original-pane){flex:0 0 var(--care-pane-sized-width)!important;width:var(--care-pane-sized-width)!important;min-width:0!important;max-width:none!important}
 :is(.desk-window,.field-pane)[data-pane-size="wide"]{--care-pane-text-factor:1.08}
@@ -3872,6 +3881,15 @@ button{border-radius:999px}
 }
 .care-pane-controls button[data-pane-control="sections"]{--pane-control-tone:color-mix(in srgb,#c2ae7a 89%,var(--pane-accent,var(--color,#736486)))}
 .care-pane-controls button[data-pane-control="size"]{--pane-control-tone:color-mix(in srgb,#b5c2a7 92%,var(--pane-accent,var(--color,#736486)))}
+.care-pane-controls button[data-pane-reader]{
+  --pane-control-tone:color-mix(in srgb,#56816a 94%,var(--pane-accent,#73513c));
+}
+.care-pane-controls button[data-pane-reader] svg{fill:currentColor;stroke:none}
+.study-desk[data-beautiful-text="true"][data-skin] .source-pane:is([data-pane-size="wide"],[data-pane-size="full"]) .source-copy.beautiful-typeset,
+.study-desk[data-beautiful-text="true"][data-skin][data-pane-reading="true"] .source-pane .source-copy.beautiful-typeset{
+  --typeset-top:clamp(4.5rem,8vh,6.75rem);
+  padding-block-start:var(--typeset-top);
+}
 /* Size belongs to one pane; its neighbours and the workspace stay mounted. */
 :is(.desk-window,.field-pane)[data-pane-size]:not(.care-pane-minimized):not([data-original-expanded="true"] > [data-strip] > .original-pane){flex:0 0 var(--care-pane-sized-width)!important;width:var(--care-pane-sized-width)!important;min-width:0!important;max-width:none!important}
 :is(.desk-window,.field-pane)[data-pane-size="wide"]{--care-pane-text-factor:1.08}

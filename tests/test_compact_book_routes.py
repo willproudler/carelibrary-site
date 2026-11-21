@@ -60,7 +60,7 @@ class CompactBookRouteTests(unittest.IsolatedAsyncioTestCase):
         self.app.state.site_settings.update(False,0)
         self.assertIn("Exact original source needle",(await self.client.get(canonical)).text)
         self.assertEqual((await self.client.get(text)).headers["location"],canonical)
-        self.assertNotIn("Exact original source needle",(await self.client.get("/platotimaeus")).text)
+        self.assertIn("Exact original source needle",(await self.client.get("/platotimaeus")).text)
         self.app.state.site_settings.update(True,1)
         self.assertNotIn("Exact original source needle",(await self.client.get(canonical)).text)
         self.assertEqual((await self.client.get(text)).status_code,404)
