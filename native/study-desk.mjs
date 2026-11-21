@@ -8040,9 +8040,10 @@ dialog[data-book-opening]::backdrop {background:#08120e8a;backdrop-filter:blur(5
 [data-book-opening] .opening-tabs {background:linear-gradient(90deg,#586069 0 17%,#1b242e 17% 20%,#454f5c 20% 44%,#1b242e 44%)}
 [data-book-opening] .opening-panes {min-height:0;display:grid;grid-template-columns:1.1fr 1fr;gap:3%;padding:2% 1%}
 [data-book-opening] .opening-pane {position:relative;display:flex;flex-direction:column;align-items:stretch;gap:8%;min-width:0;background:#1b232d;border:1px solid #66758752;border-radius:2px;overflow:hidden;color:#c7d1dd}
-[data-book-opening] .opening-pane-heading {display:flex;align-items:center;justify-content:space-between;padding:5% 7%;background:#364150;border-top:2px solid #85909c;font:650 clamp(3px,1.65cqw,6px)/1 system-ui;letter-spacing:.03em}
+[data-book-opening] .opening-pane-heading {display:flex;align-items:center;justify-content:space-between;padding:5% 7%;background:color-mix(in srgb,var(--pane-accent) 58%,#171b22);border-top:2px solid var(--pane-accent);font:650 clamp(3px,1.65cqw,6px)/1 system-ui;letter-spacing:.03em}
 [data-book-opening] .opening-lights {width:30%;aspect-ratio:4/1;background:radial-gradient(circle at 13% 50%,#c3907c 0 10%,transparent 13%),radial-gradient(circle at 48% 50%,#c1af7e 0 10%,transparent 13%),radial-gradient(circle at 84% 50%,#87a492 0 10%,transparent 13%)}
-[data-book-opening] .opening-pane-source .opening-pane-heading {border-color:#c58a57;background:#654b39;color:#f0d8c0}
+[data-book-opening] .opening-pane-source {--pane-accent:#8a431d}
+[data-book-opening] .opening-pane-chapter {--pane-accent:#3d668b}
 [data-book-opening] .opening-pane-title {display:block;margin:0 8%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#e2e4df;font:600 clamp(4px,2cqw,7px)/1.2 system-ui}
 [data-book-opening] .opening-pane-source .opening-pane-title {font-family:"Iowan Old Style",Palatino,Georgia,serif}
 [data-book-opening] .opening-lines {align-self:start;margin-left:9%;width:78%;height:29%;background:repeating-linear-gradient(0deg,transparent 0 4px,#919dab85 4px 5px);mask-image:linear-gradient(90deg,#000 75%,#000a)}
@@ -8091,8 +8092,8 @@ const openingOptions = `
           <span class="opening-pane opening-pane-source"><span class="opening-pane-heading"><span class="opening-lights"></span>Source</span>
             <span class="opening-pane-title" data-opening-pane-title></span>
             <span class="opening-lines"></span><span class="opening-lines"></span></span>
-          <span class="opening-pane"><span class="opening-pane-heading"><span class="opening-lights"></span>CARE</span>
-            <span class="opening-pane-title">Whole book</span>
+          <span class="opening-pane opening-pane-chapter"><span class="opening-pane-heading"><span class="opening-lights"></span>Chapter</span>
+            <span class="opening-pane-title">Axiom</span>
             <span class="opening-lines"></span><span class="opening-lines"></span></span>
         </span>
       </span></span>

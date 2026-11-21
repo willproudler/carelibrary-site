@@ -4,7 +4,7 @@
   "assets": {
     "study-field.html": "9ff36c3645baf23fda3e43f416755dd512bc46bfd25aa6a4f6dbb71c84762c61",
     "study-field.css": "dcfbd87263d08d244629866fb50ff6d9dcd3fd84993beff35e20bb14cc4e65c0",
-    "study-field.mjs": "fe9cb21a2b5ad60b28840591b3464b1e1684d31422c4c4979b2486901b5704b8"
+    "study-field.mjs": "645f41f6801928a84469add660ab7d6f161a8ae67d557d7a595b45b692d31fdf"
   },
   "compatibility_changes": [
     "Apply public reading controls within embedded corpus book readers"
