@@ -919,6 +919,7 @@ export async function start(loader, css, scope){
  async function dispatch(kind,value){
   try{
    if(kind==='connection_action'&&value.action==='close'){openReadingMenu(data.lateral.id,shadow.querySelector('[data-connection-close]'));return;}
+   if(kind==='open_library'){openReadingRoute('#view=library');return;}
    if(kind==='open_work'){
     const work=adapter.workFor(value);
     if(work && view==='library')await openShelfBook(work);

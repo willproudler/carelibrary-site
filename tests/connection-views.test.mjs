@@ -10,7 +10,7 @@ const reduction='const ROUTE_DISPLAY_CACHE'+desk.split('const ROUTE_DISPLAY_CACH
 const outerBoundary=field.indexOf('\n})();\n\n');
 assert.ok(outerBoundary>=0,'The embedded reader must have a complete closure');
 const outerField=field.slice(outerBoundary+'\n})();\n\n'.length);
-const embeddedDesk=field.split('const CORPUS_BOOK_READER = (() => {')[1].split('\nreturn {')[0];
+const embeddedDesk=field.split('const CORPUS_BOOK_READER = (() => {')[1].split('\nreturn {\n  mount,')[0];
 const scripts={desk:withoutExport(desk),embeddedDesk,field:withoutExport(field),corpus:reduction+'\nconst CORPUS_BOOK_CSS="",CORPUS_ROUTES_NATIVE_CSS="",CORPUS_PANE_FOLDS_CSS="";\n'+withoutExport(outerField)};
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 const run=(kind,checks)=>new AsyncFunction('assert',scripts[kind]+'\n'+checks)(assert);

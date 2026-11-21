@@ -62,8 +62,10 @@ test('public guests retain existing anonymous storage while source visibility fo
  assert.match(gated.calls.redirect,/^\/login\.html\?next=/);
 });
 
-test('both clean-source actions use the source access flag without changing guest draft storage',()=>{
+test('book information, shelf and pane links use public source access independently of guest drafts',()=>{
  const app=readFileSync(new URL('../public-app.mjs',import.meta.url),'utf8');
- assert.equal((app.match(/enabled:[^\n;]*dataset\.careSourcePublic==='true'/g)||[]).length,2);
+ assert.match(app,/cleanSourceHref\([^;]+?enabled:\s*document\.documentElement\.dataset\.careSourcePublic\s*===\s*'true'/);
+ assert.match(app,/paneSourceEdition\([^;]+?document\.documentElement\.dataset\.careSourcePublic\s*===\s*'true'\)/);
+ assert.match(app,/const published\s*=\s*document\.documentElement\.dataset\.careSourcePublic\s*===\s*'true';\s*const edition\s*=\s*published\s*&&\s*bookAddressing\.book\(/);
  assert.match(app,/const guestDrafts=[^\n]*dataset\.carePublicMode==='true'/);
 });

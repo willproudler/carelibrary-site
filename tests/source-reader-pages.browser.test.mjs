@@ -364,3 +364,40 @@ test('direct, shared and download links stay in the Reader for every Library ope
     assert.equal(await tab.evaluate("JSON.parse(localStorage.getItem('care-book-opening-v1')).mode"), mode);
   }
 });
+
+test('permanent chapter links open the complete edition at a stable chapter or exact passage', {skip: !port, timeout: 120000}, async t => {
+  const whole = (await reviewFixture()).replace('<div data-nav-panel="tools" hidden>',
+    '<div data-nav-panel="tools" hidden><div data-download-scope="book"><a download href="/edition.pdf">PDF</a></div>');
+  const opening = await readFile(new URL('../tools/source_reader_opening.js', import.meta.url), 'utf8');
+  const server = createServer((req, res) => {
+    const path = new URL(req.url, 'http://localhost').pathname;
+    res.setHeader('Content-Type', 'text/html;charset=utf-8');
+    if (!path.includes('/chapter-eight/')) return res.end(whole);
+    const translated = path.endsWith('/language/en/');
+    res.end('<link rel="canonical" href="' + path + '"><main data-book-edition="' +
+      (translated ? '/book/language/en/' : '/book') + '" data-chapter-source="c8"' +
+      (translated ? ' data-translated-chapter' : '') + '><script>' + opening +
+      '</script><div id="ref=a8" data-passage-id="a8"></div></main>');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const tab = await reviewTab(t);
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const visit = async (from, to, anchor) => {
+    await tab.send('Page.navigate', {url: base + from});
+    await tab.wait('location.href === ' + JSON.stringify(base + to) +
+      " && document.getElementById('source-document')?.dataset.pagesReady === 'true'");
+    assert.equal(await tab.evaluate("document.querySelectorAll('[data-contents-page] .toc-title').length"), 32);
+    if (!anchor) return;
+    await tab.wait('Math.abs(document.getElementById(' + JSON.stringify(anchor) + ').getBoundingClientRect().top) < 150');
+    const scroll = await tab.evaluate('window.scrollY');
+    await delay(200);
+    assert.equal(await tab.evaluate('window.scrollY'), scroll);
+  };
+  await visit('/book/chapter-eight/?from=library', '/book?from=library#source-c8', 'source-c8');
+  await visit('/book/chapter-eight/#ref=a8', '/book#ref=a8', 'ref=a8');
+  await visit('/book/chapter-eight/#ref=unknown', '/book#source-c8', 'source-c8');
+  await visit('/book/chapter-eight/language/en/#ref=a8', '/book/language/en/#source-c8', 'source-c8');
+  await visit('/book/chapter-eight/language/en/#download', '/book/language/en/?chapter=c8#download', 'source-c8');
+  assert.ok(await tab.evaluate("document.getElementById('reader-navigation').open && document.activeElement.matches('a[download]')"));
+});

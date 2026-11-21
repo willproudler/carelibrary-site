@@ -240,6 +240,7 @@ def source_page(work: dict, route_slug: str, origin: str, downloads: list[dict],
     from book_seo import _book_url, _chapter_slugs, _chapter_url, _jsonld, _reader_url, _source_text, _sources
     sources, slugs = _sources(work), work.get('source_route_slugs') or _chapter_slugs(work)
     canonical_path = canonical_override or (_chapter_url(route_slug, slugs[section['id']]) if section else _book_url(route_slug))
+    book_path = _book_url(route_slug) + ('/language/' + active_language + '/' if active_language else '')
     canonical = origin + canonical_path
     language = _language((section or {}).get('language_code') or work.get('language_code'))
     title = source_label(work, section) if section else work['title']
@@ -259,27 +260,40 @@ def source_page(work: dict, route_slug: str, origin: str, downloads: list[dict],
         page_title += f" ({edition_language})"
     page_title += " | CARE Library"
     toc_items = []
-    for position, item in enumerate([section] if section else sources, 1):
+    for position, item in enumerate(sources, 1):
+        if section and section['id'] != item['id']:
+            continue
         target = '#source-' + item['id']
         toc_items.append('<li><a href="' + escape(target, quote=True) + '"><span class="toc-order">' + str(position) + '</span><span class="toc-title">' + escape(source_label(work, item)) + '</span><span class="toc-page" data-page-ref="' + escape('source-' + item['id'], quote=True) + '"></span></a></li>')
+    chapter_context = ''
+    contents_heading = '<a href="#reader-navigation" data-open-reader-contents>Contents</a>'
+    if section:
+        chapter_context = (' data-book-edition="' + escape(book_path, quote=True)
+                           + '" data-chapter-source="' + escape(section['id'], quote=True) + '"')
+        if active_language:
+            chapter_context += ' data-translated-chapter'
+        contents_heading = '<a href="' + escape(book_path, quote=True) + '#document-contents-title">Contents of the whole book</a>'
     tools_panel = _reading_tools(work, reader_url, downloads, editions or [], canonical_path)
-    body = ('<a class="skip" href="#source-text">Skip to text</a><a class="reader-back-link" data-reader-back lang="en" href="' + escape(reader_url, quote=True) + '">Back to CARE</a>' + _navigation(work, route_slug, section, active_language, tools_panel)
-            + '<main id="source-document" class="reader-document"><script data-reader-opening-script>' + _opening_script() + '</script>'
+    body = ('<a class="skip" href="#source-text">Skip to text</a><a class="reader-back-link" data-reader-back lang="en" href="/library.html">Back to Library</a>' + _navigation(work, route_slug, section, active_language, tools_panel)
+            + '<main id="source-document" class="reader-document"' + chapter_context + '><script data-reader-opening-script>' + _opening_script() + '</script>'
             '<div class="reading-pages" data-reader-opening><div class="page-slot" data-page-number="1"><article id="reading-page-1" class="reading-page" data-page-number="1" data-page-kind="title"><div class="page-content"><header class="document-title" data-title-page>'
-            + '<h1 class="book-title">' + escape(title) + '</h1>'
+            + '<h1 class="book-title">' + escape(work_title) + '</h1>'
             + '<p class="book-author">' + escape(work['author']) + '</p></header></div></article></div></div><article class="reader-paper" data-reader-source-flow>'
-            + '<nav class="document-contents" data-contents-page aria-labelledby="document-contents-title"><h2 id="document-contents-title"><a href="#reader-navigation" data-open-reader-contents>Contents</a></h2><ol class="document-contents-list">' + ''.join(toc_items) + '</ol></nav><div id="source-text">')
+            + '<nav class="document-contents" data-contents-page aria-labelledby="document-contents-title"><h2 id="document-contents-title">' + contents_heading + '</h2><ol class="document-contents-list">' + ''.join(toc_items) + '</ol></nav><div id="source-text">')
     for item in ([section] if section else sources):
         body += '<section class="source-section" id="' + escape('source-' + item['id'], quote=True) + '" data-source-id="' + escape(item['id'], quote=True) + '" lang="' + _language(item.get('language_code') or language) + '" dir="auto">'
         if not section:
             chapter_url = _chapter_url(route_slug, slugs[item['id']]) + ('language/' + active_language + '/' if active_language else '')
             body += '<h2 class="source-section-title"><a href="' + escape(chapter_url, quote=True) + '">' + _section_heading(source_label(work, item)) + '</a></h2>'
+        else:
+            body += '<h2 class="source-section-title">' + _section_heading(title) + '</h2>'
         body += '<div class="source-text">' + _source_body(item) + '</div>' if _source_text(item) else '<p class="unavailable" lang="en">This section’s original source text has not been published.</p>'
         body += '</section>'
     body += '</div>'
     if section:
         index = next(index for index, item in enumerate(sources) if item['id'] == section['id'])
-        body += '<nav class="section-nav" aria-label="Source section navigation" lang="en">'
+        body += ('<nav class="section-nav" aria-label="Source section navigation" lang="en"><a href="'
+                 + escape(book_path + '#source-' + section['id'], quote=True) + '">Read in the complete book</a>')
         for offset, label in ((-1, 'Previous'), (1, 'Next')):
             if 0 <= index + offset < len(sources):
                 neighbor = sources[index + offset]
@@ -299,7 +313,7 @@ def source_page(work: dict, route_slug: str, origin: str, downloads: list[dict],
     if section:
         structured = json.dumps({'@context': 'https://schema.org', '@type': 'CreativeWork' if source_page_number(work, section) else 'Chapter',
             '@id': canonical + '#source', 'name': title, 'url': canonical, 'identifier': section['id'], 'position': next(i for i, item in enumerate(sources, 1) if item['id'] == section['id']),
-            'inLanguage': language, 'isPartOf': {'@type': 'Book', '@id': origin + _book_url(route_slug) + '#book', 'name': work['title'], 'url': origin + _book_url(route_slug), 'author': {'@type': 'Person', 'name': work['author']}}}, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+            'inLanguage': language, 'isPartOf': {'@type': 'Book', '@id': origin + book_path + '#book', 'name': work['title'], 'url': origin + book_path, 'author': {'@type': 'Person', 'name': work['author']}}}, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     alternates = ''.join('<link rel="alternate" type="' + escape(row['media_type'], quote=True) + '" href="' + escape(origin + row['url'], quote=True) + '">' for row in downloads)
     alternates += ''.join('<link rel="alternate" hreflang="' + escape(item['language_code'], quote=True) + '" href="' + escape(origin + item['url'], quote=True) + '">' for item in editions or [])
     assets = reader_assets(inline_assets)

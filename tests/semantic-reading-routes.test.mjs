@@ -74,7 +74,11 @@ test('an explicit semantic reading reveals the exact CARE pane despite a persist
 test('semantic unit selection is resolved before Reader readiness can hide the accessible fallback',()=>{
  const source=readFileSync(new URL('../public-app.mjs',import.meta.url),'utf8');
  const opening=source.slice(source.indexOf(' async function routeFromURL'),source.indexOf(' function signalLibraryCompanion'));
- assert.ok(opening.indexOf('bookRouteUnitState(p,')>opening.indexOf('loader.ensureWork(work.id)'));
- assert.ok(opening.indexOf('bookRouteUnitState(p,')<opening.indexOf('setLoadStatus();paint();searchPageReady({view,book:'));
+ const loaded=opening.indexOf('loader.ensureWork(work.id)');
+ const selected=opening.indexOf('bookRouteUnitState(p,');
+ const painted=opening.indexOf('paint()',selected);
+ const ready=opening.search(/searchPageReady\(\{\s*view,\s*book:/);
+ assert.ok(loaded>=0 && loaded<selected,'load the work before selecting its semantic unit');
+ assert.ok(selected<painted && painted<ready,'paint the selected unit before announcing the book is ready');
  assert.match(opening,/readingPage:currentSearchRoute\(\)\?\.unit===p.get\('unit'\)/);
 });
