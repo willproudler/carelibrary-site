@@ -17,7 +17,11 @@ _STYLE_RE = re.compile(r'<style\b[^>]*\bid=["\']care-published-catalogue-style["
 BOOT_SCRIPT = r"""(() => {
  const root=document.documentElement;
  root.dataset.careLibraryBoot='loading';
- let timer;
+ // A reload keeps the full reading URL. Only a fresh top-level visit may
+ // restart automatically, so an offline or persistently slow load cannot loop.
+ const navigation=window.performance?.getEntriesByType('navigation')[0];
+ let canRestart=window===window.top && ['navigate','back_forward'].includes(navigation?.type);
+ let restartPending=false,timer;
  function panel(){return document.getElementById('care-library-loading');}
  function message(text){
   const surface=panel();
@@ -25,18 +29,50 @@ BOOT_SCRIPT = r"""(() => {
   surface.querySelector('[data-care-library-loading-status]').textContent=text;
   surface.querySelector('[data-care-library-loading-actions]').hidden=false;
  }
+ function restartIfVisible(){
+  if(!restartPending || !canRestart || document.hidden || window.navigator.onLine===false)return;
+  canRestart=false;
+  location.reload();
+ }
+ function fail(){
+  clearTimeout(timer);
+  restartPending=false;
+  root.dataset.careLibraryBoot='error';
+  message('CARE Library could not load. Check your connection and try again.');
+ }
+ function retryStartup(){
+  fail();
+  restartPending=true;
+  restartIfVisible();
+ }
+ function stalled(){
+  restartPending=true;
+  restartIfVisible();
+ }
+ function watchLoading(openingReading=false){
+  clearTimeout(timer);
+  restartPending=false;
+  timer=setTimeout(()=>{
+   root.dataset.careLibraryBoot='slow';
+   message('Opening CARE Library is taking longer than usual.');
+   // A book can take two 45-second download attempts. Offer the text route
+   // now and give those downloads time before restarting a stalled deep link.
+   if(openingReading)timer=setTimeout(stalled,75000);
+   else stalled();
+  },20000);
+ }
  window.CARELibraryBoot={
-  ready(){clearTimeout(timer);root.dataset.careLibraryBoot='ready';panel()?.remove();},
-  fail(){clearTimeout(timer);root.dataset.careLibraryBoot='error';message('CARE Library could not load. Check your connection and try again.');}
+  openingRoute(){watchLoading(true);},
+  ready(){clearTimeout(timer);canRestart=false;root.dataset.careLibraryBoot='ready';panel()?.remove();},
+  fail,retryStartup
  };
+ document.querySelector('script[src^="/library-boot.mjs"]')?.addEventListener('error',retryStartup);
+ document.addEventListener('visibilitychange',restartIfVisible);
+ window.addEventListener('online',restartIfVisible);
  document.addEventListener('click',event=>{
   if(event.target.closest?.('[data-care-library-retry]'))location.reload();
  });
- timer=setTimeout(()=>{
-  if(root.dataset.careLibraryBoot!=='loading')return;
-  root.dataset.careLibraryBoot='slow';
-  message('Opening CARE Library is taking longer than usual.');
- },20000);
+ watchLoading();
 })();"""
 BOOT_STYLE = '''<style id="care-library-loading-style">
 #care-library-loading{display:none}

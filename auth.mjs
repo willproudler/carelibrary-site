@@ -27,14 +27,35 @@ export function legacyLibraryDestination(hash = '', search = '') {
     ? '/library.html' + search + hash : null;
 }
 
-export async function session(fetcher = globalThis.fetch) {
-  const response = await fetcher('/api/session', {credentials:'same-origin', cache:'no-store'});
-  if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw Error('Login is unavailable at the moment. Please try again shortly.');
+const sessionUnavailable = 'Login is unavailable at the moment. Please try again shortly.';
+
+async function verifiedSession(response) {
+  if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw Error(sessionUnavailable);
   const value = await response.json();
-  if (typeof value.authenticated !== 'boolean' || typeof value.beta_enabled !== 'boolean' || typeof value.can_manage_site !== 'boolean'
+  if (typeof value?.authenticated !== 'boolean' || typeof value.beta_enabled !== 'boolean' || typeof value.can_manage_site !== 'boolean'
       || (value.authenticated && (typeof value.user?.email !== 'string' || !value.user.email.trim()))
-      || (value.can_manage_site && !value.authenticated)) throw Error('Login is unavailable at the moment. Please try again shortly.');
+      || (value.can_manage_site && !value.authenticated)) throw Error(sessionUnavailable);
   return response.headers.get('x-care-local-preview')==='1'?{...value,local_preview:true}:value;
+}
+
+export async function session(fetcher = globalThis.fetch, {retryTransient = false, timeout = 8000} = {}) {
+  for (let attempt = 0; ; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    let response;
+    try {
+      response = await fetcher('/api/session', {credentials:'same-origin', cache:'no-store', signal:controller.signal});
+      return await verifiedSession(response);
+    } catch (error) {
+      const interrupted = !response || controller.signal.aborted || (response.ok && error instanceof TypeError);
+      const status = response?.status;
+      if (!retryTransient || attempt > 0 || !(interrupted || status === 408 || status === 429 || status >= 500)) {
+        throw Error(sessionUnavailable);
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 export function accountStorageKey(key, email) {

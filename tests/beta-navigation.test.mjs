@@ -42,6 +42,35 @@ test('a static server or malformed session cannot appear authenticated', async (
   assert.equal(anonymous.authenticated, false);
 });
 
+test('a stalled session request or body is aborted before a fresh startup attempt', async () => {
+  for (const stage of ['request', 'body']) {
+    const signals = [];
+    const current = await session(async (_path, {signal}) => {
+      signals.push(signal);
+      if (signals.length > 1) return Response.json(member, {headers:{'x-care-local-preview':'1'}});
+      const stalled = new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), {once:true}));
+      if (stage === 'request') return stalled;
+      return {ok:true, headers:new Headers({'content-type':'application/json'}), json:() => stalled};
+    }, {retryTransient:true, timeout:10});
+    assert.deepEqual(signals.map(signal => signal.aborted), [true, false]);
+    assert.deepEqual(current, {...member, local_preview:true});
+  }
+});
+
+test('only transient failures retry at startup and every session check has a bounded attempt count', async () => {
+  for (const reply of [() => new Response(null, {status:403}), () => Response.json(null),
+                       () => new Response('{', {headers:{'content-type':'application/json'}})]) {
+    let calls = 0;
+    await assert.rejects(session(async () => { calls++; return reply(); }, {retryTransient:true}), /unavailable/);
+    assert.equal(calls, 1);
+  }
+  for (const retryTransient of [false, true]) {
+    let calls = 0;
+    await assert.rejects(session(async () => { calls++; throw TypeError('network interrupted'); }, {retryTransient}), /unavailable/);
+    assert.equal(calls, retryTransient ? 2 : 1);
+  }
+});
+
 test('book and field saves are isolated by account without replacing anonymous saves', () => {
   const source=readFileSync(new URL('../public-app.mjs',import.meta.url),'utf8');
   const start=source.indexOf('const storageKey = '),end=source.indexOf('\nlet noticeTimer;',start);
@@ -157,7 +186,12 @@ test('library boot authenticates before loading the current reader and preserves
   const location={pathname:'/library.html',search:'?from=shared',hash:'#field=FIELD%3Aexample',replace:value=>calls.push(['redirect',value])};
   const document={documentElement:{dataset:{}}},calls=[];
   const args=[loginURL,()=>calls.push(['logout']),current=>calls.push(['watch',current]),email=>calls.push(['storage',email]),()=>calls.push(['public-storage']),current=>calls.push(['navigation',current]),document,location,path=>calls.push(['load',path])];
-  await run(async()=>betaGuest,...args);
+  let requests=0;
+  await run((_fetcher, options)=>session(async()=>{
+    requests++;
+    return requests===1 ? new Response(null,{status:503}) : Response.json(betaGuest);
+  },options),...args);
+  assert.equal(requests,2);
   assert.deepEqual(calls,[['redirect',loginURL('/library.html?from=shared#field=FIELD%3Aexample')]]);
   calls.length=0;
   await run(async()=>member,...args);
