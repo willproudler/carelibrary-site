@@ -77,7 +77,7 @@ export async function start(loader, css, scope){
  if(settings){
   const preference=document.createElement('label');
   preference.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px';
-  preference.innerHTML='Open books in <select data-book-opening-preference aria-label="Open books in"><option value="ask">Ask each time</option><option value="reader">Reader</option><option value="library">CARE Library</option></select>';
+  preference.innerHTML='Open books in <select data-book-opening-preference aria-label="Open books in"><option value="library">CARE Library</option><option value="reader">Reader</option><option value="ask">Ask each time</option></select>';
   settings.prepend(preference);
   bindBookOpeningPreference(document,preference.querySelector('select'));
  }

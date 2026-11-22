@@ -16,6 +16,7 @@ function preferenceWindow(writable = true, initial = null) {
 for (const writable of [true,false]) {
   test('five normal choices learn the most frequent destination with '+(writable?'device':'in-memory')+' storage', async () => {
     const view = preferenceWindow(writable);
+    setBookOpeningPreference(view,'ask');
     const history = ['reader','library','reader','reader','library'];
     for (const [index, choice] of history.entries()) {
       assert.equal(bookOpeningState(view).mode,'ask');
@@ -36,6 +37,7 @@ for (const writable of [true,false]) {
 
 test('all five matching votes still require five shelf choices', () => {
   const view=preferenceWindow();
+  setBookOpeningPreference(view,'ask');
   for(let i=0;i<5;i++){
     assert.equal(bookOpeningState(view).mode,'ask');
     recordBookOpening(view,'library');
@@ -60,4 +62,16 @@ test('invalid input never votes or consumes a shelf choice', () => {
   const view=preferenceWindow(true,{mode:'ask',choices:['reader',null,'bad']});
   recordBookOpening(view,'bad');
   assert.deepEqual(bookOpeningState(view),{mode:'ask',last:'reader',choices:['reader']});
+});
+
+test('beta shelf opens Library without a dialog, including on devices trained by the former prompt', async () => {
+  for (const old of [null, {mode:'ask',last:'reader'}, {mode:'reader',choices:Array(5).fill('reader')}]) {
+    const view = preferenceWindow();
+    if (old) view.localStorage.setItem('care-book-opening-v1', JSON.stringify(old));
+    assert.equal(await chooseBookOpening({defaultView:view}), 'library');
+    setBookOpeningPreference(view,'reader');
+    assert.equal(await chooseBookOpening({defaultView:view}), 'reader');
+    setBookOpeningPreference(view,'library');
+    assert.equal(await chooseBookOpening({defaultView:view}), 'library');
+  }
 });

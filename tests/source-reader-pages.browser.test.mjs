@@ -354,14 +354,14 @@ test('direct, shared and download links stay in the Reader for every Library ope
   };
   await visit('/first');
   for (const mode of ['ask','library','reader']) {
-    await tab.evaluate("localStorage.setItem('care-book-opening-v1',JSON.stringify({mode:'"+mode+"',last:null}))");
+    await tab.evaluate("localStorage.setItem('care-beta-book-opening-v2',JSON.stringify({mode:'"+mode+"',last:null}))");
     await visit('/book-' + mode);
     await visit('/share-' + mode + '#ref=a8');
     assert.ok(await tab.evaluate("Math.abs(document.getElementById('ref=a8').getBoundingClientRect().top)<150"));
     await visit('/library-' + mode + '?from=library#source-c8');
     await visit('/files-' + mode + '#download');
     assert.ok(await tab.evaluate("document.getElementById('reader-navigation').open && document.body.dataset.readerTab==='tools' && document.activeElement.matches('a[download]')"));
-    assert.equal(await tab.evaluate("JSON.parse(localStorage.getItem('care-book-opening-v1')).mode"), mode);
+    assert.equal(await tab.evaluate("JSON.parse(localStorage.getItem('care-beta-book-opening-v2')).mode"), mode);
   }
 });
 

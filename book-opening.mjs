@@ -1,5 +1,7 @@
 // Only the Library shelf consults this device’s book-opening preference.
-export const BOOK_OPENING_KEY = 'care-book-opening-v1';
+// Previous beta prompts could select Reader automatically after five visits.
+// Only a choice made in Settings under this policy should enable that behavior.
+export const BOOK_OPENING_KEY = 'care-beta-book-opening-v2';
 const openingModes = new Set(['reader', 'library']);
 const learningWindow = 5;
 const fallbackStates = new WeakMap();
@@ -14,7 +16,8 @@ export function bookOpeningState(view) {
   // The earlier policy remembered one unconfirmed choice under "last".
   const choices = (Array.isArray(saved.choices) ? saved.choices : [saved.last])
     .filter(choice => openingModes.has(choice)).slice(0, learningWindow);
-  return {mode:openingModes.has(saved.mode) ? saved.mode : 'ask', choices, last:choices.at(-1) ?? null};
+  const mode = saved.mode === 'ask' || openingModes.has(saved.mode) ? saved.mode : 'library';
+  return {mode, choices, last:choices.at(-1) ?? null};
 }
 
 function saveBookOpening(view, state) {
@@ -26,7 +29,8 @@ function saveBookOpening(view, state) {
 }
 
 export function setBookOpeningPreference(view, mode) {
-  saveBookOpening(view, {mode:openingModes.has(mode) ? mode : 'ask', choices:[], last:null});
+  if (mode !== 'ask' && !openingModes.has(mode)) return;
+  saveBookOpening(view, {mode, choices:[], last:null});
 }
 
 function preferredOpening(choices) {
